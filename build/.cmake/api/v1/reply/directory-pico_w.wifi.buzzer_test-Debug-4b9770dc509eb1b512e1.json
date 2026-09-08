@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "pico_w/wifi/buzzer_test",
+		"source" : "pico_w/wifi/buzzer_test"
+	}
+}

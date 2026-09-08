@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "pico_w/bt/gap_le_advertisements",
+		"source" : "pico_w/bt/gap_le_advertisements"
+	}
+}

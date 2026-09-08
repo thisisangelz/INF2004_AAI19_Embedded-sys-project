@@ -1,0 +1,10 @@
+[
+    {
+        "name": "Pico ARM GCC",
+        "compilers": {
+            "C": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-gcc.exe",
+            "CXX": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-g++.exe"
+        },
+        "isTrusted": true
+    }
+]

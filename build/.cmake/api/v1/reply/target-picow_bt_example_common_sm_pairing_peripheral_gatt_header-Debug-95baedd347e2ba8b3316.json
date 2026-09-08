@@ -1,0 +1,103 @@
+{
+	"backtrace" : 5,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"pico_btstack_make_gatt_header",
+			"picow_bt_example_common",
+			"picow_bt_example_background",
+			"picow_bt_example"
+		],
+		"files" : 
+		[
+			"C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk/src/rp2_common/pico_btstack/CMakeLists.txt",
+			"pico_w/bt/CMakeLists.txt",
+			"pico_w/bt/sm_pairing_peripheral/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 1,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 303,
+				"parent" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 264,
+				"parent" : 2
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 229,
+				"parent" : 3
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 243,
+				"parent" : 4
+			}
+		]
+	},
+	"id" : "picow_bt_example_common_sm_pairing_peripheral_gatt_header::@5fe0de8f86015c4f287f",
+	"name" : "picow_bt_example_common_sm_pairing_peripheral_gatt_header",
+	"paths" : 
+	{
+		"build" : "pico_w/bt/sm_pairing_peripheral",
+		"source" : "pico_w/bt/sm_pairing_peripheral"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				1,
+				2
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 5,
+			"isGenerated" : true,
+			"path" : "C:/Users/thisi/Documents/Pico-v1.5.1/build/pico_w/bt/sm_pairing_peripheral/CMakeFiles/picow_bt_example_common_sm_pairing_peripheral_gatt_header",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "C:/Users/thisi/Documents/Pico-v1.5.1/build/pico_w/bt/sm_pairing_peripheral/CMakeFiles/picow_bt_example_common_sm_pairing_peripheral_gatt_header.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "C:/Users/thisi/Documents/Pico-v1.5.1/build/pico_w/bt/sm_pairing_peripheral/generated/sm_pairing_peripheral.h.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "UTILITY"
+}

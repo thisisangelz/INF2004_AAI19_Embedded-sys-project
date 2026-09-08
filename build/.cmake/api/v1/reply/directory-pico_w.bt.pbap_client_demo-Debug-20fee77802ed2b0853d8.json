@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "pico_w/bt/pbap_client_demo",
+		"source" : "pico_w/bt/pbap_client_demo"
+	}
+}

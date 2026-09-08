@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "pico_w/bt/sm_pairing_peripheral",
+		"source" : "pico_w/bt/sm_pairing_peripheral"
+	}
+}

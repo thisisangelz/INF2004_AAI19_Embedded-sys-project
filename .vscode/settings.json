@@ -1,0 +1,8 @@
+{
+    "cmake.sourceDirectory": "C:/Users/thisi/Documents/Pico-v1.5.1/pico-examples",
+    "cmake.generator": "Ninja",
+    "cmake.configureSettings": {
+        "PICO_SDK_PATH": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk",
+        "CMAKE_MAKE_PROGRAM": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/ninja/ninja.exe"
+    }
+}

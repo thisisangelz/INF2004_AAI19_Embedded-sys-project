@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "pico_w/bt/pan_lwip_http_server",
+		"source" : "pico_w/bt/pan_lwip_http_server"
+	}
+}
