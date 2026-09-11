@@ -15,7 +15,7 @@ The tracker:
 
 - prints the latest RSSI values to the serial monitor every **200 ms**
 - turns on a different LED depending on which access point has the stronger signal
-- changes the buzzer pitch according to the RSSI strength
+- changes the beep interval according to the RSSI strength
 - turns the buzzer off if neither access point can be detected
 
 RSSI is used as an indication of signal strength. A less negative RSSI value means a stronger signal.
@@ -136,21 +136,25 @@ RSSI is not an exact distance measurement. Walls, people, reflections, interfere
 
 ## Buzzer Behaviour
 
-The buzzer pitch increases as the RSSI becomes stronger.
+The buzzer uses a fixed tone and emits short beeps. The time between beeps changes with RSSI, like a proximity sensor:
+
+- weak signal: slow beeps
+- strong signal: rapid beeps
+- no detected access point: buzzer off
 
 Approximate mapping:
 
-| RSSI | Buzzer frequency |
+| RSSI | Beep interval |
 |---:|---:|
-| -90 dBm | 300 Hz |
-| -80 dBm | 750 Hz |
-| -70 dBm | 1200 Hz |
-| -60 dBm | 1650 Hz |
-| -50 dBm | 2100 Hz |
-| -40 dBm | 2550 Hz |
-| -30 dBm | 3000 Hz |
+| -90 dBm | 1000 ms |
+| -80 dBm | 850 ms |
+| -70 dBm | 700 ms |
+| -60 dBm | 550 ms |
+| -50 dBm | 400 ms |
+| -40 dBm | 250 ms |
+| -30 dBm | 100 ms |
 
-This means moving towards the currently selected access point should generally produce a higher-pitched tone.
+The beep is on for approximately 80 ms. Moving towards the currently selected access point should generally make the beeps occur closer together.
 
 The Maker Pi Pico buzzer is connected to **GP18** and is controlled using PWM.
 
@@ -165,15 +169,15 @@ The programme prints the latest RSSI information every 200 ms.
 Example:
 
 ```text
-AP1: -68 dBm | AP2: -51 dBm | Closer: AP2 | Buzzer: 2055 Hz
-AP1: -66 dBm | AP2: -49 dBm | Closer: AP2 | Buzzer: 2145 Hz
-AP1: -55 dBm | AP2: -63 dBm | Closer: AP1 | Buzzer: 1875 Hz
+AP1: -68 dBm | AP2: -51 dBm | Closer: AP2 | Buzzer: BEEP every 415 ms
+AP1: -66 dBm | AP2: -49 dBm | Closer: AP2 | Buzzer: BEEP every 385 ms
+AP1: -55 dBm | AP2: -63 dBm | Closer: AP1 | Buzzer: BEEP every 475 ms
 ```
 
 If only one access point is detected:
 
 ```text
-AP1: -64 dBm | AP2: N/A | Closer: AP1 | Buzzer: 1470 Hz
+AP1: -64 dBm | AP2: N/A | Closer: AP1 | Buzzer: BEEP every 610 ms
 ```
 
 If neither access point is detected:
@@ -210,12 +214,11 @@ A second copy of the access-point project can be used for AP2 with its SSID chan
 
 ## Building the Tracker
 
-From the `pico_rssi_tracker` directory:
+From the repository root, use Ninja to configure and build the tracker:
 
 ```bash
-rm -rf build
-cmake -S . -B build -G Ninja -DPICO_BOARD=pico_w
-cmake --build build
+cmake -S . -B build
+cmake --build build -j
 ```
 
 A successful build should generate:

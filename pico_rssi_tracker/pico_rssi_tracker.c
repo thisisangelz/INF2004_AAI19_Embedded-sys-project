@@ -29,6 +29,13 @@
 
 #define PRINT_INTERVAL_MS 200
 
+// The buzzer uses one fixed audible tone. RSSI changes the time
+// between beeps, like a proximity sensor.
+#define BUZZER_TONE_HZ 2000
+#define BEEP_ON_MS 80
+#define BEEP_INTERVAL_FAR_MS 1000
+#define BEEP_INTERVAL_NEAR_MS 100
+
 // If an AP has not been detected for this long,
 // treat it as unavailable.
 #define RSSI_TIMEOUT_MS 5000
@@ -48,6 +55,12 @@ volatile uint32_t ap1_last_seen_ms = 0;
 volatile uint32_t ap2_last_seen_ms = 0;
 
 uint buzzer_slice;
+uint16_t buzzer_wrap;
+
+bool buzzer_enabled = false;
+bool buzzer_is_on = false;
+uint32_t buzzer_interval_ms = BEEP_INTERVAL_FAR_MS;
+uint32_t buzzer_next_event_ms = 0;
 
 // 0 = neither
 // 1 = AP1
@@ -159,39 +172,13 @@ void buzzer_init()
         true
     );
 
-    // Initially silent
-    pwm_set_gpio_level(
-        BUZZER_PIN,
-        0
-    );
-}
-
-
-// ---------------------------------------------------------
-// SET BUZZER FREQUENCY
-// ---------------------------------------------------------
-
-void buzzer_set_frequency(uint32_t frequency_hz)
-{
-    if (frequency_hz == 0) {
-
-        pwm_set_gpio_level(
-            BUZZER_PIN,
-            0
-        );
-
-        return;
-    }
-
     uint32_t clock_hz =
         clock_get_hz(clk_sys);
-
-    float divider = 16.0f;
 
     uint32_t wrap =
         (uint32_t)(
             clock_hz /
-            (divider * frequency_hz)
+            (16.0f * BUZZER_TONE_HZ)
         ) - 1;
 
     if (wrap > 65535) {
@@ -202,24 +189,35 @@ void buzzer_set_frequency(uint32_t frequency_hz)
         wrap = 2;
     }
 
-    pwm_set_wrap(
-        buzzer_slice,
-        wrap
-    );
+    buzzer_wrap = (uint16_t)wrap;
+    pwm_set_wrap(buzzer_slice, buzzer_wrap);
 
-    // 50% duty cycle
+    // Initially silent
     pwm_set_gpio_level(
         BUZZER_PIN,
-        wrap / 2
+        0
     );
 }
 
 
 // ---------------------------------------------------------
-// CONVERT RSSI INTO BUZZER FREQUENCY
+// SET THE FIXED BUZZER TONE ON OR OFF
 // ---------------------------------------------------------
 
-uint32_t rssi_to_frequency(int rssi)
+void buzzer_set_tone(bool enabled)
+{
+    pwm_set_gpio_level(
+        BUZZER_PIN,
+        enabled ? buzzer_wrap / 2 : 0
+    );
+}
+
+
+// ---------------------------------------------------------
+// CONVERT RSSI INTO BEEP INTERVAL
+// ---------------------------------------------------------
+
+uint32_t rssi_to_beep_interval(int rssi)
 {
     /*
         RSSI examples:
@@ -229,10 +227,11 @@ uint32_t rssi_to_frequency(int rssi)
         -50 dBm = good
         -30 dBm = very strong
 
-        Map:
+        Map weak signals to slow beeps and strong signals
+        to rapid beeps:
 
-        -90 dBm -> 300 Hz
-        -30 dBm -> 3000 Hz
+        -90 dBm -> one beep every 1000 ms
+        -30 dBm -> one beep every 100 ms
     */
 
     if (rssi < -90) {
@@ -246,11 +245,70 @@ uint32_t rssi_to_frequency(int rssi)
     int range =
         rssi + 90;
 
-    uint32_t frequency =
-        300 +
-        ((uint32_t)range * 2700) / 60;
+    uint32_t interval =
+        BEEP_INTERVAL_FAR_MS -
+        ((uint32_t)range *
+         (BEEP_INTERVAL_FAR_MS - BEEP_INTERVAL_NEAR_MS)) / 60;
 
-    return frequency;
+    return interval;
+}
+
+
+// ---------------------------------------------------------
+// CONFIGURE AND SERVICE THE PROXIMITY BEEP
+// ---------------------------------------------------------
+
+void buzzer_configure(
+    bool enabled,
+    uint32_t interval_ms,
+    uint32_t now_ms
+)
+{
+    if (!enabled) {
+        buzzer_enabled = false;
+        buzzer_is_on = false;
+        buzzer_set_tone(false);
+        return;
+    }
+
+    if (interval_ms < BEEP_ON_MS) {
+        interval_ms = BEEP_ON_MS;
+    }
+
+    buzzer_interval_ms = interval_ms;
+
+    // Start a new beep immediately when a beacon becomes available.
+    if (!buzzer_enabled) {
+        buzzer_enabled = true;
+        buzzer_is_on = true;
+        buzzer_set_tone(true);
+        buzzer_next_event_ms = now_ms + BEEP_ON_MS;
+    }
+}
+
+
+void buzzer_service(uint32_t now_ms)
+{
+    if (!buzzer_enabled ||
+        (int32_t)(now_ms - buzzer_next_event_ms) < 0) {
+        return;
+    }
+
+    if (buzzer_is_on) {
+        uint32_t off_time_ms =
+            buzzer_interval_ms > BEEP_ON_MS
+            ? buzzer_interval_ms - BEEP_ON_MS
+            : 1;
+
+        buzzer_is_on = false;
+        buzzer_set_tone(false);
+        buzzer_next_event_ms = now_ms + off_time_ms;
+    }
+    else {
+        buzzer_is_on = true;
+        buzzer_set_tone(true);
+        buzzer_next_event_ms = now_ms + BEEP_ON_MS;
+    }
 }
 
 
@@ -260,7 +318,8 @@ uint32_t rssi_to_frequency(int rssi)
 
 void update_output(
     bool ap1_valid,
-    bool ap2_valid
+    bool ap2_valid,
+    uint32_t now_ms
 )
 {
     // Neither AP found
@@ -271,7 +330,7 @@ void update_output(
         gpio_put(AP1_LED_PIN, 0);
         gpio_put(AP2_LED_PIN, 0);
 
-        buzzer_set_frequency(0);
+        buzzer_configure(false, 0, now_ms);
 
         return;
     }
@@ -335,8 +394,10 @@ void update_output(
         gpio_put(AP1_LED_PIN, 1);
         gpio_put(AP2_LED_PIN, 0);
 
-        buzzer_set_frequency(
-            rssi_to_frequency(ap1_rssi)
+        buzzer_configure(
+            true,
+            rssi_to_beep_interval(ap1_rssi),
+            now_ms
         );
     }
 
@@ -345,8 +406,10 @@ void update_output(
         gpio_put(AP1_LED_PIN, 0);
         gpio_put(AP2_LED_PIN, 1);
 
-        buzzer_set_frequency(
-            rssi_to_frequency(ap2_rssi)
+        buzzer_configure(
+            true,
+            rssi_to_beep_interval(ap2_rssi),
+            now_ms
         );
     }
 }
@@ -368,18 +431,18 @@ void print_rssi(
             ? ap1_rssi
             : ap2_rssi;
 
-        uint32_t frequency =
-            rssi_to_frequency(selected_rssi);
+        uint32_t beep_interval_ms =
+            rssi_to_beep_interval(selected_rssi);
 
         printf(
             "AP1: %d dBm | "
             "AP2: %d dBm | "
             "Closer: AP%d | "
-            "Buzzer: %lu Hz\n",
+            "Buzzer: BEEP every %lu ms\n",
             ap1_rssi,
             ap2_rssi,
             selected_ap,
-            (unsigned long)frequency
+            (unsigned long)beep_interval_ms
         );
     }
 
@@ -389,10 +452,10 @@ void print_rssi(
             "AP1: %d dBm | "
             "AP2: N/A | "
             "Closer: AP1 | "
-            "Buzzer: %lu Hz\n",
+            "Buzzer: BEEP every %lu ms\n",
             ap1_rssi,
             (unsigned long)
-                rssi_to_frequency(ap1_rssi)
+                rssi_to_beep_interval(ap1_rssi)
         );
     }
 
@@ -402,10 +465,10 @@ void print_rssi(
             "AP1: N/A | "
             "AP2: %d dBm | "
             "Closer: AP2 | "
-            "Buzzer: %lu Hz\n",
+            "Buzzer: BEEP every %lu ms\n",
             ap2_rssi,
             (unsigned long)
-                rssi_to_frequency(ap2_rssi)
+                rssi_to_beep_interval(ap2_rssi)
         );
     }
 
@@ -441,6 +504,8 @@ int main()
     printf("==============================\n");
     printf("AP1: %s\n", AP1_SSID);
     printf("AP2: %s\n", AP2_SSID);
+    printf("Buzzer: slower beeps mean weaker signal\n");
+    printf("Buzzer: faster beeps mean stronger signal\n");
     printf("\n");
 
     // Initialise Wi-Fi
@@ -557,7 +622,8 @@ int main()
 
             update_output(
                 ap1_valid,
-                ap2_valid
+                ap2_valid,
+                now_ms
             );
 
             print_rssi(
@@ -570,6 +636,8 @@ int main()
                 now_ms +
                 PRINT_INTERVAL_MS;
         }
+
+        buzzer_service(now_ms);
 
 
         // Small delay so we are not continuously
