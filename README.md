@@ -1,22 +1,23 @@
-# Pico W RSSI Beacon Finder
+# Pico W Three-Beacon RSSI Finder
 
 ## Overview
 
-This project uses Raspberry Pi Pico W boards to create a simple Wi-Fi beacon finder.
+This project uses Raspberry Pi Pico W boards to create a simple three-transmitter Wi-Fi beacon finder.
 
-Two Pico W boards operate as Wi-Fi access points:
+Three Pico W boards operate as Wi-Fi access points:
 
 - **AP1:** `I AM PICO W`
 - **AP2:** `I AM PICO W 2`
+- **AP3:** `I AM PICO W 3`
 
-A third Pico W continuously scans for both access points and compares their RSSI values.
+A fourth Pico W continuously scans for all three access points and compares their RSSI values.
 
 The tracker:
 
 - prints the latest RSSI values to the serial monitor every **200 ms**
 - turns on a different LED depending on which access point has the stronger signal
 - changes the beep interval according to the RSSI strength
-- turns the buzzer off if neither access point can be detected
+- turns the buzzer off if none of the access points can be detected
 
 RSSI is used as an indication of signal strength. A less negative RSSI value means a stronger signal.
 
@@ -33,37 +34,29 @@ The stronger signal is treated as the access point that is likely to be closer.
 
 ## Hardware
 
-- 3 × Raspberry Pi Pico W
+- 4 × Raspberry Pi Pico W
 - Maker Pi Pico board for the tracker Pico
 - USB cables
 - Computer with Raspberry Pi Pico SDK installed
 
-The project was developed using:
+The v2 firmware was verified using:
 
-- **Pico SDK:** 1.5.1
-- **GNU Arm Embedded Toolchain:** 10.3.1
-- **Ninja:** 1.11.1
-- **CMake**
+- **Pico SDK:** 2.3.0
+- **GNU Arm Embedded Toolchain:** 15.2.1
+- **Ninja:** 1.13.2
+- **CMake:** 4.3.4
 
 ---
 
 ## System Layout
 
 ```text
-Pico W #1
-Access Point
-SSID: I AM PICO W
-        \
-         \
-          > Pico W #3
-         /  RSSI Tracker
-        /
-Pico W #2
-Access Point
-SSID: I AM PICO W 2
+Pico W #1 (AP1: I AM PICO W)   ──\
+Pico W #2 (AP2: I AM PICO W 2) ───> Pico W #4 RSSI Tracker
+Pico W #3 (AP3: I AM PICO W 3) ──/
 ```
 
-The tracker does not need to connect to either access point. It only scans for their Wi-Fi advertisements and records their RSSI values.
+The tracker does not need to connect to any access point. It only scans for their Wi-Fi advertisements and records their RSSI values.
 
 ---
 
@@ -73,15 +66,19 @@ The tracker does not need to connect to either access point. It only scans for t
 |---|---:|
 | AP1 indicator LED | GP2 |
 | AP2 indicator LED | GP3 |
+| AP3 indicator LED | GP4 |
 | Maker Pi Pico buzzer | GP18 |
 
 ### LED behaviour
 
 - **GP2 LED ON:** AP1 has the stronger RSSI
 - **GP3 LED ON:** AP2 has the stronger RSSI
-- **Both LEDs OFF:** neither access point has been detected recently
+- **GP4 LED ON:** AP3 has the stronger RSSI
+- **All LEDs OFF:** none of the three access points has been detected recently
 
-A 3 dB switching margin is used to reduce rapid switching when both RSSI values are very similar.
+Only one indicator LED is on at a time. All three LEDs are off when no target access point has been detected recently.
+
+A 3 dB switching margin is used to reduce rapid switching when the strongest RSSI values are very similar.
 
 ---
 
@@ -98,6 +95,13 @@ A 3 dB switching margin is used to reduce rapid switching when both RSSI values 
 
 ```c
 #define WIFI_SSID "I AM PICO W 2"
+#define WIFI_PASSWORD "pico12345"
+```
+
+### Access Point 3
+
+```c
+#define WIFI_SSID "I AM PICO W 3"
 #define WIFI_PASSWORD "pico12345"
 ```
 
@@ -126,6 +130,7 @@ Example:
 ```text
 AP1: -45 dBm
 AP2: -72 dBm
+AP3: -61 dBm
 ```
 
 AP1 has the stronger signal because `-45` is greater than `-72`.
@@ -169,21 +174,21 @@ The programme prints the latest RSSI information every 200 ms.
 Example:
 
 ```text
-AP1: -68 dBm | AP2: -51 dBm | Closer: AP2 | Buzzer: BEEP every 415 ms
-AP1: -66 dBm | AP2: -49 dBm | Closer: AP2 | Buzzer: BEEP every 385 ms
-AP1: -55 dBm | AP2: -63 dBm | Closer: AP1 | Buzzer: BEEP every 475 ms
+AP1: -68 dBm | AP2: -51 dBm | AP3: -74 dBm | Closer: AP2 | Buzzer: BEEP every 415 ms
+AP1: -66 dBm | AP2: -49 dBm | AP3: -57 dBm | Closer: AP2 | Buzzer: BEEP every 385 ms
+AP1: -55 dBm | AP2: -63 dBm | AP3: -70 dBm | Closer: AP1 | Buzzer: BEEP every 475 ms
 ```
 
 If only one access point is detected:
 
 ```text
-AP1: -64 dBm | AP2: N/A | Closer: AP1 | Buzzer: BEEP every 610 ms
+AP1: -64 dBm | AP2: N/A | AP3: N/A | Closer: AP1 | Buzzer: BEEP every 610 ms
 ```
 
-If neither access point is detected:
+If none of the access points is detected:
 
 ```text
-AP1: N/A | AP2: N/A | Closer: NONE | Buzzer: OFF
+AP1: N/A | AP2: N/A | AP3: N/A | Closer: NONE | Buzzer: OFF
 ```
 
 The programme prints every 200 ms, but Wi-Fi scans can take longer than 200 ms. Therefore, each line displays the most recently received RSSI measurement.
@@ -201,6 +206,15 @@ beacon-finder/
 │   ├── lwipopts.h
 │   └── picow_access_point.c
 │
+├── picow_access_point2/
+│   └── ...
+│
+├── picow_access_point3/
+│   ├── CMakeLists.txt
+│   ├── pico_sdk_import.cmake
+│   ├── lwipopts.h
+│   └── picow_access_point.c
+│
 └── pico_rssi_tracker/
     ├── CMakeLists.txt
     ├── pico_sdk_import.cmake
@@ -208,24 +222,40 @@ beacon-finder/
     └── pico_rssi_tracker.c
 ```
 
-A second copy of the access-point project can be used for AP2 with its SSID changed to `I AM PICO W 2`.
+Each access-point project uses a distinct SSID so the tracker can identify all three transmitters.
 
 ---
 
 ## Building the Tracker
 
-From the repository root, use Ninja to configure and build the tracker:
+From the repository root, configure and build the tracker with:
 
 ```bash
-cmake -S . -B build
-cmake --build build -j
+cmake -S pico_rssi_tracker -B pico_rssi_tracker/build
+cmake --build pico_rssi_tracker/build -j
 ```
 
 A successful build should generate:
 
 ```text
-build/pico_rssi_tracker.uf2
+pico_rssi_tracker/build/pico_rssi_tracker.uf2
 ```
+
+Build each transmitter from its own project folder in the same way. For example, AP3 is built with:
+
+```bash
+cmake -S picow_access_point3 -B picow_access_point3/build
+cmake --build picow_access_point3/build -j
+```
+
+Flash the generated images to the boards as follows:
+
+| Board role | Firmware image |
+|---|---|
+| AP1 transmitter | `picow_access_point/build/picow_access_point.uf2` |
+| AP2 transmitter | `picow_access_point2/build/picow_access_point.uf2` |
+| AP3 transmitter | `picow_access_point3/build/picow_access_point3.uf2` |
+| RSSI tracker | `pico_rssi_tracker/build/pico_rssi_tracker.uf2` |
 
 ---
 
@@ -243,18 +273,19 @@ build/pico_rssi_tracker.uf2
 
 ## How the Tracker Decides Which Beacon Is Closer
 
-The tracker stores the latest RSSI value received for each target SSID.
+The tracker stores the latest RSSI value received for each of the three target SSIDs.
 
 For example:
 
 ```text
 AP1 = -61 dBm
 AP2 = -74 dBm
+AP3 = -68 dBm
 ```
 
 AP1 is selected because its RSSI is stronger.
 
-A small hysteresis margin is used so that the selected LED does not rapidly switch when the two readings differ by only a small amount.
+A small hysteresis margin is used so that the selected LED does not rapidly switch when the strongest readings differ by only a small amount.
 
 Example:
 
@@ -282,7 +313,7 @@ the tracker switches to AP2.
 - Wi-Fi scans are not instantaneous.
 - Nearby Wi-Fi networks may cause interference.
 - Obstacles can weaken or reflect signals.
-- The two access points should be placed far enough apart to make their signal-strength difference noticeable.
+- The three access points should be placed far enough apart to make their signal-strength differences noticeable.
 - Rapid movement may cause the displayed RSSI to lag slightly behind the actual position.
 
 ---
@@ -297,6 +328,6 @@ Future versions could include:
 - different buzzer patterns for each beacon
 - calibration for known distances
 - BSSID/MAC-address identification instead of SSID identification
-- more than two access points
+- more than three access points
 - trilateration or fingerprint-based indoor positioning
 - an OLED display showing the selected beacon and RSSI
