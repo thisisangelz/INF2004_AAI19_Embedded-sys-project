@@ -1,0 +1,10 @@
+PRIMARY_SERVICE, GAP_SERVICE
+CHARACTERISTIC, GAP_DEVICE_NAME, READ, "Pico Beacon"
+
+PRIMARY_SERVICE, GATT_SERVICE
+CHARACTERISTIC, GATT_DATABASE_HASH, READ,
+
+// Test file-transfer service. The central writes commands/data and the beacon
+// sends protocol replies as notifications.
+PRIMARY_SERVICE, 0xFF20
+CHARACTERISTIC, 0xFF21, WRITE | NOTIFY | DYNAMIC,

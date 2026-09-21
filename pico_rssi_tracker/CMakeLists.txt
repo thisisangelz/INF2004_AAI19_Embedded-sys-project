@@ -17,11 +17,14 @@ add_executable(pico_rssi_tracker
 
 target_include_directories(pico_rssi_tracker PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer
 )
 
 target_link_libraries(pico_rssi_tracker
     pico_stdlib
     pico_cyw43_arch_lwip_threadsafe_background
+    pico_btstack_cyw43
+    pico_btstack_ble
     hardware_pwm
     hardware_clocks
 )

@@ -1,3 +1,4 @@
 **/build/*
 !**/build/
 !**/build/*.uf2
+**/build-v2/
