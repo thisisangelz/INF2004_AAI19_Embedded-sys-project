@@ -955,18 +955,18 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
             handle_advertisement(packet);
         }
         break;
-    case HCI_EVENT_META_GAP:
-        if (hci_event_gap_meta_get_subevent_code(packet) ==
-                GAP_SUBEVENT_LE_CONNECTION_COMPLETE &&
+    case HCI_EVENT_LE_META:
+        if (hci_event_le_meta_get_subevent_code(packet) ==
+                HCI_SUBEVENT_LE_CONNECTION_COMPLETE &&
             ble_state == BLE_CONNECTING) {
-            uint8_t status = gap_subevent_le_connection_complete_get_status(packet);
+            uint8_t status = hci_subevent_le_connection_complete_get_status(packet);
             if (status != ERROR_CODE_SUCCESS) {
                 connection_handle = HCI_CON_HANDLE_INVALID;
                 transfer_failed("connection failed");
                 return;
             }
             connection_handle =
-                gap_subevent_le_connection_complete_get_connection_handle(packet);
+                hci_subevent_le_connection_complete_get_connection_handle(packet);
             service_found = false;
             ble_state = BLE_DISCOVER_SERVICE;
             printf("AP%d BLE CONNECTION: connected successfully.\n",

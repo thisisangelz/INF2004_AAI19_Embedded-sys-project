@@ -37,6 +37,20 @@ typedef enum {
 
 static volatile beacon_status_t beacon_status = BEACON_STATUS_STARTING;
 
+// BTstack keeps this pointer after gap_advertisements_set_data(). It must not
+// point to a stack-local array that goes out of scope after packet_handler().
+static uint8_t adv_data[] = {
+    0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
+    0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
+    (uint8_t)BEACON_SERVICE_UUID, (uint8_t)(BEACON_SERVICE_UUID >> 8),
+    0x05, BLUETOOTH_DATA_TYPE_SERVICE_DATA,
+    (uint8_t)BEACON_SERVICE_UUID, (uint8_t)(BEACON_SERVICE_UUID >> 8),
+    BEACON_PROTOCOL_VERSION, BEACON_ID,
+    0x0E, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'P', 'I', 'C', 'O', '-', 'B', 'E', 'A', 'C', 'O', 'N', '-',
+    (uint8_t)('0' + BEACON_ID),
+};
+
 static const char *beacon_status_name(beacon_status_t status)
 {
     switch (status) {
@@ -295,16 +309,6 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
     switch (hci_event_packet_get_type(packet)) {
     case BTSTACK_EVENT_STATE:
         if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING) {
-            uint8_t adv_data[] = {
-                0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
-                0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
-                (uint8_t)BEACON_SERVICE_UUID, (uint8_t)(BEACON_SERVICE_UUID >> 8),
-                0x05, BLUETOOTH_DATA_TYPE_SERVICE_DATA, (uint8_t)BEACON_SERVICE_UUID,
-                (uint8_t)(BEACON_SERVICE_UUID >> 8), BEACON_PROTOCOL_VERSION, BEACON_ID,
-                0x0E, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
-                'P', 'I', 'C', 'O', '-', 'B', 'E', 'A', 'C', 'O', 'N', '-',
-                (uint8_t)('0' + BEACON_ID),
-            };
             bd_addr_t null_addr = {0};
             gap_advertisements_set_params(
                 160, 160, 0, 0, null_addr, 0x07, 0x00);
@@ -312,27 +316,14 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             gap_advertisements_enable(1);
             beacon_status = BEACON_STATUS_ADVERTISING;
             printf("BLE beacon AP%d advertising\n", BEACON_ID);
-            bd_addr_t local_addr;
-            gap_local_bd_addr(local_addr);
-            printf("AP%d BLE DIAGNOSTIC | Address: %s | Name: PICO-BEACON-%d | Service UUID: 0x%04X | Protocol version: %d | Beacon ID: %d | Interval: 100 ms | Connectable: yes\n",
-                   BEACON_ID, bd_addr_to_str(local_addr), BEACON_ID,
-                   BEACON_SERVICE_UUID, BEACON_PROTOCOL_VERSION, BEACON_ID);
-            printf("AP%d BLE ADV RAW | Length: %u | Data:",
-                   BEACON_ID, (unsigned)sizeof(adv_data));
-            for (size_t i = 0; i < sizeof(adv_data); ++i) {
-                printf(" %02X", adv_data[i]);
-            }
-            printf("\n");
-            printf("AP%d BLE EXPECTED ROBOT MATCH | Service-data field: 05 16 20 FF 01 %02X\n",
-                   BEACON_ID, BEACON_ID);
         }
         break;
 
-    case HCI_EVENT_META_GAP:
-        if (hci_event_gap_meta_get_subevent_code(packet) ==
-            GAP_SUBEVENT_LE_CONNECTION_COMPLETE) {
+    case HCI_EVENT_LE_META:
+        if (hci_event_le_meta_get_subevent_code(packet) ==
+            HCI_SUBEVENT_LE_CONNECTION_COMPLETE) {
             connection_handle =
-                gap_subevent_le_connection_complete_get_connection_handle(packet);
+                hci_subevent_le_connection_complete_get_connection_handle(packet);
             beacon_status = BEACON_STATUS_CONNECTED;
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
             printf("BLE robot connected\n");
