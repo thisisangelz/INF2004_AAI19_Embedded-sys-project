@@ -1,2 +1,240 @@
-# INF2004_AAI19_-Embedded-sys-project
-INF2004 Embedded System Programming Project
+# Pico W Three-Beacon Wi-Fi + BLE Test
+
+This branch implements a four-board prototype:
+
+- AP1: Wi-Fi SSID `I AM PICO W`, BLE name `PICO-BEACON-1`
+- AP2: Wi-Fi SSID `I AM PICO W 2`, BLE name `PICO-BEACON-2`
+- AP3: Wi-Fi SSID `I AM PICO W 3`, BLE name `PICO-BEACON-3`
+- Robot Pico W: Wi-Fi RSSI tracker and BLE central/client
+
+The Pico W has one shared 2.4 GHz radio. Between transfers, the robot actively
+scans the three Wi-Fi APs and displays their RSSI values. GP20 starts BLE only
+for the current target. During that BLE scan, connection and transfer, the
+serial display keeps the last valid Wi-Fi readings and labels them `last scan;
+radio reserved for BLE`. After a successful transfer, live Wi-Fi scanning
+resumes for the next target and the robot waits for another GP20 press.
+
+## Test sequence
+
+1. Power all three beacon Pico W boards and the robot Pico W.
+2. The robot displays live Wi-Fi RSSI for AP1, AP2 and AP3. Wi-Fi RSSI is for
+   guidance only and does not authorize a transfer.
+3. When ready for AP1, press the Maker Pi Pico button on **GP20**.
+4. The robot pauses Wi-Fi scans and averages AP1's BLE RSSI advertisements.
+5. When the configured average threshold is met repeatedly, the buzzer becomes
+   a constant tone, the boards connect, handshake and exchange test payloads.
+6. Both boards verify the received payload with CRC-32, print completion, and
+   show completion using their LEDs.
+7. The robot disconnects, resumes live Wi-Fi RSSI, selects AP2 as the next BLE
+   target and waits. Press **GP20** again to run the AP2 BLE transfer.
+8. After AP2 completes, Wi-Fi scanning resumes again. Press **GP20** a third
+   time to run the AP3 BLE transfer.
+9. After AP3 succeeds, all three robot LEDs and the robot buzzer remain on until
+   the Pico is powered off or reset.
+
+The access points are *detected*, not joined by the robot. Their Wi-Fi networks
+remain useful as RSSI beacons; BLE is used for close-range gating and transfer.
+
+## BLE proximity settings
+
+The settings are near the top of
+`pico_rssi_tracker/pico_rssi_tracker.c`:
+
+```c
+#define BLE_CLOSE_RSSI_DBM (-50)
+#define BLE_RSSI_SAMPLE_COUNT 8
+#define BLE_CLOSE_REQUIRED_AVERAGES 3
+```
+
+The current `-50 dBm` value is an arbitrary starting point. It does **not** mean
+15 cm on every Pico W. The robot maintains a rolling average of eight target
+advertisements and requires three consecutive qualifying averages. A single
+strong packet therefore cannot start a transfer.
+
+RSSI cannot provide an exact distance because antenna orientation, the robot
+body, people, reflections, power supply noise and the room change the result.
+For a real 15 cm gate, calibrate the assembled hardware:
+
+1. Put the robot and one beacon in their normal mounted orientations at 15 cm.
+2. Record at least 50 BLE readings from the robot serial output.
+3. Repeat for each beacon and for several orientations.
+4. Repeat just outside the allowed zone, for example at 20 cm and 30 cm.
+5. Choose a threshold that normally passes the 15 cm samples but rejects the
+   farther samples. Use the weakest per-beacon value if one common threshold is
+   required.
+6. Increase the sample count or confirmation count if the result chatters.
+
+A two-threshold enter/exit hysteresis can be added later if the robot must keep
+making a proximity decision after connecting. This test only needs the entry
+threshold.
+
+## What the BLE handshake transfers
+
+BLE first performs its normal connection procedure. The firmware then performs
+this application protocol on custom service `0xFF20`, characteristic `0xFF21`:
+
+```text
+HELLO / HELLO_ACK
+FILE_START (length + CRC-32) / FILE_READY
+FILE_DATA chunks / FILE_END
+FILE_RECEIVED (status + CRC-32)
+REPLY_REQUEST
+REPLY_START / REPLY_DATA chunks / REPLY_END
+COMPLETE / COMPLETE_ACK
+```
+
+The robot sends `Robot test file delivered to beacon APn`. The beacon sends
+`Reply file from beacon APn`. These are small byte payloads compiled into the
+firmware, not files stored on an SD card or filesystem. The chunking, length,
+sequence and CRC checks exercise the same control flow needed for a later real
+file source. The current maximum received payload is 256 bytes.
+
+This is a functional lab protocol, not a secure transfer protocol. It currently
+uses an unpaired BLE connection. Add BLE pairing/bonding and application
+authentication before sending private or safety-critical data.
+
+## Robot pin assignment
+
+| Function | GPIO |
+|---|---:|
+| AP1 indicator LED | GP2 |
+| AP2 indicator LED | GP3 |
+| AP3 indicator LED | GP4 |
+| Maker Pi Pico buzzer | GP18 |
+| Start button, active-low with pull-up | GP20 |
+
+The pins can be overridden at compile time with `START_BUTTON_PIN` and
+`BUZZER_PIN`. Check the carrier-board model before flashing: this project is
+configured for the Maker Pi Pico arrangement already used by the repository.
+
+## Buzzer and LED behaviour
+
+- Between BLE rounds: Wi-Fi RSSI is displayed but does not make decisions or
+  control the buzzer. The next target LED is on and the buzzer is off.
+- During AP1/AP2/AP3 BLE search: the current target LED is on and stronger BLE
+  RSSI produces faster proximity beeps.
+- From accepted BLE proximity until transfer acknowledgement: constant buzzer.
+- After each completed AP: its LED remains on.
+- After all three complete: all LEDs on and constant buzzer until power-off.
+
+## Serial evidence
+
+Use a USB serial monitor on the robot and, when debugging, on the beacon being
+tested. Important robot messages include:
+
+```text
+Wi-Fi RSSI | AP1: -51 dBm | AP2: -63 dBm | AP3: -70 dBm
+BLE status | Wi-Fi round for AP1 | Press GP20 to switch to BLE
+GP20 accepted: switching from Wi-Fi RSSI to BLE for AP1.
+BLE status | Target: AP1 | State: SCANNING FOR TARGET
+BLE RSSI | Target AP1 | LIVE | Latest: -49 dBm | Average: -48 dBm | Threshold: >= -50 dBm | Close: 0/3
+AP1 RANGE REACHED: average BLE RSSI -48 dBm passed threshold -50 dBm.
+AP1 FILE TRANSFER STATUS: STARTING. Constant buzzer ON until completion.
+AP1 BLE CONNECTION: connected successfully.
+AP1 HANDSHAKE: HELLO sent; waiting for HELLO_ACK.
+AP1 FILE SEND: sending chunk 1, 17/39 bytes queued.
+AP1 FILE SEND: chunk 1 acknowledged by beacon.
+AP1 FILE TRANSFER: beacon verified the robot file and matching CRC.
+AP1 REPLY TRANSFER: received chunk 1, 17/26 bytes.
+AP1 FILE TRANSFER COMPLETE: both Pico W boards acknowledged success.
+AP1 disconnected cleanly. File transfer confirmed on both ends.
+Wi-Fi RSSI scanning resumed for AP2. Press GP20 when ready to switch to BLE.
+ALL THREE BEACON FILE TRANSFERS COMPLETE
+ROBOT NOTIFICATION: all LEDs ON and permanent buzzer ON until power-off.
+```
+
+After GP20, the robot prints a separate `BLE RSSI` row for the current target.
+Before the eight-reading average is ready, it prints the latest reading and
+`collecting sample n/8`. While scanning, the row is marked `LIVE`; after the
+scanner stops to connect, it is marked `LAST BEFORE CONNECTION`. During
+transfer, the periodic BLE status uses readable stages such as `CLOSE ENOUGH -
+CONNECTING`, `SENDING HANDSHAKE`, `SENDING FILE DATA` and `WAITING FOR FILE CRC
+RESULT`.
+
+The scan line also prints `BLE reports: x total, y matching APn`. This helps
+separate two faults: `0 total` means the robot is receiving no BLE advertising
+reports, while a rising total with `0 matching` means it sees other BLE traffic
+but not the expected beacon service data/ID. Zero-valued Wi-Fi scan results are
+discarded instead of being shown as a false `0 dBm` measurement.
+
+Every five seconds during a target BLE scan, the robot also prints a bounded
+diagnostic block. It counts advertisements containing a beacon-like name, the
+`FF20` UUID list entry, `FF20` service data, a valid protocol version/beacon ID,
+and the final matching target. If a possible beacon is present, it prints that
+device's address, RSSI, decoded fields and raw advertisement bytes. If no such
+packet exists, it prints `CANDIDATE | none` instead of dumping unrelated nearby
+BLE traffic.
+
+Each AP prints its intended BLE configuration and complete raw advertisement
+once at startup. To diagnose a non-matching beacon, copy and share these three
+robot lines plus the two AP lines:
+
+```text
+BLE DIAGNOSTIC SUMMARY | ...
+BLE DIAGNOSTIC CANDIDATE | ...
+BLE DIAGNOSTIC RAW | ...
+ROBOT BLE DIAGNOSTIC | ...
+AP1 BLE DIAGNOSTIC | ...
+AP1 BLE ADV RAW | ...
+```
+
+The corresponding beacon prints handshake, received-chunk, CRC, reply-chunk and
+final acknowledgement messages, then turns on its onboard LED. Every beacon
+also prints a two-second heartbeat, for example:
+
+```text
+AP1 STATUS | Wi-Fi AP: ON (I AM PICO W) | BLE: ADVERTISING | Advertising: ON | Connection: none | Notifications: not enabled
+```
+
+After the robot connects, the same line changes to `CONNECTED`, `READY FOR
+HANDSHAKE`, `RECEIVING FILE`, `FILE VERIFIED`, `SENDING REPLY FILE` and finally
+`TRANSFER COMPLETE`. If the robot still reports `Latest: waiting`, check that
+the target beacon's heartbeat says `BLE: ADVERTISING`; if it does, the beacon is
+advertising and the next checks should be the robot firmware and its BLE scan.
+
+## Project structure
+
+```text
+ble_transfer/
+  beacon_server.c       shared AP1/AP2/AP3 BLE server and transfer protocol
+  transfer_protocol.h   packet types, limits and CRC-32
+  file_transfer.gatt    custom GATT service
+  btstack_config.h      BTstack configuration
+pico_rssi_tracker/      robot/central firmware
+picow_access_point/     AP1 build target
+picow_access_point2/    AP2 build target
+picow_access_point3/    AP3 build target
+```
+
+Each AP CMake file compiles the shared server with a different beacon ID and
+Wi-Fi SSID.
+
+## Build and flash
+
+Pico SDK 2.3.0 was used to verify all four builds.
+
+```bash
+cmake -S pico_rssi_tracker -B pico_rssi_tracker/build
+cmake --build pico_rssi_tracker/build -j
+
+cmake -S picow_access_point -B picow_access_point/build
+cmake --build picow_access_point/build -j
+
+cmake -S picow_access_point2 -B picow_access_point2/build
+cmake --build picow_access_point2/build -j
+
+cmake -S picow_access_point3 -B picow_access_point3/build
+cmake --build picow_access_point3/build -j
+```
+
+Flash these UF2 files:
+
+| Board | UF2 |
+|---|---|
+| AP1 | `picow_access_point/build/picow_access_point.uf2` |
+| AP2 | `picow_access_point2/build/picow_access_point.uf2` |
+| AP3 | `picow_access_point3/build/picow_access_point3.uf2` |
+| Robot | `pico_rssi_tracker/build/pico_rssi_tracker.uf2` |
+
+The firmware has been compile-tested. The BLE range threshold, radio coexistence
+and full transfer sequence still require a four-board hardware test.

@@ -1,0 +1,398 @@
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "btstack.h"
+#include "file_transfer.h"
+#include "pico/cyw43_arch.h"
+#include "pico/stdlib.h"
+#include "transfer_protocol.h"
+
+#ifndef BEACON_ID
+#error "BEACON_ID must be defined as 1, 2 or 3"
+#endif
+
+#ifndef WIFI_SSID
+#error "WIFI_SSID must be defined"
+#endif
+
+#define WIFI_PASSWORD "pico12345"
+#define APP_AD_FLAGS 0x06
+
+extern uint8_t const profile_data[];
+
+typedef enum {
+    BEACON_STATUS_STARTING,
+    BEACON_STATUS_ADVERTISING,
+    BEACON_STATUS_CONNECTED,
+    BEACON_STATUS_READY,
+    BEACON_STATUS_HANDSHAKE,
+    BEACON_STATUS_RECEIVING_FILE,
+    BEACON_STATUS_FILE_VERIFIED,
+    BEACON_STATUS_SENDING_REPLY,
+    BEACON_STATUS_COMPLETE,
+    BEACON_STATUS_ERROR,
+} beacon_status_t;
+
+static volatile beacon_status_t beacon_status = BEACON_STATUS_STARTING;
+
+// BTstack keeps this pointer after gap_advertisements_set_data(). It must not
+// point to a stack-local array that goes out of scope after packet_handler().
+static uint8_t adv_data[] = {
+    0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
+    0x03, BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS,
+    (uint8_t)BEACON_SERVICE_UUID, (uint8_t)(BEACON_SERVICE_UUID >> 8),
+    0x05, BLUETOOTH_DATA_TYPE_SERVICE_DATA,
+    (uint8_t)BEACON_SERVICE_UUID, (uint8_t)(BEACON_SERVICE_UUID >> 8),
+    BEACON_PROTOCOL_VERSION, BEACON_ID,
+    0x0E, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME,
+    'P', 'I', 'C', 'O', '-', 'B', 'E', 'A', 'C', 'O', 'N', '-',
+    (uint8_t)('0' + BEACON_ID),
+};
+
+static const char *beacon_status_name(beacon_status_t status)
+{
+    switch (status) {
+    case BEACON_STATUS_STARTING: return "STARTING";
+    case BEACON_STATUS_ADVERTISING: return "ADVERTISING";
+    case BEACON_STATUS_CONNECTED: return "CONNECTED";
+    case BEACON_STATUS_READY: return "READY FOR HANDSHAKE";
+    case BEACON_STATUS_HANDSHAKE: return "HANDSHAKE";
+    case BEACON_STATUS_RECEIVING_FILE: return "RECEIVING FILE";
+    case BEACON_STATUS_FILE_VERIFIED: return "FILE VERIFIED";
+    case BEACON_STATUS_SENDING_REPLY: return "SENDING REPLY FILE";
+    case BEACON_STATUS_COMPLETE: return "TRANSFER COMPLETE";
+    case BEACON_STATUS_ERROR: return "ERROR";
+    default: return "UNKNOWN";
+    }
+}
+
+static btstack_packet_callback_registration_t hci_event_registration;
+static hci_con_handle_t connection_handle = HCI_CON_HANDLE_INVALID;
+static bool notifications_enabled;
+static uint8_t pending_notification[TRANSFER_PACKET_SIZE];
+static uint16_t pending_notification_length;
+
+static uint8_t received_file[TRANSFER_MAX_FILE_SIZE];
+static uint16_t expected_file_length;
+static uint16_t received_file_length;
+static uint32_t expected_file_crc;
+static uint8_t expected_sequence;
+
+static uint8_t reply_file[64];
+static uint16_t reply_length;
+static uint16_t reply_offset;
+static uint8_t reply_sequence;
+
+static void queue_notification(const uint8_t *data, uint16_t length)
+{
+    if (!notifications_enabled || connection_handle == HCI_CON_HANDLE_INVALID) {
+        return;
+    }
+    if (length > sizeof(pending_notification)) {
+        length = sizeof(pending_notification);
+    }
+    memcpy(pending_notification, data, length);
+    pending_notification_length = length;
+    att_server_request_can_send_now_event(connection_handle);
+}
+
+static void send_simple(uint8_t type, uint8_t value)
+{
+    uint8_t packet[2] = {type, value};
+    queue_notification(packet, sizeof(packet));
+}
+
+static void reset_transfer(void)
+{
+    expected_file_length = 0;
+    received_file_length = 0;
+    expected_file_crc = 0;
+    expected_sequence = 0;
+    reply_offset = 0;
+    reply_sequence = 0;
+}
+
+static void send_reply_piece(void)
+{
+    uint8_t packet[TRANSFER_PACKET_SIZE] = {0};
+
+    if (reply_offset == 0 && reply_sequence == 0) {
+        packet[0] = MSG_REPLY_START;
+        transfer_write_u16(&packet[1], reply_length);
+        transfer_write_u32(&packet[3], transfer_crc32(reply_file, reply_length));
+        reply_sequence = 1;
+        printf("AP%d REPLY SEND: announcing %u-byte reply file, CRC-32 %08lx.\n",
+               BEACON_ID, reply_length,
+               (unsigned long)transfer_crc32(reply_file, reply_length));
+        queue_notification(packet, 7);
+        return;
+    }
+
+    if (reply_offset < reply_length) {
+        uint16_t remaining = reply_length - reply_offset;
+        uint8_t chunk = remaining > TRANSFER_DATA_BYTES
+                            ? TRANSFER_DATA_BYTES
+                            : (uint8_t)remaining;
+        packet[0] = MSG_REPLY_DATA;
+        packet[1] = (uint8_t)(reply_sequence - 1);
+        packet[2] = chunk;
+        memcpy(&packet[3], &reply_file[reply_offset], chunk);
+        reply_offset += chunk;
+        reply_sequence++;
+        printf("AP%d REPLY SEND: sending chunk %u, %u/%u bytes.\n",
+               BEACON_ID, (unsigned)(reply_sequence - 1),
+               reply_offset, reply_length);
+        queue_notification(packet, (uint16_t)(3 + chunk));
+        return;
+    }
+
+    packet[0] = MSG_REPLY_END;
+    transfer_write_u32(&packet[1], transfer_crc32(reply_file, reply_length));
+    printf("AP%d REPLY SEND: all bytes sent; sending REPLY_END.\n", BEACON_ID);
+    queue_notification(packet, 5);
+}
+
+static int att_write_callback(hci_con_handle_t con_handle,
+                              uint16_t att_handle,
+                              uint16_t transaction_mode,
+                              uint16_t offset,
+                              uint8_t *buffer,
+                              uint16_t buffer_size)
+{
+    (void)transaction_mode;
+    (void)offset;
+
+    if (att_handle == ATT_CHARACTERISTIC_0xFF21_01_CLIENT_CONFIGURATION_HANDLE) {
+        notifications_enabled =
+            buffer_size >= 2 &&
+            transfer_read_u16(buffer) ==
+                GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
+        connection_handle = con_handle;
+        beacon_status = notifications_enabled ? BEACON_STATUS_READY
+                                              : BEACON_STATUS_CONNECTED;
+        printf("BLE notifications %s\n",
+               notifications_enabled ? "enabled" : "disabled");
+        return 0;
+    }
+
+    if (att_handle != ATT_CHARACTERISTIC_0xFF21_01_VALUE_HANDLE ||
+        buffer_size == 0) {
+        return 0;
+    }
+
+    switch (buffer[0]) {
+    case MSG_HELLO:
+        if (buffer_size < 3 || buffer[1] != BEACON_PROTOCOL_VERSION ||
+            buffer[2] != BEACON_ID) {
+            beacon_status = BEACON_STATUS_ERROR;
+            send_simple(MSG_ERROR, 1);
+            break;
+        }
+        reset_transfer();
+        beacon_status = BEACON_STATUS_HANDSHAKE;
+        printf("AP%d HANDSHAKE: valid HELLO received; sending HELLO_ACK.\n",
+               BEACON_ID);
+        send_simple(MSG_HELLO_ACK, BEACON_ID);
+        break;
+
+    case MSG_FILE_START:
+        if (buffer_size < 7) {
+            beacon_status = BEACON_STATUS_ERROR;
+            send_simple(MSG_ERROR, 2);
+            break;
+        }
+        expected_file_length = transfer_read_u16(&buffer[1]);
+        expected_file_crc = transfer_read_u32(&buffer[3]);
+        received_file_length = 0;
+        expected_sequence = 0;
+        if (expected_file_length > sizeof(received_file)) {
+            beacon_status = BEACON_STATUS_ERROR;
+            send_simple(MSG_ERROR, 3);
+            break;
+        }
+        beacon_status = BEACON_STATUS_RECEIVING_FILE;
+        printf("AP%d FILE RECEIVE: robot announced %u bytes, CRC-32 %08lx; sending FILE_READY.\n",
+               BEACON_ID, expected_file_length,
+               (unsigned long)expected_file_crc);
+        send_simple(MSG_FILE_READY, BEACON_ID);
+        break;
+
+    case MSG_FILE_DATA: {
+        if (buffer_size < 3) {
+            beacon_status = BEACON_STATUS_ERROR;
+            send_simple(MSG_ERROR, 4);
+            break;
+        }
+        uint8_t sequence = buffer[1];
+        uint8_t chunk = buffer[2];
+        if (sequence != expected_sequence ||
+            chunk > TRANSFER_DATA_BYTES ||
+            buffer_size != (uint16_t)(3 + chunk) ||
+            received_file_length + chunk > expected_file_length) {
+            beacon_status = BEACON_STATUS_ERROR;
+            send_simple(MSG_ERROR, 5);
+            break;
+        }
+        memcpy(&received_file[received_file_length], &buffer[3], chunk);
+        received_file_length += chunk;
+        expected_sequence++;
+        printf("AP%d FILE RECEIVE: chunk %u accepted, %u/%u bytes.\n",
+               BEACON_ID, (unsigned)expected_sequence,
+               received_file_length, expected_file_length);
+        break;
+    }
+
+    case MSG_FILE_END: {
+        uint32_t actual_crc =
+            transfer_crc32(received_file, received_file_length);
+        uint8_t response[6] = {MSG_FILE_RECEIVED, 0};
+        bool valid = received_file_length == expected_file_length &&
+                     actual_crc == expected_file_crc;
+        beacon_status = valid ? BEACON_STATUS_FILE_VERIFIED
+                              : BEACON_STATUS_ERROR;
+        response[1] = valid ? 0 : 1;
+        transfer_write_u32(&response[2], actual_crc);
+        printf("AP%d FILE RECEIVE: expected CRC %08lx, calculated CRC %08lx - %s.\n",
+               BEACON_ID, (unsigned long)expected_file_crc,
+               (unsigned long)actual_crc, valid ? "VERIFIED" : "FAILED");
+        printf("AP%d FILE CONTENT: %.*s\n", BEACON_ID,
+               valid ? received_file_length : 0, received_file);
+        queue_notification(response, sizeof(response));
+        break;
+    }
+
+    case MSG_REPLY_REQUEST:
+        reply_length = (uint16_t)snprintf(
+            (char *)reply_file, sizeof(reply_file),
+            "Reply file from beacon AP%d", BEACON_ID);
+        reply_offset = 0;
+        reply_sequence = 0;
+        beacon_status = BEACON_STATUS_SENDING_REPLY;
+        printf("AP%d REPLY SEND: robot requested the beacon reply file.\n",
+               BEACON_ID);
+        send_reply_piece();
+        break;
+
+    case MSG_REPLY_NEXT:
+        send_reply_piece();
+        break;
+
+    case MSG_COMPLETE:
+        beacon_status = BEACON_STATUS_COMPLETE;
+        printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
+               BEACON_ID);
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        send_simple(MSG_COMPLETE_ACK, BEACON_ID);
+        break;
+
+    default:
+        beacon_status = BEACON_STATUS_ERROR;
+        send_simple(MSG_ERROR, 6);
+        break;
+    }
+
+    return 0;
+}
+
+static void packet_handler(uint8_t packet_type, uint16_t channel,
+                           uint8_t *packet, uint16_t size)
+{
+    (void)channel;
+    (void)size;
+
+    if (packet_type != HCI_EVENT_PACKET) {
+        return;
+    }
+
+    switch (hci_event_packet_get_type(packet)) {
+    case BTSTACK_EVENT_STATE:
+        if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING) {
+            bd_addr_t null_addr = {0};
+            gap_advertisements_set_params(
+                160, 160, 0, 0, null_addr, 0x07, 0x00);
+            gap_advertisements_set_data(sizeof(adv_data), adv_data);
+            gap_advertisements_enable(1);
+            beacon_status = BEACON_STATUS_ADVERTISING;
+            printf("BLE beacon AP%d advertising\n", BEACON_ID);
+        }
+        break;
+
+    case HCI_EVENT_LE_META:
+        if (hci_event_le_meta_get_subevent_code(packet) ==
+            HCI_SUBEVENT_LE_CONNECTION_COMPLETE) {
+            connection_handle =
+                hci_subevent_le_connection_complete_get_connection_handle(packet);
+            beacon_status = BEACON_STATUS_CONNECTED;
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+            printf("BLE robot connected\n");
+        }
+        break;
+
+    case HCI_EVENT_DISCONNECTION_COMPLETE:
+        connection_handle = HCI_CON_HANDLE_INVALID;
+        notifications_enabled = false;
+        pending_notification_length = 0;
+        reset_transfer();
+        beacon_status = BEACON_STATUS_ADVERTISING;
+        printf("BLE robot disconnected; ready for another transfer\n");
+        break;
+
+    case ATT_EVENT_CAN_SEND_NOW:
+        if (pending_notification_length != 0) {
+            att_server_notify(
+                connection_handle,
+                ATT_CHARACTERISTIC_0xFF21_01_VALUE_HANDLE,
+                pending_notification,
+                pending_notification_length);
+            pending_notification_length = 0;
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+int main(void)
+{
+    stdio_init_all();
+    sleep_ms(2000);
+
+    printf("\nAP%d Wi-Fi + BLE transfer beacon\n", BEACON_ID);
+
+    if (cyw43_arch_init()) {
+        printf("ERROR: failed to initialise CYW43\n");
+        return 1;
+    }
+
+    cyw43_arch_enable_ap_mode(
+        WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK);
+    printf("Wi-Fi AP started: %s\n", WIFI_SSID);
+
+    l2cap_init();
+    sm_init();
+    sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
+    att_server_init(profile_data, NULL, att_write_callback);
+
+    hci_event_registration.callback = packet_handler;
+    hci_add_event_handler(&hci_event_registration);
+    att_server_register_packet_handler(packet_handler);
+    hci_power_control(HCI_POWER_ON);
+
+    uint32_t next_status_ms = 0;
+    while (true) {
+        uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
+        if ((int32_t)(now_ms - next_status_ms) >= 0) {
+            bool connected = connection_handle != HCI_CON_HANDLE_INVALID;
+            printf("AP%d STATUS | Wi-Fi AP: ON (%s) | BLE: %s | Advertising: %s | Connection: %s | Notifications: %s\n",
+                   BEACON_ID, WIFI_SSID, beacon_status_name(beacon_status),
+                   connected ? "standby" : "ON",
+                   connected ? "connected" : "none",
+                   notifications_enabled ? "enabled" : "not enabled");
+            next_status_ms = now_ms + 2000;
+        }
+        sleep_ms(100);
+    }
+}
