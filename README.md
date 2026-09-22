@@ -206,6 +206,10 @@ picow_access_point2/    AP2 build target
 picow_access_point3/    AP3 build target
 ```
 
+Hardware bring-up for the navigation work is documented in
+[`MPU9250_CONNECTION.md`](MPU9250_CONNECTION.md). The first firmware step
+probes an MPU-9250/MPU-6500 over I2C1 on GP6/GP7 and reports WHO_AM_I at boot.
+
 Each AP CMake file compiles the shared server with a different beacon ID and
 Wi-Fi SSID.
 

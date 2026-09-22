@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "btstack.h"
@@ -9,8 +10,11 @@
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
 #include "transfer_protocol.h"
+#include "imu_mpu9250.h"
 
 #define AP_COUNT 3
+#define IMU_SDA_PIN 6
+#define IMU_SCL_PIN 7
 
 static const char *const AP_SSIDS[AP_COUNT] = {
     "I AM PICO W", "I AM PICO W 2", "I AM PICO W 3",
@@ -1042,6 +1046,16 @@ int main(void)
     printf("BLE filter: %d samples, %d qualifying averages\n\n",
            BLE_RSSI_SAMPLE_COUNT, BLE_CLOSE_REQUIRED_AVERAGES);
 
+    mpu9250_t imu;
+    bool imu_ready = mpu9250_init(&imu, i2c1, IMU_SDA_PIN, IMU_SCL_PIN, 400000);
+    if (imu_ready) {
+        printf("IMU | MPU-9250/6500 on I2C1 SDA GP%d SCL GP%d | WHO_AM_I=0x%02x\n",
+               IMU_SDA_PIN, IMU_SCL_PIN, imu.who_am_i);
+    } else {
+        printf("IMU | MPU-9250/6500 on I2C1 SDA GP%d SCL GP%d | NOT FOUND; check 3V3, GND, SDA and SCL\n",
+               IMU_SDA_PIN, IMU_SCL_PIN);
+    }
+
     if (cyw43_arch_init()) {
         printf("ERROR: failed to initialise Wi-Fi/Bluetooth\n");
         return 1;
@@ -1059,12 +1073,30 @@ int main(void)
     bool wifi_scan_in_progress = false;
     uint32_t next_wifi_scan_ms = 0;
     uint32_t next_print_ms = 0;
+    uint32_t next_imu_print_ms = 0;
     bool last_button = true;
     uint32_t button_changed_ms = 0;
     bool stable_button = true;
 
     while (true) {
         uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
+
+        if (imu_ready && (int32_t)(now_ms - next_imu_print_ms) >= 0) {
+            float gyro_dps[3];
+            if (mpu9250_read_gyro_dps(&imu, gyro_dps)) {
+                int gx = (int)(gyro_dps[0] * 100.0f);
+                int gy = (int)(gyro_dps[1] * 100.0f);
+                int gz = (int)(gyro_dps[2] * 100.0f);
+                printf("IMU GYRO | X: %s%d.%02d dps | Y: %s%d.%02d dps | Z: %s%d.%02d dps\n",
+                       gx < 0 ? "-" : "", abs(gx) / 100, abs(gx) % 100,
+                       gy < 0 ? "-" : "", abs(gy) / 100, abs(gy) % 100,
+                       gz < 0 ? "-" : "", abs(gz) / 100, abs(gz) % 100);
+            } else {
+                printf("IMU GYRO | read failed\n");
+            }
+            next_imu_print_ms = now_ms + 100;
+        }
+
         if (!wifi_scans_paused && !wifi_scan_in_progress &&
             (int32_t)(now_ms - next_wifi_scan_ms) >= 0) {
             cyw43_wifi_scan_options_t options = {0};
