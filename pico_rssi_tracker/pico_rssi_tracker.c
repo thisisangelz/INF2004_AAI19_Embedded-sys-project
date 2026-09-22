@@ -323,6 +323,12 @@ static void print_status(uint32_t now_ms)
     if (sequence_started && target_beacon < AP_COUNT) {
         printf("BLE status | Target: AP%d | State: %s",
                target_beacon + 1, ble_state_name(ble_state));
+        if (transfer_active) printf(" | FILE TRANSFER ACTIVE | BUZZER ON");
+        printf("\n");
+
+        printf("BLE RSSI | Target AP%d | %s",
+               target_beacon + 1,
+               ble_state == BLE_SCANNING ? "LIVE" : "LAST BEFORE CONNECTION");
         if (ble_rssi_available) {
             printf(" | Latest: %d dBm", ble_latest_rssi);
         } else {
@@ -340,7 +346,6 @@ static void print_status(uint32_t now_ms)
                (unsigned long)ble_report_count,
                (unsigned long)ble_matching_report_count,
                target_beacon + 1);
-        if (transfer_active) printf(" | FILE TRANSFER ACTIVE | BUZZER ON");
         printf("\n");
     } else if (ble_state == BLE_FINISHED) {
         printf("BLE status | State: %s | All LEDs ON | BUZZER ON\n",

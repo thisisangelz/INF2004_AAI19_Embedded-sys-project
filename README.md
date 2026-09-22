@@ -126,7 +126,8 @@ tested. Important robot messages include:
 Wi-Fi RSSI | AP1: -51 dBm | AP2: -63 dBm | AP3: -70 dBm
 BLE status | Wi-Fi round for AP1 | Press GP20 to switch to BLE
 GP20 accepted: switching from Wi-Fi RSSI to BLE for AP1.
-BLE status | Target: AP1 | State: SCANNING FOR TARGET | Latest: -49 dBm | Average: -48 dBm | Threshold: >= -50 dBm | Close: 0/3
+BLE status | Target: AP1 | State: SCANNING FOR TARGET
+BLE RSSI | Target AP1 | LIVE | Latest: -49 dBm | Average: -48 dBm | Threshold: >= -50 dBm | Close: 0/3
 AP1 RANGE REACHED: average BLE RSSI -48 dBm passed threshold -50 dBm.
 AP1 FILE TRANSFER STATUS: STARTING. Constant buzzer ON until completion.
 AP1 BLE CONNECTION: connected successfully.
@@ -142,10 +143,13 @@ ALL THREE BEACON FILE TRANSFERS COMPLETE
 ROBOT NOTIFICATION: all LEDs ON and permanent buzzer ON until power-off.
 ```
 
-Before the eight-reading BLE average is ready, the robot prints the latest
-reading and `collecting sample n/8`. During transfer, the periodic BLE status
-uses readable stages such as `CLOSE ENOUGH - CONNECTING`, `SENDING HANDSHAKE`,
-`SENDING FILE DATA` and `WAITING FOR FILE CRC RESULT`.
+After GP20, the robot prints a separate `BLE RSSI` row for the current target.
+Before the eight-reading average is ready, it prints the latest reading and
+`collecting sample n/8`. While scanning, the row is marked `LIVE`; after the
+scanner stops to connect, it is marked `LAST BEFORE CONNECTION`. During
+transfer, the periodic BLE status uses readable stages such as `CLOSE ENOUGH -
+CONNECTING`, `SENDING HANDSHAKE`, `SENDING FILE DATA` and `WAITING FOR FILE CRC
+RESULT`.
 
 The scan line also prints `BLE reports: x total, y matching APn`. This helps
 separate two faults: `0 total` means the robot is receiving no BLE advertising
