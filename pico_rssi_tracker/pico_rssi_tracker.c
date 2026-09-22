@@ -82,6 +82,7 @@ static int selected_ap = -1;
 static volatile bool transfer_active;
 static volatile bool sequence_started;
 static volatile bool wifi_scans_paused;
+static volatile bool ble_scan_pending;
 static volatile int target_beacon;
 static volatile bool beacon_complete[AP_COUNT];
 
@@ -111,6 +112,8 @@ static volatile int ble_latest_rssi;
 static volatile int ble_average_rssi;
 static volatile bool ble_rssi_available;
 static volatile bool ble_average_available;
+static volatile uint32_t ble_report_count;
+static volatile uint32_t ble_matching_report_count;
 
 static uint8_t tx_packet[TRANSFER_PACKET_SIZE];
 static uint8_t robot_file[96];
@@ -171,8 +174,12 @@ static int wifi_scan_result(void *env, const cyw43_ev_scan_result_t *result)
     uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
     for (int i = 0; i < AP_COUNT; ++i) {
         if (ssid_matches(result, AP_SSIDS[i])) {
-            ap_rssi[i] = result->rssi;
-            ap_last_seen_ms[i] = now_ms;
+            // A valid received Wi-Fi RSSI is negative. Ignore occasional
+            // zero-valued scan results so they do not replace a real reading.
+            if (result->rssi < 0) {
+                ap_rssi[i] = result->rssi;
+                ap_last_seen_ms[i] = now_ms;
+            }
             break;
         }
     }
@@ -261,8 +268,11 @@ static void buzzer_service(uint32_t now_ms)
 
 static bool get_ap_valid(int index, uint32_t now_ms)
 {
-    return ap_last_seen_ms[index] != 0 &&
-           (uint32_t)(now_ms - ap_last_seen_ms[index]) < RSSI_TIMEOUT_MS;
+    if (ap_last_seen_ms[index] == 0) return false;
+    // During the BLE sequence, these are intentionally the last valid Wi-Fi
+    // measurements. Active Wi-Fi and BLE scans contend for the same radio.
+    if (sequence_started && wifi_scans_paused) return true;
+    return (uint32_t)(now_ms - ap_last_seen_ms[index]) < RSSI_TIMEOUT_MS;
 }
 
 static bool all_access_points_visible(uint32_t now_ms)
@@ -313,7 +323,11 @@ static void update_output(uint32_t now_ms)
 
 static void print_status(uint32_t now_ms)
 {
-    printf("Wi-Fi RSSI | ");
+    if (sequence_started && wifi_scans_paused) {
+        printf("Wi-Fi RSSI (last scan; radio reserved for BLE) | ");
+    } else {
+        printf("Wi-Fi RSSI | ");
+    }
     for (int i = 0; i < AP_COUNT; ++i) {
         if (get_ap_valid(i, now_ms)) printf("AP%d: %d dBm", i + 1, ap_rssi[i]);
         else printf("AP%d: N/A", i + 1);
@@ -337,6 +351,10 @@ static void print_status(uint32_t now_ms)
             printf(" | Average: collecting %u/%d samples",
                    ble_rssi_sample_count, BLE_RSSI_SAMPLE_COUNT);
         }
+        printf(" | BLE reports: %lu total, %lu matching AP%d",
+               (unsigned long)ble_report_count,
+               (unsigned long)ble_matching_report_count,
+               target_beacon + 1);
         if (transfer_active) printf(" | FILE TRANSFER ACTIVE | BUZZER ON");
         printf("\n");
     } else if (ble_state == BLE_FINISHED) {
@@ -377,13 +395,16 @@ static void reset_ble_samples(void)
     ble_average_rssi = -127;
     ble_rssi_available = false;
     ble_average_available = false;
+    ble_report_count = 0;
+    ble_matching_report_count = 0;
 }
 
 static void start_target_scan(void)
 {
     current_transfer_succeeded = false;
     transfer_active = false;
-    wifi_scans_paused = false;
+    wifi_scans_paused = true;
+    ble_scan_pending = false;
     ble_connect_pending = false;
     reset_ble_samples();
     ble_state = BLE_SCANNING;
@@ -395,6 +416,7 @@ static void start_target_scan(void)
     printf("BLE FILTER: threshold >= %d dBm, %d-sample rolling average, %d confirmations\n",
            BLE_CLOSE_RSSI_DBM, BLE_RSSI_SAMPLE_COUNT,
            BLE_CLOSE_REQUIRED_AVERAGES);
+    printf("RADIO MODE: active Wi-Fi scans paused; displayed Wi-Fi RSSI is the last valid scan.\n");
 }
 
 static void start_scan_callback(void *context)
@@ -411,8 +433,9 @@ static void restart_current_target(void *context)
 
 static void request_start_target_scan(void)
 {
-    start_scan_registration.callback = start_scan_callback;
-    btstack_run_loop_execute_on_main_thread(&start_scan_registration);
+    wifi_scans_paused = true;
+    ble_scan_pending = true;
+    printf("RADIO MODE: waiting for the current Wi-Fi scan to finish before BLE scanning.\n");
 }
 
 static void connect_callback(void *context)
@@ -429,7 +452,7 @@ static void transfer_failed(const char *reason)
            target_beacon + 1, reason, target_beacon + 1);
     current_transfer_succeeded = false;
     transfer_active = false;
-    wifi_scans_paused = false;
+    wifi_scans_paused = true;
     ble_connect_pending = false;
     if (connection_handle != HCI_CON_HANDLE_INVALID) {
         ble_state = BLE_DISCONNECTING;
@@ -592,7 +615,7 @@ static void handle_notification(const uint8_t *value, uint16_t length)
                target_beacon + 1);
         current_transfer_succeeded = true;
         transfer_active = false;
-        wifi_scans_paused = false;
+        wifi_scans_paused = true;
         ble_state = BLE_DISCONNECTING;
         gap_disconnect(connection_handle);
         break;
@@ -738,6 +761,7 @@ static void handle_advertisement(uint8_t *packet)
     uint8_t beacon_id;
     if (!advertisement_get_beacon(packet, &beacon_id) ||
         beacon_id != target_beacon + 1) return;
+    ble_matching_report_count++;
 
     int rssi = gap_event_advertising_report_get_rssi(packet);
     ble_latest_rssi = rssi;
@@ -792,7 +816,10 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
         }
         break;
     case GAP_EVENT_ADVERTISING_REPORT:
-        if (ble_state == BLE_SCANNING) handle_advertisement(packet);
+        if (ble_state == BLE_SCANNING) {
+            ble_report_count++;
+            handle_advertisement(packet);
+        }
         break;
     case HCI_EVENT_META_GAP:
         if (hci_event_gap_meta_get_subevent_code(packet) ==
@@ -824,7 +851,7 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
                 &notification_listener);
         }
         transfer_active = false;
-        wifi_scans_paused = false;
+        wifi_scans_paused = sequence_started;
         if (current_transfer_succeeded) {
             int completed_beacon = target_beacon;
             beacon_complete[target_beacon] = true;
@@ -832,6 +859,7 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
             current_transfer_succeeded = false;
             if (target_beacon >= AP_COUNT) {
                 sequence_started = false;
+                wifi_scans_paused = false;
                 ble_state = BLE_FINISHED;
                 selected_ap = -1;
                 printf("\nALL THREE BEACON FILE TRANSFERS COMPLETE\n");
@@ -845,6 +873,7 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
                    target_beacon + 1);
             start_target_scan();
         } else {
+            wifi_scans_paused = false;
             ble_state = BLE_IDLE;
         }
         break;
@@ -905,6 +934,11 @@ int main(void)
         if (wifi_scan_in_progress && !cyw43_wifi_scan_active(&cyw43_state)) {
             wifi_scan_in_progress = false;
             next_wifi_scan_ms = now_ms + 100;
+        }
+        if (ble_scan_pending && !wifi_scan_in_progress) {
+            ble_scan_pending = false;
+            start_scan_registration.callback = start_scan_callback;
+            btstack_run_loop_execute_on_main_thread(&start_scan_registration);
         }
         if (ble_connect_pending && !wifi_scan_in_progress) {
             ble_connect_pending = false;

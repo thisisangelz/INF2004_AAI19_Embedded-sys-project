@@ -7,9 +7,12 @@ This branch implements a four-board prototype:
 - AP3: Wi-Fi SSID `I AM PICO W 3`, BLE name `PICO-BEACON-3`
 - Robot Pico W: Wi-Fi RSSI tracker and BLE central/client
 
-The Pico W radio time-shares Wi-Fi and Bluetooth Low Energy. The robot keeps
-scanning the three Wi-Fi APs while it waits for the target beacon. Once BLE
-proximity is accepted, new Wi-Fi scans are paused until the transfer finishes.
+The Pico W has one shared 2.4 GHz radio. Before the sequence starts, the robot
+actively scans the three Wi-Fi APs. After GP20 is pressed, it finishes any
+in-progress Wi-Fi scan and reserves the radio for BLE scanning, connection and
+file transfer. The serial display keeps the last valid Wi-Fi readings and labels
+them `last scan; radio reserved for BLE`. Live Wi-Fi scans resume after the full
+AP1 -> AP2 -> AP3 sequence.
 
 ## Test sequence
 
@@ -136,6 +139,12 @@ Before the eight-reading BLE average is ready, the robot prints the latest
 reading and `collecting sample n/8`. During transfer, the periodic BLE status
 uses readable stages such as `CLOSE ENOUGH - CONNECTING`, `SENDING HANDSHAKE`,
 `SENDING FILE DATA` and `WAITING FOR FILE CRC RESULT`.
+
+The scan line also prints `BLE reports: x total, y matching APn`. This helps
+separate two faults: `0 total` means the robot is receiving no BLE advertising
+reports, while a rising total with `0 matching` means it sees other BLE traffic
+but not the expected beacon service data/ID. Zero-valued Wi-Fi scan results are
+discarded instead of being shown as a false `0 dBm` measurement.
 
 The corresponding beacon prints handshake, received-chunk, CRC, reply-chunk and
 final acknowledgement messages, then turns on its onboard LED. Every beacon
