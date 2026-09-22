@@ -117,17 +117,28 @@ tested. Important robot messages include:
 
 ```text
 START accepted: AP1 -> AP2 -> AP3
-AP1 BLE: latest -34, average -35 dBm, close 3/3
-AP1 accepted as close; constant buzzer ON
-AP1 connected; starting application handshake
-AP1 handshake complete; sending 39-byte test file
-AP1 verified robot file; requesting reply file
-AP1 TRANSFER COMPLETE; both boards acknowledged success
+Wi-Fi RSSI | AP1: -51 dBm | AP2: -63 dBm | AP3: -70 dBm
+BLE status | Target: AP1 | State: SCANNING FOR TARGET | Latest: -39 dBm | Average: -41 dBm | Threshold: >= -35 dBm | Close: 0/3
+AP1 RANGE REACHED: average BLE RSSI -34 dBm passed threshold -35 dBm.
+AP1 FILE TRANSFER STATUS: STARTING. Constant buzzer ON until completion.
+AP1 BLE CONNECTION: connected successfully.
+AP1 HANDSHAKE: HELLO sent; waiting for HELLO_ACK.
+AP1 FILE SEND: sending chunk 1, 17/39 bytes queued.
+AP1 FILE SEND: chunk 1 acknowledged by beacon.
+AP1 FILE TRANSFER: beacon verified the robot file and matching CRC.
+AP1 REPLY TRANSFER: received chunk 1, 17/26 bytes.
+AP1 FILE TRANSFER COMPLETE: both Pico W boards acknowledged success.
+AP1 disconnected cleanly. Moving on to AP2.
 ALL THREE BEACON FILE TRANSFERS COMPLETE
 ```
 
-The corresponding beacon prints `TRANSFER COMPLETE with robot (APn)` and turns
-on its onboard LED.
+Before the eight-reading BLE average is ready, the robot prints the latest
+reading and `collecting sample n/8`. During transfer, the periodic BLE status
+uses readable stages such as `CLOSE ENOUGH - CONNECTING`, `SENDING HANDSHAKE`,
+`SENDING FILE DATA` and `WAITING FOR FILE CRC RESULT`.
+
+The corresponding beacon prints handshake, received-chunk, CRC, reply-chunk and
+final acknowledgement messages, then turns on its onboard LED.
 
 ## Project structure
 

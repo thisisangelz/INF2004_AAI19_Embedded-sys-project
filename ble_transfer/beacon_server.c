@@ -77,6 +77,9 @@ static void send_reply_piece(void)
         transfer_write_u16(&packet[1], reply_length);
         transfer_write_u32(&packet[3], transfer_crc32(reply_file, reply_length));
         reply_sequence = 1;
+        printf("AP%d REPLY SEND: announcing %u-byte reply file, CRC-32 %08lx.\n",
+               BEACON_ID, reply_length,
+               (unsigned long)transfer_crc32(reply_file, reply_length));
         queue_notification(packet, 7);
         return;
     }
@@ -92,12 +95,16 @@ static void send_reply_piece(void)
         memcpy(&packet[3], &reply_file[reply_offset], chunk);
         reply_offset += chunk;
         reply_sequence++;
+        printf("AP%d REPLY SEND: sending chunk %u, %u/%u bytes.\n",
+               BEACON_ID, (unsigned)(reply_sequence - 1),
+               reply_offset, reply_length);
         queue_notification(packet, (uint16_t)(3 + chunk));
         return;
     }
 
     packet[0] = MSG_REPLY_END;
     transfer_write_u32(&packet[1], transfer_crc32(reply_file, reply_length));
+    printf("AP%d REPLY SEND: all bytes sent; sending REPLY_END.\n", BEACON_ID);
     queue_notification(packet, 5);
 }
 
@@ -135,7 +142,8 @@ static int att_write_callback(hci_con_handle_t con_handle,
             break;
         }
         reset_transfer();
-        printf("Robot handshake accepted for AP%d\n", BEACON_ID);
+        printf("AP%d HANDSHAKE: valid HELLO received; sending HELLO_ACK.\n",
+               BEACON_ID);
         send_simple(MSG_HELLO_ACK, BEACON_ID);
         break;
 
@@ -152,8 +160,9 @@ static int att_write_callback(hci_con_handle_t con_handle,
             send_simple(MSG_ERROR, 3);
             break;
         }
-        printf("Receiving %u-byte test file (CRC %08lx)\n",
-               expected_file_length, (unsigned long)expected_file_crc);
+        printf("AP%d FILE RECEIVE: robot announced %u bytes, CRC-32 %08lx; sending FILE_READY.\n",
+               BEACON_ID, expected_file_length,
+               (unsigned long)expected_file_crc);
         send_simple(MSG_FILE_READY, BEACON_ID);
         break;
 
@@ -174,6 +183,9 @@ static int att_write_callback(hci_con_handle_t con_handle,
         memcpy(&received_file[received_file_length], &buffer[3], chunk);
         received_file_length += chunk;
         expected_sequence++;
+        printf("AP%d FILE RECEIVE: chunk %u accepted, %u/%u bytes.\n",
+               BEACON_ID, (unsigned)expected_sequence,
+               received_file_length, expected_file_length);
         break;
     }
 
@@ -185,7 +197,10 @@ static int att_write_callback(hci_con_handle_t con_handle,
                      actual_crc == expected_file_crc;
         response[1] = valid ? 0 : 1;
         transfer_write_u32(&response[2], actual_crc);
-        printf("Robot file %s: %.*s\n", valid ? "verified" : "FAILED",
+        printf("AP%d FILE RECEIVE: expected CRC %08lx, calculated CRC %08lx - %s.\n",
+               BEACON_ID, (unsigned long)expected_file_crc,
+               (unsigned long)actual_crc, valid ? "VERIFIED" : "FAILED");
+        printf("AP%d FILE CONTENT: %.*s\n", BEACON_ID,
                valid ? received_file_length : 0, received_file);
         queue_notification(response, sizeof(response));
         break;
@@ -197,6 +212,8 @@ static int att_write_callback(hci_con_handle_t con_handle,
             "Reply file from beacon AP%d", BEACON_ID);
         reply_offset = 0;
         reply_sequence = 0;
+        printf("AP%d REPLY SEND: robot requested the beacon reply file.\n",
+               BEACON_ID);
         send_reply_piece();
         break;
 
@@ -205,7 +222,8 @@ static int att_write_callback(hci_con_handle_t con_handle,
         break;
 
     case MSG_COMPLETE:
-        printf("TRANSFER COMPLETE with robot (AP%d)\n", BEACON_ID);
+        printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
+               BEACON_ID);
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
         send_simple(MSG_COMPLETE_ACK, BEACON_ID);
         break;

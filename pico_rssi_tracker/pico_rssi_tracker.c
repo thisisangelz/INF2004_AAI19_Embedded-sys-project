@@ -104,9 +104,13 @@ static bool characteristic_found;
 static bool current_transfer_succeeded;
 
 static int ble_rssi_samples[BLE_RSSI_SAMPLE_COUNT];
-static uint8_t ble_rssi_sample_count;
+static volatile uint8_t ble_rssi_sample_count;
 static uint8_t ble_rssi_sample_index;
-static uint8_t qualifying_average_count;
+static volatile uint8_t qualifying_average_count;
+static volatile int ble_latest_rssi;
+static volatile int ble_average_rssi;
+static volatile bool ble_rssi_available;
+static volatile bool ble_average_available;
 
 static uint8_t tx_packet[TRANSFER_PACKET_SIZE];
 static uint8_t robot_file[96];
@@ -123,6 +127,34 @@ static uint32_t reply_file_crc;
 
 static void gatt_client_handler(uint8_t packet_type, uint16_t channel,
                                 uint8_t *packet, uint16_t size);
+
+static const char *ble_state_name(ble_state_t state)
+{
+    switch (state) {
+    case BLE_IDLE: return "IDLE";
+    case BLE_SCANNING: return "SCANNING FOR TARGET";
+    case BLE_CONNECTING: return "CLOSE ENOUGH - CONNECTING";
+    case BLE_DISCOVER_SERVICE: return "FINDING TRANSFER SERVICE";
+    case BLE_DISCOVER_CHARACTERISTIC: return "FINDING TRANSFER CHANNEL";
+    case BLE_ENABLE_NOTIFICATIONS: return "ENABLING BLE REPLIES";
+    case BLE_WRITE_HELLO: return "SENDING HANDSHAKE";
+    case BLE_WAIT_HELLO_ACK: return "WAITING FOR HANDSHAKE ACK";
+    case BLE_WRITE_FILE_START: return "STARTING FILE TRANSFER";
+    case BLE_WAIT_FILE_READY: return "WAITING FOR BEACON READY";
+    case BLE_WRITE_FILE_DATA: return "SENDING FILE DATA";
+    case BLE_WRITE_FILE_END: return "FINISHING FILE SEND";
+    case BLE_WAIT_FILE_RECEIVED: return "WAITING FOR FILE CRC RESULT";
+    case BLE_WRITE_REPLY_REQUEST: return "REQUESTING BEACON REPLY FILE";
+    case BLE_WAIT_REPLY_START: return "WAITING FOR REPLY FILE";
+    case BLE_WRITE_REPLY_NEXT: return "REQUESTING NEXT REPLY CHUNK";
+    case BLE_WAIT_REPLY_PIECE: return "RECEIVING REPLY FILE";
+    case BLE_WRITE_COMPLETE: return "SENDING FINAL COMPLETE";
+    case BLE_WAIT_COMPLETE_ACK: return "WAITING FOR FINAL ACK";
+    case BLE_DISCONNECTING: return "TRANSFER DONE - DISCONNECTING";
+    case BLE_FINISHED: return "ALL AP TRANSFERS COMPLETE";
+    default: return "UNKNOWN";
+    }
+}
 
 static bool ssid_matches(const cyw43_ev_scan_result_t *result,
                          const char *target)
@@ -281,18 +313,37 @@ static void update_output(uint32_t now_ms)
 
 static void print_status(uint32_t now_ms)
 {
+    printf("Wi-Fi RSSI | ");
     for (int i = 0; i < AP_COUNT; ++i) {
         if (get_ap_valid(i, now_ms)) printf("AP%d: %d dBm", i + 1, ap_rssi[i]);
         else printf("AP%d: N/A", i + 1);
         if (i != AP_COUNT - 1) printf(" | ");
     }
+    printf("\n");
+
     if (sequence_started && target_beacon < AP_COUNT) {
-        printf(" | Target: AP%d | BLE state: %d%s\n", target_beacon + 1,
-               ble_state, transfer_active ? " | TRANSFER/BEEP ON" : "");
+        printf("BLE status | Target: AP%d | State: %s",
+               target_beacon + 1, ble_state_name(ble_state));
+        if (ble_rssi_available) {
+            printf(" | Latest: %d dBm", ble_latest_rssi);
+        } else {
+            printf(" | Latest: waiting");
+        }
+        if (ble_average_available) {
+            printf(" | Average: %d dBm | Threshold: >= %d dBm | Close: %u/%d",
+                   ble_average_rssi, BLE_CLOSE_RSSI_DBM,
+                   qualifying_average_count, BLE_CLOSE_REQUIRED_AVERAGES);
+        } else {
+            printf(" | Average: collecting %u/%d samples",
+                   ble_rssi_sample_count, BLE_RSSI_SAMPLE_COUNT);
+        }
+        if (transfer_active) printf(" | FILE TRANSFER ACTIVE | BUZZER ON");
+        printf("\n");
     } else if (ble_state == BLE_FINISHED) {
-        printf(" | ALL TRANSFERS COMPLETE\n");
+        printf("BLE status | State: %s\n", ble_state_name(ble_state));
     } else {
-        printf(" | Press GP%d when all APs are visible\n", START_BUTTON_PIN);
+        printf("BLE status | State: %s | Press GP%d when all APs are visible\n",
+               ble_state_name(ble_state), START_BUTTON_PIN);
     }
 }
 
@@ -322,6 +373,10 @@ static void reset_ble_samples(void)
     ble_rssi_sample_count = 0;
     ble_rssi_sample_index = 0;
     qualifying_average_count = 0;
+    ble_latest_rssi = -127;
+    ble_average_rssi = -127;
+    ble_rssi_available = false;
+    ble_average_available = false;
 }
 
 static void start_target_scan(void)
@@ -334,8 +389,11 @@ static void start_target_scan(void)
     ble_state = BLE_SCANNING;
     gap_set_scan_parameters(0, 0x0030, 0x0030);
     gap_start_scan();
-    printf("\nAP%d: BLE scan (threshold %d dBm, %d samples, %d confirmations)\n",
-           target_beacon + 1, BLE_CLOSE_RSSI_DBM, BLE_RSSI_SAMPLE_COUNT,
+    printf("\n========== NOW TARGETING AP%d ==========\n", target_beacon + 1);
+    printf("BLE STATUS: Searching for AP%d. File transfer has NOT started.\n",
+           target_beacon + 1);
+    printf("BLE FILTER: threshold >= %d dBm, %d-sample rolling average, %d confirmations\n",
+           BLE_CLOSE_RSSI_DBM, BLE_RSSI_SAMPLE_COUNT,
            BLE_CLOSE_REQUIRED_AVERAGES);
 }
 
@@ -360,15 +418,15 @@ static void request_start_target_scan(void)
 static void connect_callback(void *context)
 {
     (void)context;
-    printf("Wi-Fi scan paused; connecting to AP%d over BLE\n",
+    printf("AP%d FILE TRANSFER: Wi-Fi scan paused; opening BLE connection...\n",
            target_beacon + 1);
     gap_connect(beacon_address, beacon_address_type);
 }
 
 static void transfer_failed(const char *reason)
 {
-    printf("BLE transfer error for AP%d: %s; retrying\n",
-           target_beacon + 1, reason);
+    printf("AP%d FILE TRANSFER FAILED: %s. Disconnecting and retrying AP%d.\n",
+           target_beacon + 1, reason, target_beacon + 1);
     current_transfer_succeeded = false;
     transfer_active = false;
     wifi_scans_paused = false;
@@ -404,6 +462,8 @@ static void write_simple(uint8_t type, ble_state_t writing_state)
 static void write_next_robot_chunk(void)
 {
     if (robot_file_offset >= robot_file_length) {
+        printf("AP%d FILE SEND: all %u bytes sent; sending FILE_END for CRC verification.\n",
+               target_beacon + 1, robot_file_length);
         write_simple(MSG_FILE_END, BLE_WRITE_FILE_END);
         return;
     }
@@ -415,6 +475,9 @@ static void write_next_robot_chunk(void)
     tx_packet[2] = chunk;
     memcpy(&tx_packet[3], &robot_file[robot_file_offset], chunk);
     robot_file_offset += chunk;
+    printf("AP%d FILE SEND: sending chunk %u, %u/%u bytes queued.\n",
+           target_beacon + 1, robot_file_sequence,
+           robot_file_offset, robot_file_length);
     write_packet((uint16_t)(3 + chunk), BLE_WRITE_FILE_DATA);
 }
 
@@ -439,13 +502,20 @@ static void handle_notification(const uint8_t *value, uint16_t length)
         tx_packet[0] = MSG_FILE_START;
         transfer_write_u16(&tx_packet[1], robot_file_length);
         transfer_write_u32(&tx_packet[3], robot_file_crc);
-        printf("AP%d handshake complete; sending %u-byte test file\n",
-               target_beacon + 1, robot_file_length);
+        printf("AP%d HANDSHAKE: beacon identity confirmed.\n",
+               target_beacon + 1);
+        printf("AP%d FILE TRANSFER: announcing %u-byte robot file, CRC-32 %08lx.\n",
+               target_beacon + 1, robot_file_length,
+               (unsigned long)robot_file_crc);
         write_packet(7, BLE_WRITE_FILE_START);
         break;
 
     case MSG_FILE_READY:
-        if (ble_state == BLE_WAIT_FILE_READY) write_next_robot_chunk();
+        if (ble_state == BLE_WAIT_FILE_READY) {
+            printf("AP%d FILE TRANSFER: beacon is ready; sending file data now.\n",
+                   target_beacon + 1);
+            write_next_robot_chunk();
+        }
         break;
 
     case MSG_FILE_RECEIVED:
@@ -454,7 +524,9 @@ static void handle_notification(const uint8_t *value, uint16_t length)
             transfer_failed("beacon rejected robot file or CRC");
             return;
         }
-        printf("AP%d verified robot file; requesting reply file\n",
+        printf("AP%d FILE TRANSFER: beacon verified the robot file and matching CRC.\n",
+               target_beacon + 1);
+        printf("AP%d REPLY TRANSFER: requesting the beacon's reply file.\n",
                target_beacon + 1);
         write_simple(MSG_REPLY_REQUEST, BLE_WRITE_REPLY_REQUEST);
         break;
@@ -469,6 +541,9 @@ static void handle_notification(const uint8_t *value, uint16_t length)
             transfer_failed("reply file too large");
             return;
         }
+        printf("AP%d REPLY TRANSFER: beacon announced %u bytes, CRC-32 %08lx.\n",
+               target_beacon + 1, reply_file_length,
+               (unsigned long)reply_file_crc);
         request_next_reply_piece();
         break;
 
@@ -485,6 +560,9 @@ static void handle_notification(const uint8_t *value, uint16_t length)
         memcpy(&reply_file[reply_file_offset], &value[3], chunk);
         reply_file_offset += chunk;
         reply_file_sequence++;
+        printf("AP%d REPLY TRANSFER: received chunk %u, %u/%u bytes.\n",
+               target_beacon + 1, reply_file_sequence,
+               reply_file_offset, reply_file_length);
         request_next_reply_piece();
         break;
     }
@@ -497,14 +575,20 @@ static void handle_notification(const uint8_t *value, uint16_t length)
             transfer_failed("reply file length or CRC failed");
             return;
         }
-        printf("AP%d reply verified: %.*s\n", target_beacon + 1,
+        printf("AP%d REPLY TRANSFER: reply length and CRC verified.\n",
+               target_beacon + 1);
+        printf("AP%d REPLY CONTENT: %.*s\n", target_beacon + 1,
                reply_file_length, reply_file);
+        printf("AP%d FILE TRANSFER: sending final COMPLETE acknowledgement.\n",
+               target_beacon + 1);
         write_simple(MSG_COMPLETE, BLE_WRITE_COMPLETE);
         break;
 
     case MSG_COMPLETE_ACK:
         if (ble_state != BLE_WAIT_COMPLETE_ACK) return;
-        printf("AP%d TRANSFER COMPLETE; both boards acknowledged success\n",
+        printf("\nAP%d FILE TRANSFER COMPLETE: both Pico W boards acknowledged success.\n",
+               target_beacon + 1);
+        printf("AP%d FILE TRANSFER: buzzer stopping; disconnecting before next AP.\n",
                target_beacon + 1);
         current_transfer_succeeded = true;
         transfer_active = false;
@@ -567,6 +651,8 @@ static void gatt_client_handler(uint8_t packet_type, uint16_t channel,
         }
         characteristic_found = false;
         ble_state = BLE_DISCOVER_CHARACTERISTIC;
+        printf("AP%d BLE SETUP: transfer service found; locating transfer channel...\n",
+               target_beacon + 1);
         gatt_client_discover_characteristics_for_service_by_uuid16(
             gatt_client_handler, connection_handle, &transfer_service,
             BEACON_CHARACTERISTIC_UUID);
@@ -582,6 +668,8 @@ static void gatt_client_handler(uint8_t packet_type, uint16_t channel,
             &notification_listener, gatt_client_handler, connection_handle,
             &transfer_characteristic);
         ble_state = BLE_ENABLE_NOTIFICATIONS;
+        printf("AP%d BLE SETUP: transfer channel found; enabling beacon replies...\n",
+               target_beacon + 1);
         gatt_client_write_client_characteristic_configuration(
             gatt_client_handler, connection_handle, &transfer_characteristic,
             GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION);
@@ -591,28 +679,54 @@ static void gatt_client_handler(uint8_t packet_type, uint16_t channel,
         tx_packet[0] = MSG_HELLO;
         tx_packet[1] = BEACON_PROTOCOL_VERSION;
         tx_packet[2] = (uint8_t)(target_beacon + 1);
+        printf("AP%d HANDSHAKE: replies enabled; sending HELLO and expected beacon ID.\n",
+               target_beacon + 1);
         write_packet(3, BLE_WRITE_HELLO);
         break;
     case BLE_WRITE_HELLO:
-        if (query_succeeded(packet)) ble_state = BLE_WAIT_HELLO_ACK;
+        if (query_succeeded(packet)) {
+            ble_state = BLE_WAIT_HELLO_ACK;
+            printf("AP%d HANDSHAKE: HELLO sent; waiting for HELLO_ACK.\n",
+                   target_beacon + 1);
+        }
         break;
     case BLE_WRITE_FILE_START:
-        if (query_succeeded(packet)) ble_state = BLE_WAIT_FILE_READY;
+        if (query_succeeded(packet)) {
+            ble_state = BLE_WAIT_FILE_READY;
+            printf("AP%d FILE TRANSFER: file metadata sent; waiting for FILE_READY.\n",
+                   target_beacon + 1);
+        }
         break;
     case BLE_WRITE_FILE_DATA:
-        if (query_succeeded(packet)) write_next_robot_chunk();
+        if (query_succeeded(packet)) {
+            printf("AP%d FILE SEND: chunk %u acknowledged by beacon.\n",
+                   target_beacon + 1, robot_file_sequence);
+            write_next_robot_chunk();
+        }
         break;
     case BLE_WRITE_FILE_END:
-        if (query_succeeded(packet)) ble_state = BLE_WAIT_FILE_RECEIVED;
+        if (query_succeeded(packet)) {
+            ble_state = BLE_WAIT_FILE_RECEIVED;
+            printf("AP%d FILE SEND: FILE_END sent; waiting for beacon CRC result.\n",
+                   target_beacon + 1);
+        }
         break;
     case BLE_WRITE_REPLY_REQUEST:
-        if (query_succeeded(packet)) ble_state = BLE_WAIT_REPLY_START;
+        if (query_succeeded(packet)) {
+            ble_state = BLE_WAIT_REPLY_START;
+            printf("AP%d REPLY TRANSFER: request sent; waiting for reply metadata.\n",
+                   target_beacon + 1);
+        }
         break;
     case BLE_WRITE_REPLY_NEXT:
         if (query_succeeded(packet)) ble_state = BLE_WAIT_REPLY_PIECE;
         break;
     case BLE_WRITE_COMPLETE:
-        if (query_succeeded(packet)) ble_state = BLE_WAIT_COMPLETE_ACK;
+        if (query_succeeded(packet)) {
+            ble_state = BLE_WAIT_COMPLETE_ACK;
+            printf("AP%d FILE TRANSFER: COMPLETE sent; waiting for final beacon ACK.\n",
+                   target_beacon + 1);
+        }
         break;
     default:
         break;
@@ -626,20 +740,29 @@ static void handle_advertisement(uint8_t *packet)
         beacon_id != target_beacon + 1) return;
 
     int rssi = gap_event_advertising_report_get_rssi(packet);
+    ble_latest_rssi = rssi;
+    ble_rssi_available = true;
     ble_rssi_samples[ble_rssi_sample_index] = rssi;
     ble_rssi_sample_index =
         (uint8_t)((ble_rssi_sample_index + 1) % BLE_RSSI_SAMPLE_COUNT);
     if (ble_rssi_sample_count < BLE_RSSI_SAMPLE_COUNT) ble_rssi_sample_count++;
-    if (ble_rssi_sample_count < BLE_RSSI_SAMPLE_COUNT) return;
+    if (ble_rssi_sample_count < BLE_RSSI_SAMPLE_COUNT) {
+        printf("AP%d BLE RSSI: latest %d dBm | collecting sample %u/%d | transfer NOT started\n",
+               target_beacon + 1, rssi, ble_rssi_sample_count,
+               BLE_RSSI_SAMPLE_COUNT);
+        return;
+    }
 
     int sum = 0;
     for (int i = 0; i < BLE_RSSI_SAMPLE_COUNT; ++i) sum += ble_rssi_samples[i];
     int average = sum / BLE_RSSI_SAMPLE_COUNT;
+    ble_average_rssi = average;
+    ble_average_available = true;
     if (average >= BLE_CLOSE_RSSI_DBM) qualifying_average_count++;
     else qualifying_average_count = 0;
-    printf("AP%d BLE: latest %d, average %d dBm, close %u/%d\n",
-           target_beacon + 1, rssi, average, qualifying_average_count,
-           BLE_CLOSE_REQUIRED_AVERAGES);
+    printf("AP%d BLE RSSI: latest %d dBm | rolling average %d dBm | need >= %d dBm | close confirmations %u/%d\n",
+           target_beacon + 1, rssi, average, BLE_CLOSE_RSSI_DBM,
+           qualifying_average_count, BLE_CLOSE_REQUIRED_AVERAGES);
     if (qualifying_average_count < BLE_CLOSE_REQUIRED_AVERAGES) return;
 
     transfer_active = true;
@@ -649,7 +772,9 @@ static void handle_advertisement(uint8_t *packet)
     beacon_address_type = gap_event_advertising_report_get_address_type(packet);
     gap_stop_scan();
     ble_connect_pending = true;
-    printf("AP%d accepted as close; constant buzzer ON\n",
+    printf("\nAP%d RANGE REACHED: average BLE RSSI %d dBm passed threshold %d dBm.\n",
+           target_beacon + 1, average, BLE_CLOSE_RSSI_DBM);
+    printf("AP%d FILE TRANSFER STATUS: STARTING. Constant buzzer ON until completion.\n",
            target_beacon + 1);
 }
 
@@ -683,7 +808,9 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
                 gap_subevent_le_connection_complete_get_connection_handle(packet);
             service_found = false;
             ble_state = BLE_DISCOVER_SERVICE;
-            printf("AP%d connected; starting application handshake\n",
+            printf("AP%d BLE CONNECTION: connected successfully.\n",
+                   target_beacon + 1);
+            printf("AP%d BLE SETUP: searching for the file-transfer service...\n",
                    target_beacon + 1);
             gatt_client_discover_primary_services_by_uuid16(
                 gatt_client_handler, connection_handle, BEACON_SERVICE_UUID);
@@ -699,6 +826,7 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
         transfer_active = false;
         wifi_scans_paused = false;
         if (current_transfer_succeeded) {
+            int completed_beacon = target_beacon;
             beacon_complete[target_beacon] = true;
             target_beacon++;
             current_transfer_succeeded = false;
@@ -708,9 +836,13 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
                 selected_ap = -1;
                 printf("\nALL THREE BEACON FILE TRANSFERS COMPLETE\n");
             } else {
+                printf("AP%d disconnected cleanly. Moving on to AP%d.\n",
+                       completed_beacon + 1, target_beacon + 1);
                 start_target_scan();
             }
         } else if (sequence_started) {
+            printf("BLE disconnected before success. Retrying AP%d from proximity scan.\n",
+                   target_beacon + 1);
             start_target_scan();
         } else {
             ble_state = BLE_IDLE;
@@ -801,6 +933,7 @@ int main(void)
                     target_beacon = 0;
                     sequence_started = true;
                     printf("\nSTART accepted: AP1 -> AP2 -> AP3\n");
+                    printf("The robot will wait for AP1 BLE range, transfer and verify the file, then continue to AP2 and AP3.\n");
                     request_start_target_scan();
                 }
             }
