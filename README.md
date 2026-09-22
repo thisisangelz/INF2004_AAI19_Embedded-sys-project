@@ -138,7 +138,18 @@ uses readable stages such as `CLOSE ENOUGH - CONNECTING`, `SENDING HANDSHAKE`,
 `SENDING FILE DATA` and `WAITING FOR FILE CRC RESULT`.
 
 The corresponding beacon prints handshake, received-chunk, CRC, reply-chunk and
-final acknowledgement messages, then turns on its onboard LED.
+final acknowledgement messages, then turns on its onboard LED. Every beacon
+also prints a two-second heartbeat, for example:
+
+```text
+AP1 STATUS | Wi-Fi AP: ON (I AM PICO W) | BLE: ADVERTISING | Advertising: ON | Connection: none | Notifications: not enabled
+```
+
+After the robot connects, the same line changes to `CONNECTED`, `READY FOR
+HANDSHAKE`, `RECEIVING FILE`, `FILE VERIFIED`, `SENDING REPLY FILE` and finally
+`TRANSFER COMPLETE`. If the robot still reports `Latest: waiting`, check that
+the target beacon's heartbeat says `BLE: ADVERTISING`; if it does, the beacon is
+advertising and the next checks should be the robot firmware and its BLE scan.
 
 ## Project structure
 
