@@ -37,7 +37,6 @@ static const uint AP_LED_PINS[AP_COUNT] = {2, 3, 4};
 
 #define PRINT_INTERVAL_MS 500
 #define RSSI_TIMEOUT_MS 5000
-#define SWITCH_HYSTERESIS_DB 3
 #define BUTTON_DEBOUNCE_MS 40
 #define BUZZER_TONE_HZ 2000
 #define BEEP_ON_MS 80
@@ -154,7 +153,7 @@ static const char *ble_state_name(ble_state_t state)
     case BLE_WRITE_COMPLETE: return "SENDING FINAL COMPLETE";
     case BLE_WAIT_COMPLETE_ACK: return "WAITING FOR FINAL ACK";
     case BLE_DISCONNECTING: return "TRANSFER DONE - DISCONNECTING";
-    case BLE_FINISHED: return "ALL AP TRANSFERS COMPLETE";
+    case BLE_FINISHED: return "ALL AP TRANSFERS COMPLETE - PERMANENT BEEP";
     default: return "UNKNOWN";
     }
 }
@@ -275,47 +274,33 @@ static bool get_ap_valid(int index, uint32_t now_ms)
     return (uint32_t)(now_ms - ap_last_seen_ms[index]) < RSSI_TIMEOUT_MS;
 }
 
-static bool all_access_points_visible(uint32_t now_ms)
-{
-    for (int i = 0; i < AP_COUNT; ++i) {
-        if (!get_ap_valid(i, now_ms)) return false;
-    }
-    return true;
-}
-
 static void update_output(uint32_t now_ms)
 {
     if (ble_state == BLE_FINISHED) {
         selected_ap = -1;
         for (int i = 0; i < AP_COUNT; ++i) gpio_put(AP_LED_PINS[i], 1);
-        buzzer_configure(false, 0, now_ms);
+        // The requested final notification is a continuous tone until the
+        // robot Pico is powered off or reset.
+        buzzer_enabled = false;
+        buzzer_is_on = true;
+        buzzer_set_tone(true);
         return;
     }
 
-    if (sequence_started && target_beacon < AP_COUNT) {
+    if (target_beacon < AP_COUNT) {
         selected_ap = target_beacon;
     } else {
-        int strongest = -1;
-        for (int i = 0; i < AP_COUNT; ++i) {
-            if (get_ap_valid(i, now_ms) &&
-                (strongest < 0 || ap_rssi[i] > ap_rssi[strongest])) {
-                strongest = i;
-            }
-        }
-        if (strongest < 0) selected_ap = -1;
-        else if (selected_ap < 0 || !get_ap_valid(selected_ap, now_ms) ||
-                 (strongest != selected_ap && ap_rssi[strongest] >
-                  ap_rssi[selected_ap] + SWITCH_HYSTERESIS_DB)) {
-            selected_ap = strongest;
-        }
+        selected_ap = -1;
     }
 
     for (int i = 0; i < AP_COUNT; ++i) {
         gpio_put(AP_LED_PINS[i], selected_ap == i || beacon_complete[i]);
     }
     if (transfer_active) return;
-    if (selected_ap >= 0 && get_ap_valid(selected_ap, now_ms)) {
-        buzzer_configure(true, rssi_to_beep_interval(ap_rssi[selected_ap]), now_ms);
+    if (sequence_started && ble_state == BLE_SCANNING && ble_rssi_available) {
+        int proximity_rssi = ble_average_available
+                                 ? ble_average_rssi : ble_latest_rssi;
+        buzzer_configure(true, rssi_to_beep_interval(proximity_rssi), now_ms);
     } else {
         buzzer_configure(false, 0, now_ms);
     }
@@ -358,10 +343,11 @@ static void print_status(uint32_t now_ms)
         if (transfer_active) printf(" | FILE TRANSFER ACTIVE | BUZZER ON");
         printf("\n");
     } else if (ble_state == BLE_FINISHED) {
-        printf("BLE status | State: %s\n", ble_state_name(ble_state));
+        printf("BLE status | State: %s | All LEDs ON | BUZZER ON\n",
+               ble_state_name(ble_state));
     } else {
-        printf("BLE status | State: %s | Press GP%d when all APs are visible\n",
-               ble_state_name(ble_state), START_BUTTON_PIN);
+        printf("BLE status | Wi-Fi round for AP%d | Press GP%d to switch to BLE\n",
+               target_beacon + 1, START_BUTTON_PIN);
     }
 }
 
@@ -859,14 +845,22 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
             current_transfer_succeeded = false;
             if (target_beacon >= AP_COUNT) {
                 sequence_started = false;
-                wifi_scans_paused = false;
+                wifi_scans_paused = true;
                 ble_state = BLE_FINISHED;
                 selected_ap = -1;
+                buzzer_enabled = false;
+                buzzer_is_on = true;
+                buzzer_set_tone(true);
                 printf("\nALL THREE BEACON FILE TRANSFERS COMPLETE\n");
+                printf("ROBOT NOTIFICATION: all LEDs ON and permanent buzzer ON until power-off.\n");
             } else {
-                printf("AP%d disconnected cleanly. Moving on to AP%d.\n",
-                       completed_beacon + 1, target_beacon + 1);
-                start_target_scan();
+                sequence_started = false;
+                wifi_scans_paused = false;
+                ble_state = BLE_IDLE;
+                printf("AP%d disconnected cleanly. File transfer confirmed on both ends.\n",
+                       completed_beacon + 1);
+                printf("Wi-Fi RSSI scanning resumed for AP%d. Press GP%d when ready to switch to BLE.\n",
+                       target_beacon + 1, START_BUTTON_PIN);
             }
         } else if (sequence_started) {
             printf("BLE disconnected before success. Retrying AP%d from proximity scan.\n",
@@ -954,20 +948,15 @@ int main(void)
         if (raw_button != stable_button &&
             (uint32_t)(now_ms - button_changed_ms) >= BUTTON_DEBOUNCE_MS) {
             stable_button = raw_button;
-            if (!stable_button && !sequence_started &&
-                ble_state != BLE_DISCONNECTING) {
+            if (!stable_button && !sequence_started && ble_state == BLE_IDLE) {
                 if (!bluetooth_ready) {
                     printf("Start ignored: Bluetooth not ready\n");
-                } else if (!all_access_points_visible(now_ms)) {
-                    printf("Start ignored: all three Wi-Fi APs must be visible\n");
                 } else {
-                    for (int i = 0; i < AP_COUNT; ++i) {
-                        beacon_complete[i] = false;
-                    }
-                    target_beacon = 0;
                     sequence_started = true;
-                    printf("\nSTART accepted: AP1 -> AP2 -> AP3\n");
-                    printf("The robot will wait for AP1 BLE range, transfer and verify the file, then continue to AP2 and AP3.\n");
+                    printf("\nGP%d accepted: switching from Wi-Fi RSSI to BLE for AP%d.\n",
+                           START_BUTTON_PIN, target_beacon + 1);
+                    printf("AP%d will transfer only after the BLE average reaches >= %d dBm.\n",
+                           target_beacon + 1, BLE_CLOSE_RSSI_DBM);
                     request_start_target_scan();
                 }
             }

@@ -7,27 +7,30 @@ This branch implements a four-board prototype:
 - AP3: Wi-Fi SSID `I AM PICO W 3`, BLE name `PICO-BEACON-3`
 - Robot Pico W: Wi-Fi RSSI tracker and BLE central/client
 
-The Pico W has one shared 2.4 GHz radio. Before the sequence starts, the robot
-actively scans the three Wi-Fi APs. After GP20 is pressed, it finishes any
-in-progress Wi-Fi scan and reserves the radio for BLE scanning, connection and
-file transfer. The serial display keeps the last valid Wi-Fi readings and labels
-them `last scan; radio reserved for BLE`. Live Wi-Fi scans resume after the full
-AP1 -> AP2 -> AP3 sequence.
+The Pico W has one shared 2.4 GHz radio. Between transfers, the robot actively
+scans the three Wi-Fi APs and displays their RSSI values. GP20 starts BLE only
+for the current target. During that BLE scan, connection and transfer, the
+serial display keeps the last valid Wi-Fi readings and labels them `last scan;
+radio reserved for BLE`. After a successful transfer, live Wi-Fi scanning
+resumes for the next target and the robot waits for another GP20 press.
 
 ## Test sequence
 
 1. Power all three beacon Pico W boards and the robot Pico W.
-2. The robot scans Wi-Fi until all three SSIDs have been seen recently.
-3. Press the Maker Pi Pico button on **GP20**.
-4. The robot targets AP1 and averages that beacon's BLE RSSI advertisements.
-5. Manually move the robot Pico W towards AP1.
-6. When the configured average threshold is met repeatedly, the buzzer becomes
+2. The robot displays live Wi-Fi RSSI for AP1, AP2 and AP3. Wi-Fi RSSI is for
+   guidance only and does not authorize a transfer.
+3. When ready for AP1, press the Maker Pi Pico button on **GP20**.
+4. The robot pauses Wi-Fi scans and averages AP1's BLE RSSI advertisements.
+5. When the configured average threshold is met repeatedly, the buzzer becomes
    a constant tone, the boards connect, handshake and exchange test payloads.
-7. Both boards verify the received payload with CRC-32 and acknowledge success.
-8. The buzzer stops and the robot automatically repeats the process for AP2,
-   then AP3.
-9. After AP3 succeeds, all three LEDs stay on and the buzzer stays off. Pressing
-   GP20 starts a fresh sequence.
+6. Both boards verify the received payload with CRC-32, print completion, and
+   show completion using their LEDs.
+7. The robot disconnects, resumes live Wi-Fi RSSI, selects AP2 as the next BLE
+   target and waits. Press **GP20** again to run the AP2 BLE transfer.
+8. After AP2 completes, Wi-Fi scanning resumes again. Press **GP20** a third
+   time to run the AP3 BLE transfer.
+9. After AP3 succeeds, all three robot LEDs and the robot buzzer remain on until
+   the Pico is powered off or reset.
 
 The access points are *detected*, not joined by the robot. Their Wi-Fi networks
 remain useful as RSSI beacons; BLE is used for close-range gating and transfer.
@@ -106,12 +109,13 @@ configured for the Maker Pi Pico arrangement already used by the repository.
 
 ## Buzzer and LED behaviour
 
-- Before the sequence: the strongest Wi-Fi AP LED is selected and stronger
-  Wi-Fi RSSI produces faster proximity beeps.
-- During AP1/AP2/AP3 search: the current target LED is on.
+- Between BLE rounds: Wi-Fi RSSI is displayed but does not make decisions or
+  control the buzzer. The next target LED is on and the buzzer is off.
+- During AP1/AP2/AP3 BLE search: the current target LED is on and stronger BLE
+  RSSI produces faster proximity beeps.
 - From accepted BLE proximity until transfer acknowledgement: constant buzzer.
 - After each completed AP: its LED remains on.
-- After all three complete: all LEDs on, buzzer off.
+- After all three complete: all LEDs on and constant buzzer until power-off.
 
 ## Serial evidence
 
@@ -119,8 +123,9 @@ Use a USB serial monitor on the robot and, when debugging, on the beacon being
 tested. Important robot messages include:
 
 ```text
-START accepted: AP1 -> AP2 -> AP3
 Wi-Fi RSSI | AP1: -51 dBm | AP2: -63 dBm | AP3: -70 dBm
+BLE status | Wi-Fi round for AP1 | Press GP20 to switch to BLE
+GP20 accepted: switching from Wi-Fi RSSI to BLE for AP1.
 BLE status | Target: AP1 | State: SCANNING FOR TARGET | Latest: -49 dBm | Average: -48 dBm | Threshold: >= -50 dBm | Close: 0/3
 AP1 RANGE REACHED: average BLE RSSI -48 dBm passed threshold -50 dBm.
 AP1 FILE TRANSFER STATUS: STARTING. Constant buzzer ON until completion.
@@ -131,8 +136,10 @@ AP1 FILE SEND: chunk 1 acknowledged by beacon.
 AP1 FILE TRANSFER: beacon verified the robot file and matching CRC.
 AP1 REPLY TRANSFER: received chunk 1, 17/26 bytes.
 AP1 FILE TRANSFER COMPLETE: both Pico W boards acknowledged success.
-AP1 disconnected cleanly. Moving on to AP2.
+AP1 disconnected cleanly. File transfer confirmed on both ends.
+Wi-Fi RSSI scanning resumed for AP2. Press GP20 when ready to switch to BLE.
 ALL THREE BEACON FILE TRANSFERS COMPLETE
+ROBOT NOTIFICATION: all LEDs ON and permanent buzzer ON until power-off.
 ```
 
 Before the eight-reading BLE average is ready, the robot prints the latest
