@@ -26,7 +26,7 @@ static const uint AP_LED_PINS[AP_COUNT] = {2, 3, 4};
 
 // Adjustable first estimate only: calibrate on the hardware for 15 cm.
 #ifndef BLE_CLOSE_RSSI_DBM
-#define BLE_CLOSE_RSSI_DBM (-35)
+#define BLE_CLOSE_RSSI_DBM (-50)
 #endif
 #ifndef BLE_RSSI_SAMPLE_COUNT
 #define BLE_RSSI_SAMPLE_COUNT 8

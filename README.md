@@ -38,12 +38,12 @@ The settings are near the top of
 `pico_rssi_tracker/pico_rssi_tracker.c`:
 
 ```c
-#define BLE_CLOSE_RSSI_DBM (-35)
+#define BLE_CLOSE_RSSI_DBM (-50)
 #define BLE_RSSI_SAMPLE_COUNT 8
 #define BLE_CLOSE_REQUIRED_AVERAGES 3
 ```
 
-The current `-35 dBm` value is an arbitrary starting point. It does **not** mean
+The current `-50 dBm` value is an arbitrary starting point. It does **not** mean
 15 cm on every Pico W. The robot maintains a rolling average of eight target
 advertisements and requires three consecutive qualifying averages. A single
 strong packet therefore cannot start a transfer.
@@ -121,8 +121,8 @@ tested. Important robot messages include:
 ```text
 START accepted: AP1 -> AP2 -> AP3
 Wi-Fi RSSI | AP1: -51 dBm | AP2: -63 dBm | AP3: -70 dBm
-BLE status | Target: AP1 | State: SCANNING FOR TARGET | Latest: -39 dBm | Average: -41 dBm | Threshold: >= -35 dBm | Close: 0/3
-AP1 RANGE REACHED: average BLE RSSI -34 dBm passed threshold -35 dBm.
+BLE status | Target: AP1 | State: SCANNING FOR TARGET | Latest: -49 dBm | Average: -48 dBm | Threshold: >= -50 dBm | Close: 0/3
+AP1 RANGE REACHED: average BLE RSSI -48 dBm passed threshold -50 dBm.
 AP1 FILE TRANSFER STATUS: STARTING. Constant buzzer ON until completion.
 AP1 BLE CONNECTION: connected successfully.
 AP1 HANDSHAKE: HELLO sent; waiting for HELLO_ACK.
