@@ -312,6 +312,19 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             gap_advertisements_enable(1);
             beacon_status = BEACON_STATUS_ADVERTISING;
             printf("BLE beacon AP%d advertising\n", BEACON_ID);
+            bd_addr_t local_addr;
+            gap_local_bd_addr(local_addr);
+            printf("AP%d BLE DIAGNOSTIC | Address: %s | Name: PICO-BEACON-%d | Service UUID: 0x%04X | Protocol version: %d | Beacon ID: %d | Interval: 100 ms | Connectable: yes\n",
+                   BEACON_ID, bd_addr_to_str(local_addr), BEACON_ID,
+                   BEACON_SERVICE_UUID, BEACON_PROTOCOL_VERSION, BEACON_ID);
+            printf("AP%d BLE ADV RAW | Length: %u | Data:",
+                   BEACON_ID, (unsigned)sizeof(adv_data));
+            for (size_t i = 0; i < sizeof(adv_data); ++i) {
+                printf(" %02X", adv_data[i]);
+            }
+            printf("\n");
+            printf("AP%d BLE EXPECTED ROBOT MATCH | Service-data field: 05 16 20 FF 01 %02X\n",
+                   BEACON_ID, BEACON_ID);
         }
         break;
 

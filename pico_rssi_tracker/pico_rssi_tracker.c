@@ -42,6 +42,9 @@ static const uint AP_LED_PINS[AP_COUNT] = {2, 3, 4};
 #define BEEP_ON_MS 80
 #define BEEP_INTERVAL_FAR_MS 1000
 #define BEEP_INTERVAL_NEAR_MS 100
+#define BLE_DIAGNOSTIC_INTERVAL_MS 5000
+#define BLE_DIAGNOSTIC_RAW_MAX 64
+#define BLE_DIAGNOSTIC_NAME_MAX 32
 
 typedef enum {
     BLE_IDLE,
@@ -113,6 +116,21 @@ static volatile bool ble_rssi_available;
 static volatile bool ble_average_available;
 static volatile uint32_t ble_report_count;
 static volatile uint32_t ble_matching_report_count;
+static uint32_t ble_beacon_name_report_count;
+static uint32_t ble_ff20_uuid_report_count;
+static uint32_t ble_ff20_service_report_count;
+static uint32_t ble_valid_format_report_count;
+static uint32_t ble_diagnostic_next_ms;
+static bool ble_diagnostic_candidate_available;
+static bd_addr_t ble_diagnostic_address;
+static int ble_diagnostic_rssi;
+static char ble_diagnostic_name[BLE_DIAGNOSTIC_NAME_MAX];
+static bool ble_diagnostic_has_ff20_uuid;
+static bool ble_diagnostic_has_ff20_service;
+static int ble_diagnostic_version;
+static int ble_diagnostic_beacon_id;
+static uint8_t ble_diagnostic_raw[BLE_DIAGNOSTIC_RAW_MAX];
+static uint8_t ble_diagnostic_raw_length;
 
 static uint8_t tx_packet[TRANSFER_PACKET_SIZE];
 static uint8_t robot_file[96];
@@ -376,6 +394,114 @@ static bool advertisement_get_beacon(uint8_t *packet, uint8_t *beacon_id)
     return false;
 }
 
+static void inspect_ble_advertisement(uint8_t *packet)
+{
+    const uint8_t *data = gap_event_advertising_report_get_data(packet);
+    uint8_t length = gap_event_advertising_report_get_data_length(packet);
+    bool beacon_name = false;
+    bool has_ff20_uuid = false;
+    bool has_ff20_service = false;
+    bool valid_format = false;
+    int service_version = -1;
+    int service_beacon_id = -1;
+    char local_name[BLE_DIAGNOSTIC_NAME_MAX] = "(none)";
+
+    ad_context_t context;
+    for (ad_iterator_init(&context, length, data);
+         ad_iterator_has_more(&context); ad_iterator_next(&context)) {
+        uint8_t type = ad_iterator_get_data_type(&context);
+        uint8_t field_length = ad_iterator_get_data_len(&context);
+        const uint8_t *field = ad_iterator_get_data(&context);
+
+        if (type == BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME ||
+            type == BLUETOOTH_DATA_TYPE_SHORTENED_LOCAL_NAME) {
+            size_t copy_length = field_length;
+            if (copy_length >= sizeof(local_name)) copy_length = sizeof(local_name) - 1;
+            memcpy(local_name, field, copy_length);
+            local_name[copy_length] = '\0';
+            beacon_name = strncmp(local_name, "PICO-BEACON-", 12) == 0 ||
+                          strstr(local_name, "AP1") != NULL ||
+                          strstr(local_name, "AP2") != NULL ||
+                          strstr(local_name, "AP3") != NULL;
+            continue;
+        }
+
+        if (type == BLUETOOTH_DATA_TYPE_COMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS ||
+            type == BLUETOOTH_DATA_TYPE_INCOMPLETE_LIST_OF_16_BIT_SERVICE_CLASS_UUIDS) {
+            for (uint8_t offset = 0; offset + 2 <= field_length; offset += 2) {
+                if (transfer_read_u16(&field[offset]) == BEACON_SERVICE_UUID) {
+                    has_ff20_uuid = true;
+                }
+            }
+            continue;
+        }
+
+        if (type == BLUETOOTH_DATA_TYPE_SERVICE_DATA && field_length >= 2 &&
+            transfer_read_u16(field) == BEACON_SERVICE_UUID) {
+            has_ff20_service = true;
+            if (field_length >= 4) {
+                service_version = field[2];
+                service_beacon_id = field[3];
+                valid_format = service_version == BEACON_PROTOCOL_VERSION &&
+                               service_beacon_id >= 1 &&
+                               service_beacon_id <= AP_COUNT;
+            }
+        }
+    }
+
+    if (beacon_name) ble_beacon_name_report_count++;
+    if (has_ff20_uuid) ble_ff20_uuid_report_count++;
+    if (has_ff20_service) ble_ff20_service_report_count++;
+    if (valid_format) ble_valid_format_report_count++;
+
+    if (beacon_name || has_ff20_uuid || has_ff20_service) {
+        ble_diagnostic_candidate_available = true;
+        gap_event_advertising_report_get_address(packet, ble_diagnostic_address);
+        ble_diagnostic_rssi = gap_event_advertising_report_get_rssi(packet);
+        strncpy(ble_diagnostic_name, local_name,
+                sizeof(ble_diagnostic_name) - 1);
+        ble_diagnostic_name[sizeof(ble_diagnostic_name) - 1] = '\0';
+        ble_diagnostic_has_ff20_uuid = has_ff20_uuid;
+        ble_diagnostic_has_ff20_service = has_ff20_service;
+        ble_diagnostic_version = service_version;
+        ble_diagnostic_beacon_id = service_beacon_id;
+        ble_diagnostic_raw_length = length;
+        if (ble_diagnostic_raw_length > sizeof(ble_diagnostic_raw)) {
+            ble_diagnostic_raw_length = sizeof(ble_diagnostic_raw);
+        }
+        memcpy(ble_diagnostic_raw, data, ble_diagnostic_raw_length);
+    }
+
+    uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
+    if ((int32_t)(now_ms - ble_diagnostic_next_ms) < 0) return;
+    ble_diagnostic_next_ms = now_ms + BLE_DIAGNOSTIC_INTERVAL_MS;
+
+    printf("BLE DIAGNOSTIC SUMMARY | Target AP%d | Reports: %lu | Beacon-like name: %lu | UUID-list FF20: %lu | Service-data FF20: %lu | Valid version/ID: %lu | Matching target: %lu\n",
+           target_beacon + 1, (unsigned long)ble_report_count,
+           (unsigned long)ble_beacon_name_report_count,
+           (unsigned long)ble_ff20_uuid_report_count,
+           (unsigned long)ble_ff20_service_report_count,
+           (unsigned long)ble_valid_format_report_count,
+           (unsigned long)ble_matching_report_count);
+    if (!ble_diagnostic_candidate_available) {
+        printf("BLE DIAGNOSTIC CANDIDATE | none seen with a beacon-like name or FF20 data\n");
+        return;
+    }
+
+    printf("BLE DIAGNOSTIC CANDIDATE | Address: %s | RSSI: %d dBm | Name: %s | UUID-list FF20: %s | Service-data FF20: %s | Version: %d | Beacon ID: %d\n",
+           bd_addr_to_str(ble_diagnostic_address), ble_diagnostic_rssi,
+           ble_diagnostic_name,
+           ble_diagnostic_has_ff20_uuid ? "yes" : "no",
+           ble_diagnostic_has_ff20_service ? "yes" : "no",
+           ble_diagnostic_version, ble_diagnostic_beacon_id);
+    printf("BLE DIAGNOSTIC RAW | Length: %u | Data:",
+           ble_diagnostic_raw_length);
+    for (uint8_t i = 0; i < ble_diagnostic_raw_length; ++i) {
+        printf(" %02X", ble_diagnostic_raw[i]);
+    }
+    printf("\n");
+}
+
 static void reset_ble_samples(void)
 {
     memset(ble_rssi_samples, 0, sizeof(ble_rssi_samples));
@@ -388,6 +514,14 @@ static void reset_ble_samples(void)
     ble_average_available = false;
     ble_report_count = 0;
     ble_matching_report_count = 0;
+    ble_beacon_name_report_count = 0;
+    ble_ff20_uuid_report_count = 0;
+    ble_ff20_service_report_count = 0;
+    ble_valid_format_report_count = 0;
+    ble_diagnostic_candidate_available = false;
+    ble_diagnostic_name[0] = '\0';
+    ble_diagnostic_raw_length = 0;
+    ble_diagnostic_next_ms = (uint32_t)(time_us_64() / 1000) + 2000;
 }
 
 static void start_target_scan(void)
@@ -407,6 +541,9 @@ static void start_target_scan(void)
     printf("BLE FILTER: threshold >= %d dBm, %d-sample rolling average, %d confirmations\n",
            BLE_CLOSE_RSSI_DBM, BLE_RSSI_SAMPLE_COUNT,
            BLE_CLOSE_REQUIRED_AVERAGES);
+    printf("BLE EXPECTED AP%d DATA | AD type: 0x16 | UUID: 0x%04X | Version: %d | Beacon ID: %d | Raw field: 05 16 20 FF 01 %02X\n",
+           target_beacon + 1, BEACON_SERVICE_UUID, BEACON_PROTOCOL_VERSION,
+           target_beacon + 1, target_beacon + 1);
     printf("RADIO MODE: active Wi-Fi scans paused; displayed Wi-Fi RSSI is the last valid scan.\n");
 }
 
@@ -804,11 +941,17 @@ static void hci_event_handler(uint8_t packet_type, uint16_t channel,
         if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING) {
             bluetooth_ready = true;
             printf("Bluetooth ready\n");
+            bd_addr_t local_addr;
+            gap_local_bd_addr(local_addr);
+            printf("ROBOT BLE DIAGNOSTIC | Address: %s | Scan mode: passive | Expected service UUID: 0x%04X | Protocol version: %d\n",
+                   bd_addr_to_str(local_addr), BEACON_SERVICE_UUID,
+                   BEACON_PROTOCOL_VERSION);
         }
         break;
     case GAP_EVENT_ADVERTISING_REPORT:
         if (ble_state == BLE_SCANNING) {
             ble_report_count++;
+            inspect_ble_advertisement(packet);
             handle_advertisement(packet);
         }
         break;

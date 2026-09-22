@@ -157,6 +157,27 @@ reports, while a rising total with `0 matching` means it sees other BLE traffic
 but not the expected beacon service data/ID. Zero-valued Wi-Fi scan results are
 discarded instead of being shown as a false `0 dBm` measurement.
 
+Every five seconds during a target BLE scan, the robot also prints a bounded
+diagnostic block. It counts advertisements containing a beacon-like name, the
+`FF20` UUID list entry, `FF20` service data, a valid protocol version/beacon ID,
+and the final matching target. If a possible beacon is present, it prints that
+device's address, RSSI, decoded fields and raw advertisement bytes. If no such
+packet exists, it prints `CANDIDATE | none` instead of dumping unrelated nearby
+BLE traffic.
+
+Each AP prints its intended BLE configuration and complete raw advertisement
+once at startup. To diagnose a non-matching beacon, copy and share these three
+robot lines plus the two AP lines:
+
+```text
+BLE DIAGNOSTIC SUMMARY | ...
+BLE DIAGNOSTIC CANDIDATE | ...
+BLE DIAGNOSTIC RAW | ...
+ROBOT BLE DIAGNOSTIC | ...
+AP1 BLE DIAGNOSTIC | ...
+AP1 BLE ADV RAW | ...
+```
+
 The corresponding beacon prints handshake, received-chunk, CRC, reply-chunk and
 final acknowledgement messages, then turns on its onboard LED. Every beacon
 also prints a two-second heartbeat, for example:
