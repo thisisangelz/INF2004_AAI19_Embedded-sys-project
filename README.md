@@ -20,7 +20,7 @@ resumes for the next target and the robot waits for another GP20 press.
 2. The robot displays live Wi-Fi RSSI for AP1, AP2 and AP3. Wi-Fi RSSI is for
    guidance only and does not authorize a transfer.
 3. When ready for AP1, press the Maker Pi Pico button on **GP20**.
-4. The robot pauses Wi-Fi scans and averages AP1's BLE RSSI advertisements.
+4. The robot pauses Wi-Fi scans and filters AP1's BLE RSSI advertisements.
 5. When the configured average threshold is met repeatedly, the buzzer becomes
    a constant tone, the boards connect, handshake and exchange test payloads.
 6. Both boards verify the received payload with CRC-32, print completion, and
@@ -42,14 +42,24 @@ The settings are near the top of
 
 ```c
 #define BLE_CLOSE_RSSI_DBM (-50)
-#define BLE_RSSI_SAMPLE_COUNT 8
+#define BLE_RSSI_SAMPLE_COUNT 12
 #define BLE_CLOSE_REQUIRED_AVERAGES 3
+#define WIFI_RSSI_SAMPLE_COUNT 5
 ```
 
 The current `-50 dBm` value is an arbitrary starting point. It does **not** mean
-15 cm on every Pico W. The robot maintains a rolling average of eight target
-advertisements and requires three consecutive qualifying averages. A single
-strong packet therefore cannot start a transfer.
+15 cm on every Pico W. The robot keeps 12 target BLE advertisements, drops the
+lowest and highest quarter, then averages the rest. It requires three
+consecutive qualifying filtered values. A single strong packet therefore
+cannot start a transfer.
+
+The robot applies the same filter separately to AP1, AP2 and AP3 Wi-Fi RSSI.
+Each completed scan contributes the strongest valid report for each AP. The
+display shows the filtered value, latest raw value and number of collected
+scans. Five scans fill each AP's history; after five seconds without a valid
+reading, that AP's history is cleared when it returns. The AP firmware does
+not measure its own transmitted RSSI, so no smoothing change is needed on
+the three transmitting boards.
 
 RSSI cannot provide an exact distance because antenna orientation, the robot
 body, people, reflections, power supply noise and the room change the result.
@@ -123,7 +133,7 @@ Use a USB serial monitor on the robot and, when debugging, on the beacon being
 tested. Important robot messages include:
 
 ```text
-Wi-Fi RSSI | AP1: -51 dBm | AP2: -63 dBm | AP3: -70 dBm
+Wi-Fi RSSI | AP1: -51 dBm (raw -49, n=5) | AP2: -63 dBm (raw -61, n=5) | AP3: -70 dBm (raw -72, n=5)
 BLE status | Wi-Fi round for AP1 | Press GP20 to switch to BLE
 GP20 accepted: switching from Wi-Fi RSSI to BLE for AP1.
 BLE status | Target: AP1 | State: SCANNING FOR TARGET
@@ -144,8 +154,8 @@ ROBOT NOTIFICATION: all LEDs ON and permanent buzzer ON until power-off.
 ```
 
 After GP20, the robot prints a separate `BLE RSSI` row for the current target.
-Before the eight-reading average is ready, it prints the latest reading and
-`collecting sample n/8`. While scanning, the row is marked `LIVE`; after the
+Before the 12-reading average is ready, it prints the latest reading and
+`collecting sample n/12`. While scanning, the row is marked `LIVE`; after the
 scanner stops to connect, it is marked `LAST BEFORE CONNECTION`. During
 transfer, the periodic BLE status uses readable stages such as `CLOSE ENOUGH -
 CONNECTING`, `SENDING HANDSHAKE`, `SENDING FILE DATA` and `WAITING FOR FILE CRC

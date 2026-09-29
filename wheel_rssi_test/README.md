@@ -32,8 +32,9 @@ Probe or computer cable is needed during movement. UART output is disabled.
    opened too late, press GP20 to print the same report again. Pressing GP20
    at this stage does not repeat the movement.
 
-The report includes AP1 scan values and BSSID, every probe heading, gyro turn
-results, the selected direction or the reason the test stopped. The report
+The report includes AP1 scan values and BSSID, the filtered RSSI at each
+position, every probe heading, gyro turn results, the selected direction or
+the reason the test stopped. The report
 exists only in RAM. A reset or loss of robot power erases it. Check that
 reconnecting USB does not reset your particular battery and carrier-board
 setup before relying on this during a floor test.
@@ -63,6 +64,14 @@ pulse now stops if the gyro measures more than 25 degrees of turning.
    movement.
 5. Turn towards the chosen heading and drive forwards for 250 ms. Stop and
    print `TEST COMPLETE`.
+
+Each Wi-Fi scan keeps the strongest valid AP1 report, as in the main tracker.
+At the starting position and each probe position, the test takes five fresh
+scans. It sorts the valid readings, drops the lowest and highest quarter, then
+averages the rest. At least three of the five scans must detect AP1. Readings
+from one position are never reused for another position. The report prints
+every raw scan and the resulting filtered value. This programme does not scan
+BLE advertisements, so the tracker's BLE filter does not apply here.
 
 The 1200 ms probe is twice the previous 600 ms probe. Test it in a clear area
 and stop with GP21 if the travel is too long. The timed reverse movement only approximates the starting position. Motor

@@ -282,16 +282,25 @@ static bool scan_once(int results[BEACON_COUNT])
     return !stop_pressed();
 }
 
-static int median(int values[SCANS_PER_SAMPLE], int count)
+// Match the tracker filter: discard the lowest and highest quarter of the
+// valid scan readings, then average the remaining RSSI values.
+static int rssi_robust_average(const int *values, int count)
 {
+    int sorted[SCANS_PER_SAMPLE];
     for (int i = 0; i < count; ++i) {
-        for (int j = i + 1; j < count; ++j) {
-            if (values[j] < values[i]) {
-                int tmp = values[i]; values[i] = values[j]; values[j] = tmp;
-            }
+        int value = values[i];
+        int j = i;
+        while (j > 0 && sorted[j - 1] > value) {
+            sorted[j] = sorted[j - 1];
+            --j;
         }
+        sorted[j] = value;
     }
-    return values[count / 2];
+    int trim = count / 4;
+    int sum = 0;
+    for (int i = trim; i < count - trim; ++i) sum += sorted[i];
+    int kept = count - 2 * trim;
+    return (sum - kept / 2) / kept;
 }
 
 static bool sample_beacons(int values[BEACON_COUNT])
@@ -307,8 +316,16 @@ static bool sample_beacons(int values[BEACON_COUNT])
         }
     }
     for (int i = 0; i < BEACON_COUNT; ++i) {
-        values[i] = counts[i] >= MIN_VALID_SCANS ? median(readings[i], counts[i])
-                                   : RSSI_MISSING;
+        values[i] = counts[i] >= MIN_VALID_SCANS
+                        ? rssi_robust_average(readings[i], counts[i])
+                        : RSSI_MISSING;
+        if (values[i] == RSSI_MISSING) {
+            report_printf("AP%d filter: only %d/%d valid scans; no RSSI score\n",
+                          i + 1, counts[i], SCANS_PER_SAMPLE);
+        } else {
+            report_printf("AP%d filter: %d/%d valid scans, filtered RSSI %d dBm\n",
+                          i + 1, counts[i], SCANS_PER_SAMPLE, values[i]);
+        }
     }
     return true;
 }
