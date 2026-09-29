@@ -4,39 +4,43 @@ set(PICO_BOARD pico_w CACHE STRING "Board type")
 
 include(pico_sdk_import.cmake)
 
-project(picow_access_point C CXX ASM)
+project(picow_access_point2 C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-pico_sdk_init()
+# Initialise the SDK only when this folder is built on its own; the top-level
+# CMakeLists.txt initialises it once for all four targets.
+if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    pico_sdk_init()
+endif()
 
-add_executable(picow_access_point
+add_executable(picow_access_point2
     ../ble_transfer/beacon_server.c
 )
 
-target_include_directories(picow_access_point PRIVATE
+target_include_directories(picow_access_point2 PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer
 )
 
-target_compile_definitions(picow_access_point PRIVATE
+target_compile_definitions(picow_access_point2 PRIVATE
     BEACON_ID=2
     WIFI_SSID="I AM PICO W 2"
 )
 
-target_link_libraries(picow_access_point
+target_link_libraries(picow_access_point2
     pico_stdlib
     pico_cyw43_arch_lwip_threadsafe_background
     pico_btstack_cyw43
     pico_btstack_ble
 )
 
-pico_btstack_make_gatt_header(picow_access_point PRIVATE
+pico_btstack_make_gatt_header(picow_access_point2 PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer/file_transfer.gatt
 )
 
-pico_enable_stdio_usb(picow_access_point 1)
-pico_enable_stdio_uart(picow_access_point 0)
+pico_enable_stdio_usb(picow_access_point2 1)
+pico_enable_stdio_uart(picow_access_point2 0)
 
-pico_add_extra_outputs(picow_access_point)
+pico_add_extra_outputs(picow_access_point2)

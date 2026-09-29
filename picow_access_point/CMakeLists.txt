@@ -9,7 +9,11 @@ project(picow_access_point C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
-pico_sdk_init()
+# Initialise the SDK only when this folder is built on its own; the top-level
+# CMakeLists.txt initialises it once for all four targets.
+if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    pico_sdk_init()
+endif()
 
 add_executable(picow_access_point
     ../ble_transfer/beacon_server.c

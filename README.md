@@ -42,14 +42,21 @@ The settings are near the top of
 
 ```c
 #define BLE_CLOSE_RSSI_DBM (-50)
-#define BLE_RSSI_SAMPLE_COUNT 8
+#define BLE_RSSI_SAMPLE_COUNT 12
 #define BLE_CLOSE_REQUIRED_AVERAGES 3
+#define WIFI_RSSI_SAMPLE_COUNT 5
 ```
 
 The current `-50 dBm` value is an arbitrary starting point. It does **not** mean
-15 cm on every Pico W. The robot maintains a rolling average of eight target
-advertisements and requires three consecutive qualifying averages. A single
-strong packet therefore cannot start a transfer.
+15 cm on every Pico W. The robot keeps the last twelve target advertisements
+and uses their interquartile mean (sort, drop the weakest and strongest
+quarter, average the rest), then requires three consecutive qualifying
+averages. A single strong or faded packet therefore cannot start a transfer.
+
+Wi-Fi RSSI is filtered the same way: each full scan contributes one reading per
+AP (the strongest report of that scan), and the displayed value is the
+interquartile mean of the last five scans. The status line also shows the
+latest unfiltered value, e.g. `AP1: -52 dBm (raw -58, n=5)`.
 
 RSSI cannot provide an exact distance because antenna orientation, the robot
 body, people, reflections, power supply noise and the room change the result.
@@ -144,8 +151,8 @@ ROBOT NOTIFICATION: all LEDs ON and permanent buzzer ON until power-off.
 ```
 
 After GP20, the robot prints a separate `BLE RSSI` row for the current target.
-Before the eight-reading average is ready, it prints the latest reading and
-`collecting sample n/8`. While scanning, the row is marked `LIVE`; after the
+Before the twelve-reading average is ready, it prints the latest reading and
+`collecting sample n/12`. While scanning, the row is marked `LIVE`; after the
 scanner stops to connect, it is marked `LAST BEFORE CONNECTION`. During
 transfer, the periodic BLE status uses readable stages such as `CLOSE ENOUGH -
 CONNECTING`, `SENDING HANDSHAKE`, `SENDING FILE DATA` and `WAITING FOR FILE CRC
@@ -211,30 +218,39 @@ Wi-Fi SSID.
 
 ## Build and flash
 
-Pico SDK 2.3.0 was used to verify all four builds.
+The repository root has a `CMakeLists.txt` that builds all four firmwares at
+once. Pico SDK 2.3.0 and the Windows Pico SDK 1.5.1 installer were both used to
+verify the builds.
+
+### From VS Code (Raspberry Pi Pico extension)
+
+1. Open the repository root folder in VS Code.
+2. Pico sidebar icon -> **Import Project**, select this folder, choose an SDK
+   version and click **Import**. This adds the extension's header block to the
+   root `CMakeLists.txt` and creates `.vscode/`. Do this once per machine.
+3. Click **Compile Project**. The UF2 files appear under `build/`.
+
+### From a terminal
+
+With the 1.5.1 installer, use its "Pico - Developer Command Prompt" so
+`PICO_SDK_PATH`, CMake, Ninja and the ARM compiler are on the path.
 
 ```bash
-cmake -S pico_rssi_tracker -B pico_rssi_tracker/build
-cmake --build pico_rssi_tracker/build -j
-
-cmake -S picow_access_point -B picow_access_point/build
-cmake --build picow_access_point/build -j
-
-cmake -S picow_access_point2 -B picow_access_point2/build
-cmake --build picow_access_point2/build -j
-
-cmake -S picow_access_point3 -B picow_access_point3/build
-cmake --build picow_access_point3/build -j
+cmake -G Ninja -S . -B build
+cmake --build build
 ```
 
-Flash these UF2 files:
+Each subfolder can still be built on its own, e.g.
+`cmake -G Ninja -S pico_rssi_tracker -B pico_rssi_tracker/build`.
+
+Flash these UF2 files (paths for the root build):
 
 | Board | UF2 |
 |---|---|
-| AP1 | `picow_access_point/build/picow_access_point.uf2` |
-| AP2 | `picow_access_point2/build/picow_access_point.uf2` |
-| AP3 | `picow_access_point3/build/picow_access_point3.uf2` |
-| Robot | `pico_rssi_tracker/build/pico_rssi_tracker.uf2` |
+| AP1 | `build/picow_access_point/picow_access_point.uf2` |
+| AP2 | `build/picow_access_point2/picow_access_point2.uf2` |
+| AP3 | `build/picow_access_point3/picow_access_point3.uf2` |
+| Robot | `build/pico_rssi_tracker/pico_rssi_tracker.uf2` |
 
 The firmware has been compile-tested. The BLE range threshold, radio coexistence
 and full transfer sequence still require a four-board hardware test.

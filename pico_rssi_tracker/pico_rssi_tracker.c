@@ -29,12 +29,24 @@ static const uint AP_LED_PINS[AP_COUNT] = {2, 3, 4};
 #define BLE_CLOSE_RSSI_DBM (-50)
 #endif
 #ifndef BLE_RSSI_SAMPLE_COUNT
-#define BLE_RSSI_SAMPLE_COUNT 8
+#define BLE_RSSI_SAMPLE_COUNT 12
 #endif
 #ifndef BLE_CLOSE_REQUIRED_AVERAGES
 #define BLE_CLOSE_REQUIRED_AVERAGES 3
 #endif
 
+// Wi-Fi RSSI filter: each full scan contributes one reading per AP (the
+// strongest report seen in that scan); the displayed value is the
+// interquartile mean of the last WIFI_RSSI_SAMPLE_COUNT scans.
+#ifndef WIFI_RSSI_SAMPLE_COUNT
+#define WIFI_RSSI_SAMPLE_COUNT 5
+#endif
+
+#define RSSI_FILTER_MAX_SAMPLES 16
+#if BLE_RSSI_SAMPLE_COUNT > RSSI_FILTER_MAX_SAMPLES || \
+    WIFI_RSSI_SAMPLE_COUNT > RSSI_FILTER_MAX_SAMPLES
+#error "RSSI sample counts must not exceed RSSI_FILTER_MAX_SAMPLES"
+#endif
 #define PRINT_INTERVAL_MS 500
 #define RSSI_TIMEOUT_MS 5000
 #define BUTTON_DEBOUNCE_MS 40
@@ -71,7 +83,12 @@ typedef enum {
 } ble_state_t;
 
 static volatile int ap_rssi[AP_COUNT] = {-127, -127, -127};
+static volatile int ap_raw_rssi[AP_COUNT] = {-127, -127, -127};
 static volatile uint32_t ap_last_seen_ms[AP_COUNT] = {0, 0, 0};
+static int ap_scan_best[AP_COUNT];
+static int ap_rssi_history[AP_COUNT][WIFI_RSSI_SAMPLE_COUNT];
+static uint8_t ap_rssi_history_count[AP_COUNT];
+static uint8_t ap_rssi_history_index[AP_COUNT];
 
 static uint buzzer_slice;
 static uint16_t buzzer_wrap;
@@ -184,23 +201,69 @@ static bool ssid_matches(const cyw43_ev_scan_result_t *result,
            memcmp(result->ssid, target, length) == 0;
 }
 
+// Interquartile mean: sort, drop the lowest and highest quarter, average the
+// rest. Rejects single deep fades/spikes better than a plain mean while
+// keeping more resolution than a median.
+static int rssi_robust_average(const int *samples, int count)
+{
+    int sorted[RSSI_FILTER_MAX_SAMPLES];
+    if (count > RSSI_FILTER_MAX_SAMPLES) count = RSSI_FILTER_MAX_SAMPLES;
+    for (int i = 0; i < count; ++i) {
+        int value = samples[i];
+        int j = i;
+        while (j > 0 && sorted[j - 1] > value) {
+            sorted[j] = sorted[j - 1];
+            --j;
+        }
+        sorted[j] = value;
+    }
+    int trim = count / 4;
+    int sum = 0;
+    for (int i = trim; i < count - trim; ++i) sum += sorted[i];
+    int kept = count - 2 * trim;
+    // Round to nearest for negative values.
+    return (sum - kept / 2) / kept;
+}
+
+static void wifi_scan_begin(void)
+{
+    for (int i = 0; i < AP_COUNT; ++i) ap_scan_best[i] = -127;
+}
+
 static int wifi_scan_result(void *env, const cyw43_ev_scan_result_t *result)
 {
     (void)env;
     if (result == NULL) return 0;
-    uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
     for (int i = 0; i < AP_COUNT; ++i) {
         if (ssid_matches(result, AP_SSIDS[i])) {
             // A valid received Wi-Fi RSSI is negative. Ignore occasional
-            // zero-valued scan results so they do not replace a real reading.
-            if (result->rssi < 0) {
-                ap_rssi[i] = result->rssi;
-                ap_last_seen_ms[i] = now_ms;
+            // zero-valued scan results. The same AP is often reported several
+            // times per scan (including weaker adjacent-channel copies), so
+            // keep only the strongest report from this scan.
+            if (result->rssi < 0 && result->rssi > ap_scan_best[i]) {
+                ap_scan_best[i] = result->rssi;
             }
             break;
         }
     }
     return 0;
+}
+
+static void wifi_scan_complete(uint32_t now_ms)
+{
+    for (int i = 0; i < AP_COUNT; ++i) {
+        if (ap_scan_best[i] <= -127) continue;
+        ap_raw_rssi[i] = ap_scan_best[i];
+        ap_rssi_history[i][ap_rssi_history_index[i]] = ap_scan_best[i];
+        ap_rssi_history_index[i] =
+            (uint8_t)((ap_rssi_history_index[i] + 1) % WIFI_RSSI_SAMPLE_COUNT);
+        if (ap_rssi_history_count[i] < WIFI_RSSI_SAMPLE_COUNT) {
+            ap_rssi_history_count[i]++;
+        }
+        ap_rssi[i] = rssi_robust_average(ap_rssi_history[i],
+                                         ap_rssi_history_count[i]);
+        ap_last_seen_ms[i] = now_ms;
+    }
 }
 
 static void leds_init(void)
@@ -332,7 +395,10 @@ static void print_status(uint32_t now_ms)
         printf("Wi-Fi RSSI | ");
     }
     for (int i = 0; i < AP_COUNT; ++i) {
-        if (get_ap_valid(i, now_ms)) printf("AP%d: %d dBm", i + 1, ap_rssi[i]);
+        if (get_ap_valid(i, now_ms)) {
+            printf("AP%d: %d dBm (raw %d, n=%u)", i + 1, ap_rssi[i],
+                   ap_raw_rssi[i], ap_rssi_history_count[i]);
+        }
         else printf("AP%d: N/A", i + 1);
         if (i != AP_COUNT - 1) printf(" | ");
     }
@@ -905,9 +971,9 @@ static void handle_advertisement(uint8_t *packet)
         return;
     }
 
-    int sum = 0;
-    for (int i = 0; i < BLE_RSSI_SAMPLE_COUNT; ++i) sum += ble_rssi_samples[i];
-    int average = sum / BLE_RSSI_SAMPLE_COUNT;
+    // Each advertisement arrives on one of three BLE channels whose RSSI can
+    // differ by several dB, so trim outliers instead of taking a plain mean.
+    int average = rssi_robust_average(ble_rssi_samples, BLE_RSSI_SAMPLE_COUNT);
     ble_average_rssi = average;
     ble_average_available = true;
     if (average >= BLE_CLOSE_RSSI_DBM) qualifying_average_count++;
@@ -1068,6 +1134,7 @@ int main(void)
         if (!wifi_scans_paused && !wifi_scan_in_progress &&
             (int32_t)(now_ms - next_wifi_scan_ms) >= 0) {
             cyw43_wifi_scan_options_t options = {0};
+            wifi_scan_begin();
             int error = cyw43_wifi_scan(
                 &cyw43_state, &options, NULL, wifi_scan_result);
             if (error == 0) wifi_scan_in_progress = true;
@@ -1075,6 +1142,7 @@ int main(void)
         }
         if (wifi_scan_in_progress && !cyw43_wifi_scan_active(&cyw43_state)) {
             wifi_scan_in_progress = false;
+            wifi_scan_complete(now_ms);
             next_wifi_scan_ms = now_ms + 100;
         }
         if (ble_scan_pending && !wifi_scan_in_progress) {
