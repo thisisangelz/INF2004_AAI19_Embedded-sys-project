@@ -1,5 +1,11 @@
 # Pico W Three-Beacon Wi-Fi + BLE Test
 
+The `getting-there` branch adds the robot approach programme in
+[`getting_there`](getting_there/README.md). It repeatedly moves towards AP1,
+waits for the -50 dBm BLE close-range check, receives and verifies the beacon
+payload, then plays a one-second tone on the Robo Pico's GP22 buzzer.
+Flash `getting_there/build/getting_there.uf2` onto the robot for this programme.
+
 The `first-beacon` branch adds a one-beacon movement proof of concept in
 [`wheel_rssi_test`](wheel_rssi_test/README.md). It probes four directions for
 2400 ms each and then drives for 2400 ms towards the strongest valid AP1 RSSI,
