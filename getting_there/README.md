@@ -39,12 +39,11 @@ for the two-second gyro calibration. GP21 stops and latches until reset.
    directions from the current position: drive forwards for 2400 ms, stop,
    check BLE, sample Wi-Fi, then reverse for 2400 ms. If a probe reaches
    transfer range, fetch the payload there and finish without reversing.
-4. Rank the valid probe readings from strongest to weakest and choose the
-   second highest. Equal readings retain their probe order: 0, 90, 180,
-   then 270 degrees. If only one probe has a valid reading, use that heading.
-   All missing scores stop the run. This is a test choice; the second highest
-   RSSI does not establish the beacon's physical direction.
-5. Turn towards the chosen heading and advance in 300 ms steps. Stop and
+4. Choose the highest valid probe RSSI. Equal readings retain their probe
+   order: 0, 90, 180, then 270 degrees. A single valid probe is sufficient;
+   all missing scores stop the run. No gain or margin threshold is required.
+   The highest RSSI does not establish the beacon's physical direction.
+5. Turn towards the chosen heading and advance in 750 ms steps. Stop and
    check BLE before and after each step. Take a fresh Wi-Fi sample after
    an unsuccessful BLE check. Keep the selected heading while the filtered
    RSSI matches or exceeds the best reading. Save each successful forward
@@ -55,7 +54,7 @@ for the two-second gyro calibration. GP21 stops and latches until reset.
    remain stopped and take another fresh sample. If it recovers to the best
    or improves, continue on the current heading. If the decrease is confirmed,
    reverse the recorded steps after the best position, in reverse order,
-   using each step's original heading and 300 ms duration. Restore the saved
+   using each step's original heading and 750 ms duration. Restore the saved
    heading at the estimated best position, then try a nearby heading.
 7. Try offsets of +15, -15, +30, -30, +45 and -45 degrees, each measured from
    the saved best heading. Each failed heading returns to the saved position
@@ -101,9 +100,9 @@ of its target after at most two corrective attempts. IMU failures, gyro rates
 near the range limit, excessive heading error, a stalled turn or a turn timeout
 stop the run.
 
-A run allows at most 100 forward approach attempts and 15 minutes, checked
+A run allows at most 40 forward approach attempts and 15 minutes, checked
 between phases. A forward step still counts after the robot reverses it.
-The 100-step limit allows up to 30 seconds of powered forward approach
+The 40-step limit allows up to 30 seconds of powered forward approach
 movement. The count excludes the forwards and backwards direction probes and
 the return movements. It also stops after six failed nearby headings at the
 same best position, or three missing Wi-Fi samples while stopped.
@@ -160,7 +159,7 @@ checks do not establish hardware navigation, radio range or transfer reliability
 ## Host checks
 
 These checks compile the actual navigation and BLE client sources with mocked
-hardware and SDK event definitions. They cover second-highest probe selection,
+hardware and SDK event definitions. They cover highest probe selection,
 ties and missing probes, continued movement on one heading, signal improvement,
 stationary confirmation of a decrease, reversing recorded steps to the latest
 best position, nearby heading changes, lost-signal recovery, stationary retries,

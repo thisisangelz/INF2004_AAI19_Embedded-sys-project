@@ -17,8 +17,8 @@
 #define MIN_VALID_SCANS 3
 #define SCAN_TIMEOUT_MS 15000
 #define PROBE_MOVE_MS 2400
-#define APPROACH_STEP_MS 300
-#define MAX_APPROACH_STEPS 100
+#define APPROACH_STEP_MS 750
+#define MAX_APPROACH_STEPS 40
 #define MAX_RUN_MS 900000
 #define MAX_MISSING_SAMPLES 3
 #define MAX_PAYLOAD_ATTEMPTS 3
@@ -148,19 +148,14 @@ static payload_result_t wait_for_wifi(int *score)
     return PAYLOAD_FATAL;
 }
 
-static int second_strongest_heading(const int score[4])
+static int strongest_heading(const int score[4])
 {
-    int best = -1, second = -1;
+    int best = -1;
     for (int i = 0; i < 4; ++i) {
         if (score[i] == RSSI_MISSING) continue;
-        if (best < 0 || score[i] > score[best]) {
-            second = best;
-            best = i;
-        } else if (second < 0 || score[i] > score[second]) {
-            second = i;
-        }
+        if (best < 0 || score[i] > score[best]) best = i;
     }
-    return second >= 0 ? second : best;
+    return best;
 }
 
 static payload_result_t choose_direction(float *heading)
@@ -182,18 +177,14 @@ static payload_result_t choose_direction(float *heading)
         if (!motion_drive(false, PROBE_MOVE_MS, target)) return PAYLOAD_FATAL;
     }
     if (!motion_turn_to_heading(origin)) return PAYLOAD_FATAL;
-    int selected = second_strongest_heading(score);
+    int selected = strongest_heading(score);
     if (selected < 0) {
         report_printf("FAILED: no valid AP1 RSSI at any probe heading\n");
         return PAYLOAD_FATAL;
     }
-    int valid = 0;
-    for (int i = 0; i < 4; ++i) if (score[i] != RSSI_MISSING) ++valid;
     *heading = origin + selected * 90.0f;
-    report_printf("Selected pass direction %d degrees: %d dBm; %s\n",
-                  selected * 90, score[selected],
-                  valid > 1 ? "second-highest valid reading; ties ordered by probe" :
-                              "only valid reading; fallback");
+    report_printf("Selected pass direction %d degrees: %d dBm; highest valid reading; ties ordered by probe\n",
+                  selected * 90, score[selected]);
     if (!motion_turn_to_heading(*heading)) return PAYLOAD_FATAL;
     return PAYLOAD_NOT_CLOSE;
 }
@@ -221,8 +212,9 @@ static void record_best(navigation_t *navigation, int score)
 
 static payload_result_t return_to_best(navigation_t *navigation)
 {
-    report_printf("RETURN TO BEST: reverse %d recorded 300 ms steps to path step %d, %d dBm\n",
+    report_printf("RETURN TO BEST: reverse %d recorded %lu ms steps to path step %d, %d dBm\n",
                   navigation->path_count - navigation->best_path_count,
+                  (unsigned long)APPROACH_STEP_MS,
                   navigation->best_path_count, navigation->best_rssi);
     while (navigation->path_count > navigation->best_path_count) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
@@ -290,8 +282,9 @@ static bool approach_beacon(void)
         result = check_payload();
         if (result == PAYLOAD_COMPLETE) return true;
         if (result == PAYLOAD_FATAL) return false;
-        report_printf("APPROACH STEP %d/%d: 300 ms towards heading %d degrees\n",
-                      step + 1, MAX_APPROACH_STEPS, (int)navigation.heading);
+        report_printf("APPROACH STEP %d/%d: %lu ms towards heading %d degrees\n",
+                      step + 1, MAX_APPROACH_STEPS,
+                      (unsigned long)APPROACH_STEP_MS, (int)navigation.heading);
         if (!motion_drive(true, APPROACH_STEP_MS, navigation.heading)) return false;
         navigation.path_heading[navigation.path_count++] = navigation.heading;
         // Check BLE before any further movement, including a return movement.

@@ -87,7 +87,7 @@ bool motion_drive(bool forwards, uint32_t ms, float heading)
     if (ms == PROBE_MOVE_MS) {
         if (forwards) ++probe_forwards; else ++probe_backwards;
     } else {
-        assert(ms == 300 && ms == APPROACH_STEP_MS);
+        assert(ms == 750 && ms == APPROACH_STEP_MS);
         if (forwards) { ++approach_steps; last_approach_heading = heading; }
         else if (stop_during_reverse) { stopped = true; return false; }
     }
@@ -197,36 +197,36 @@ int main(void)
     const int one[] = {-127, -127, -90, -127};
     const int missing[] = {-127, -127, -127, -127};
     const int distinct[] = {-72, -65, -70, -60};
-    assert(second_strongest_heading(supplied) == 0);
-    assert(second_strongest_heading(tied) == 1);
-    assert(second_strongest_heading(one) == 2);
-    assert(second_strongest_heading(missing) == -1);
-    assert(second_strongest_heading(distinct) == 1);
+    assert(strongest_heading(supplied) == 3);
+    assert(strongest_heading(tied) == 0);
+    assert(strongest_heading(one) == 2);
+    assert(strongest_heading(missing) == -1);
+    assert(strongest_heading(distinct) == 3);
 
-    // The reported strongest rightward score must now select the next-ranked probe.
+    // The reported scores select the strongest probe, even when it is rightwards.
     const int report_fixture[] = {-74, -71, -71, -75, -65, -74};
     reset(); USE_SCANS(report_fixture); complete_after_step = 1;
     assert(approach_beacon());
     assert(probe_forwards == 4 && probe_backwards == 4 && approach_steps == 1);
-    assert(last_approach_heading == 0 && sign_checks == 1 && !tone_starts);
-    assert(position_count == 1 && strstr(log_text, "second-highest valid reading"));
+    assert(last_approach_heading == 270 && sign_checks == 1 && !tone_starts);
+    assert(position_count == 1 && strstr(log_text, "highest valid reading"));
 
     reset(); complete_probe = true;
     assert(approach_beacon());
     assert(probe_forwards == 1 && !probe_backwards && !approach_steps);
 
-    // Equal scores retain the heading for ten short steps without another pass.
+    // Equal scores retain the heading for ten 750 ms steps without another pass.
     reset(); complete_after_step = 10;
     assert(approach_beacon());
     assert(probe_forwards == 4 && probe_backwards == 4 && approach_steps == 10);
-    assert(last_approach_heading == 90 && !reverse_steps && position_count == 10);
+    assert(last_approach_heading == 0 && !reverse_steps && position_count == 10);
 
     // Probe scores are from endpoints already left; compare progress to the origin.
     const int improving[] = {-80, -60, -65, -70, -75, -80,
                              -79, -78, -77, -76, -75, -74, -73};
     reset(); USE_SCANS(improving); complete_after_step = 8;
     assert(approach_beacon());
-    assert(probe_forwards == 4 && approach_steps == 8 && last_approach_heading == 90);
+    assert(probe_forwards == 4 && approach_steps == 8 && last_approach_heading == 0);
     assert(!reverse_steps && position_count == 8);
 
     // A decline is confirmed at the same position. Recovery keeps the current route.
@@ -235,7 +235,7 @@ int main(void)
     reset(); USE_SCANS(brief_dip); complete_after_step = 4;
     assert(approach_beacon());
     assert(approach_steps == 4 && !reverse_steps && position_count == 4);
-    assert(last_approach_heading == 90 && strstr(log_text, "SIGNAL RECOVERED"));
+    assert(last_approach_heading == 0 && strstr(log_text, "SIGNAL RECOVERED"));
     assert(drive_events[10].forwards && drive_events[10].samples_before == 9);
 
     // Even a 1 dBm confirmed decline reverses before another forward movement.
@@ -244,10 +244,10 @@ int main(void)
     reset(); USE_SCANS(confirmed_drop); complete_after_step = 3;
     assert(approach_beacon());
     assert(probe_forwards == 4 && approach_steps == 3 && reverse_steps == 1);
-    assert(position_count == 2 && last_approach_heading == 105);
-    assert(!drive_events[10].forwards && drive_events[10].heading == 90);
+    assert(position_count == 2 && last_approach_heading == 15);
+    assert(!drive_events[10].forwards && drive_events[10].heading == 0);
     assert(drive_events[10].samples_before == 9 && drive_events[10].position_after == 1);
-    assert(drive_events[11].forwards && drive_events[11].heading == 105);
+    assert(drive_events[11].forwards && drive_events[11].heading == 15);
     assert(drive_events[11].samples_before == 10);
     assert(strstr(log_text, "SIGNAL DECREASE CONFIRMED") && strstr(log_text, "RETURN COMPLETE"));
 
@@ -256,7 +256,7 @@ int main(void)
     reset(); USE_SCANS(recovered_signal); complete_after_step = 2;
     assert(approach_beacon());
     assert(probe_forwards == 4 && approach_steps == 2 && !reverse_steps);
-    assert(last_approach_heading == 90 && drive_events[9].samples_before == 9);
+    assert(last_approach_heading == 0 && drive_events[9].samples_before == 9);
 
     const int lost_signal[] = {-75, -55, -60, -70, -80, -75,
                                -127, -127, -127, -127};
@@ -339,6 +339,6 @@ int main(void)
     assert(approach_steps == MAX_APPROACH_STEPS && probe_forwards == 4 && !reverse_steps && !tone_starts);
     reset(); sim_time = (uint64_t)MAX_RUN_MS * 1000;
     assert(!run_can_continue());
-    puts("Second-ranked direction, short forward steps, confirmed decline, route return, nearby alternatives and completion: passed");
+    puts("Strongest direction, 750 ms forward steps, confirmed decline, route return, nearby alternatives and completion: passed");
     return 0;
 }
