@@ -1,6 +1,15 @@
 # Pico W Three-Beacon Wi-Fi + BLE Test
 
-This branch implements a four-board prototype:
+The `first-beacon` branch adds a one-beacon movement proof of concept in
+[`wheel_rssi_test`](wheel_rssi_test/README.md). It probes four directions for
+2400 ms each and then drives for 2400 ms towards the strongest valid AP1 RSSI,
+without requiring a gain over the starting value or a margin over other
+directions. Use `wheel_rssi_test/build/wheel_rssi_test.uf2` for this test.
+The movement firmware checks a gyro range of +/-1000 degrees per second, uses
+slower turns and corrects heading during both forwards and backwards travel.
+These motion settings still need a test on the assembled robot.
+
+The remaining sections describe the existing four-board prototype:
 
 - AP1: Wi-Fi SSID `I AM PICO W`, BLE name `PICO-BEACON-1`
 - AP2: Wi-Fi SSID `I AM PICO W 2`, BLE name `PICO-BEACON-2`

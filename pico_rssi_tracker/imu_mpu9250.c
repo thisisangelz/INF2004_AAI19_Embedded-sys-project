@@ -7,6 +7,7 @@
 #define MPU9250_WHO_AM_I 0x75
 #define MPU9250_PWR_MGMT_1 0x6B
 #define MPU9250_GYRO_CONFIG 0x1B
+#define MPU9250_GYRO_RANGE_MASK 0x18
 #define MPU9250_GYRO_XOUT_H 0x43
 
 static bool write_reg(const mpu9250_t *imu, uint8_t reg, uint8_t value)
@@ -28,7 +29,12 @@ static bool read_regs(const mpu9250_t *imu, uint8_t reg, uint8_t *data,
 bool mpu9250_init(mpu9250_t *imu, i2c_inst_t *i2c, uint sda_pin,
                   uint scl_pin, uint32_t bus_hz)
 {
-    *imu = (mpu9250_t){.i2c = i2c, .address = MPU9250_ADDRESS};
+    *imu = (mpu9250_t){
+        .i2c = i2c,
+        .address = MPU9250_ADDRESS,
+        .gyro_range_dps = 250,
+        .gyro_lsb_per_dps = 131.0f
+    };
     i2c_init(i2c, bus_hz);
     gpio_set_function(sda_pin, GPIO_FUNC_I2C);
     gpio_set_function(scl_pin, GPIO_FUNC_I2C);
@@ -41,10 +47,44 @@ bool mpu9250_init(mpu9250_t *imu, i2c_inst_t *i2c, uint sda_pin,
         return false;
     }
     if (!write_reg(imu, MPU9250_PWR_MGMT_1, 0x00) ||
-        !write_reg(imu, MPU9250_GYRO_CONFIG, 0x00)) {
+        !write_reg(imu, MPU9250_GYRO_CONFIG, 0x00) ||
+        !mpu9250_set_gyro_range(imu, 250)) {
         return false;
     }
     imu->who_am_i = id;
+    return true;
+}
+
+bool mpu9250_set_gyro_range(mpu9250_t *imu, uint16_t range_dps)
+{
+    uint8_t range_bits;
+    float scale;
+    // MPU-6500/9250 GYRO_CONFIG bits 4:3 and documented scale factors.
+    switch (range_dps) {
+        case 250: range_bits = 0x00; scale = 131.0f; break;
+        case 500: range_bits = 0x08; scale = 65.5f; break;
+        case 1000: range_bits = 0x10; scale = 32.8f; break;
+        case 2000: range_bits = 0x18; scale = 16.4f; break;
+        default: return false;
+    }
+    if (!imu || !imu->i2c) return false;
+
+    uint8_t config;
+    if (!read_regs(imu, MPU9250_GYRO_CONFIG, &config, 1)) return false;
+    config = (uint8_t)((config & ~MPU9250_GYRO_RANGE_MASK) | range_bits);
+    if (!write_reg(imu, MPU9250_GYRO_CONFIG, config)) return false;
+    uint8_t verified;
+    if (!read_regs(imu, MPU9250_GYRO_CONFIG, &verified, 1) ||
+        (verified & MPU9250_GYRO_RANGE_MASK) != range_bits) {
+        return false;
+    }
+
+    bool changed = imu->gyro_range_dps != range_dps;
+    imu->gyro_range_dps = range_dps;
+    imu->gyro_lsb_per_dps = scale;
+    if (changed) {
+        for (int axis = 0; axis < 3; ++axis) imu->gyro_bias_dps[axis] = 0.0f;
+    }
     return true;
 }
 
@@ -54,7 +94,8 @@ bool mpu9250_read_gyro_dps(const mpu9250_t *imu, float gyro_dps[3])
     if (!read_regs(imu, MPU9250_GYRO_XOUT_H, data, sizeof(data))) return false;
     for (int axis = 0; axis < 3; ++axis) {
         int16_t raw = (int16_t)((data[axis * 2] << 8) | data[axis * 2 + 1]);
-        gyro_dps[axis] = (float)raw / 131.0f - imu->gyro_bias_dps[axis];
+        gyro_dps[axis] = (float)raw / imu->gyro_lsb_per_dps -
+                         imu->gyro_bias_dps[axis];
     }
     return true;
 }
