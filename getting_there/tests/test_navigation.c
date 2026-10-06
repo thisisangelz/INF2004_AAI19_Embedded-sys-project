@@ -18,6 +18,8 @@ static int tone_starts;
 static int tone_stops;
 static bool wifi_missing;
 static bool direction_fixture;
+static const int *scan_script;
+static size_t scan_script_length;
 static bool fail_drive;
 static bool stop_during_pause;
 static int complete_after_step;
@@ -100,6 +102,10 @@ int cyw43_wifi_scan(int *state, cyw43_wifi_scan_options_t *options, void *contex
     if (wifi_missing) return 0;
     const int fixture[] = {-74, -70, -70, -127, -69};
     int rssi = direction_fixture && group < 5 ? fixture[group] : -70;
+    if (scan_script) {
+        assert((size_t)group < scan_script_length);
+        rssi = scan_script[group];
+    }
     if (rssi == -127) return 0;
     cyw43_ev_scan_result_t result = {.rssi = (int16_t)rssi, .ssid_len = 11};
     memcpy(result.ssid, "I AM PICO W", 11);
@@ -114,6 +120,7 @@ static void reset(void)
     wifi_calls = probe_forwards = probe_backwards = approach_steps = ble_calls = sign_checks = 0;
     tone_starts = tone_stops = retry_mode = complete_after_step = 0;
     wifi_missing = direction_fixture = fail_drive = complete_first = complete_probe = false;
+    scan_script = NULL; scan_script_length = 0;
     stop_during_pause = false;
     current_heading = last_approach_heading = 0;
     log_length = 0; log_text[0] = 0;
@@ -141,9 +148,53 @@ int main(void)
     assert(approach_beacon());
     assert(probe_forwards == 1 && !probe_backwards && !approach_steps);
 
-    reset(); complete_after_step = 5;
+    // Stable readings must keep the heading well beyond the former four-step limit.
+    reset(); direction_fixture = true; complete_after_step = 10;
+    assert(approach_beacon());
+    assert(probe_forwards == 4 && probe_backwards == 4 && approach_steps == 10);
+    assert(last_approach_heading == 270 && !strstr(log_text, "SIGNAL DECLINED"));
+
+    // The selected probe endpoint is stronger than the starting position.
+    // Forward progress must use the new stationary baseline, then follow improvement.
+    const int improving[] = {-80, -55, -70, -75, -78, -80,
+                             -79, -78, -77, -76, -75, -74, -73};
+    reset(); scan_script = improving; scan_script_length = sizeof(improving) / sizeof(*improving);
+    complete_after_step = 8;
+    assert(approach_beacon());
+    assert(probe_forwards == 4 && approach_steps == 8 && last_approach_heading == 0);
+    assert(strstr(log_text, "FORWARD BASELINE: -80 dBm") && !strstr(log_text, "SIGNAL DECLINED"));
+
+    // Isolated dips, including two consecutive dips, must not cause another pass.
+    const int temporary_dips[] = {-74, -70, -73, -76, -78, -74,
+                                  -80, -74, -80, -80, -74};
+    reset(); scan_script = temporary_dips; scan_script_length = sizeof(temporary_dips) / sizeof(*temporary_dips);
+    complete_after_step = 6;
+    assert(approach_beacon());
+    assert(probe_forwards == 4 && approach_steps == 6 && !strstr(log_text, "SIGNAL DECLINED"));
+
+    // Three readings 4 dBm below the improved best trigger a new pass before step five.
+    const int sustained_drop[] = {-74, -70, -73, -76, -78, -74,
+                                  -68, -72, -72, -72, -75, -65, -73, -74, -72};
+    reset(); scan_script = sustained_drop; scan_script_length = sizeof(sustained_drop) / sizeof(*sustained_drop);
+    complete_after_step = 5;
     assert(approach_beacon());
     assert(probe_forwards == 8 && probe_backwards == 8 && approach_steps == 5);
+    assert(last_approach_heading == 90 && strstr(log_text, "FORWARD SIGNAL DECLINED"));
+
+    // A lost signal prevents the next step until detection and direction selection finish.
+    const int recovered_signal[] = {-74, -70, -73, -76, -78, -74,
+                                    -127, -127, -74, -75, -65, -73, -74, -72};
+    reset(); scan_script = recovered_signal; scan_script_length = sizeof(recovered_signal) / sizeof(*recovered_signal);
+    complete_after_step = 2;
+    assert(approach_beacon());
+    assert(probe_forwards == 8 && probe_backwards == 8 && approach_steps == 2);
+    assert(last_approach_heading == 90 && strstr(log_text, "FORWARD SIGNAL LOST"));
+
+    const int lost_signal[] = {-74, -70, -73, -76, -78, -74,
+                               -127, -127, -127, -127};
+    reset(); scan_script = lost_signal; scan_script_length = sizeof(lost_signal) / sizeof(*lost_signal);
+    assert(!approach_beacon());
+    assert(probe_forwards == 4 && approach_steps == 1 && !tone_starts);
 
     reset(); wifi_missing = true;
     assert(!approach_beacon());
@@ -164,7 +215,7 @@ int main(void)
     assert(!approach_beacon() && !ble_calls && !probe_forwards && !tone_starts);
 
     reset(); assert(!approach_beacon());
-    assert(approach_steps == 40 && !tone_starts);
+    assert(approach_steps == 40 && probe_forwards == 4 && !tone_starts);
 
     const int supplied[] = {-70, -70, -127, -69};
     const int tied[] = {-71, -71, -71, -71};
@@ -174,6 +225,6 @@ int main(void)
     assert(strongest_heading(one) == 2 && strongest_heading(missing) == -1);
     reset(); run_started_ms = 0; sim_time = (uint64_t)MAX_RUN_MS * 1000;
     assert(!run_can_continue());
-    puts("Navigation, stationary retries, limits and one-second completion tone: passed");
+    puts("Continued forward navigation, RSSI decline, lost-signal recovery, retries, limits and completion tone: passed");
     return 0;
 }

@@ -18,7 +18,8 @@
 #define SCAN_TIMEOUT_MS 15000
 #define PROBE_MOVE_MS 2400
 #define APPROACH_STEP_MS 750
-#define RECALIBRATE_EVERY_STEPS 4
+#define RSSI_DROP_DBM 4
+#define REQUIRED_WEAKER_SAMPLES 3
 #define MAX_APPROACH_STEPS 40
 #define MAX_RUN_MS 900000
 #define MAX_MISSING_SAMPLES 3
@@ -203,7 +204,8 @@ static bool approach_beacon(void)
     float heading = 0.0f;
     bool needs_direction_pass = true;
     bool wifi_visible = true;
-    int steps_since_pass = 0;
+    int best_forward_rssi = RSSI_MISSING;
+    int weaker_samples = 0;
     for (int step = 0; step < MAX_APPROACH_STEPS; ++step) {
         if (!run_can_continue()) return false;
         if (!wifi_visible) {
@@ -216,8 +218,16 @@ static bool approach_beacon(void)
             result = choose_direction(&heading);
             if (result == PAYLOAD_COMPLETE) return true;
             if (result == PAYLOAD_FATAL) return false;
+            // Compare forward progress at the actual starting position, not at
+            // the distant probe endpoint which the robot has already left.
+            result = wait_for_wifi(&score);
+            if (result == PAYLOAD_COMPLETE) return true;
+            if (result == PAYLOAD_FATAL) return false;
             needs_direction_pass = false;
-            steps_since_pass = 0;
+            best_forward_rssi = score;
+            weaker_samples = 0;
+            report_printf("FORWARD BASELINE: %d dBm; keep heading unless three samples fall at least 4 dBm below the best\n",
+                          best_forward_rssi);
         }
         result = check_payload();
         if (result == PAYLOAD_COMPLETE) return true;
@@ -230,7 +240,23 @@ static bool approach_beacon(void)
         if (result == PAYLOAD_COMPLETE) return true;
         if (result == PAYLOAD_FATAL || !sample_ap1(&score)) return false;
         wifi_visible = score != RSSI_MISSING;
-        if (++steps_since_pass >= RECALIBRATE_EVERY_STEPS) needs_direction_pass = true;
+        if (!wifi_visible) {
+            weaker_samples = 0;
+            report_printf("FORWARD SIGNAL LOST: remain stopped and retry detection\n");
+        } else {
+            if (score > best_forward_rssi) best_forward_rssi = score;
+            weaker_samples = score <= best_forward_rssi - RSSI_DROP_DBM
+                                 ? weaker_samples + 1 : 0;
+            report_printf("FORWARD RSSI: %d dBm, best %d dBm, weaker %d/%d\n",
+                          score, best_forward_rssi, weaker_samples,
+                          REQUIRED_WEAKER_SAMPLES);
+            if (weaker_samples >= REQUIRED_WEAKER_SAMPLES) {
+                needs_direction_pass = true;
+                report_printf("FORWARD SIGNAL DECLINED: search again from current position\n");
+            } else {
+                report_printf("KEEP HEADING: continue forwards after radio checks\n");
+            }
+        }
     }
     report_printf("FAILED: 40 approach steps without a confirmed payload\n");
     return false;

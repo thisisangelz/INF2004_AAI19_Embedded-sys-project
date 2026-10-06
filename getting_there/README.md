@@ -45,8 +45,13 @@ for the two-second gyro calibration. GP21 stops and latches until reset.
    stop the run.
 5. Turn towards the chosen heading and advance in 750 ms steps. Stop and
    check BLE before and after each step. Take a fresh Wi-Fi sample after
-   an unsuccessful BLE check. Repeat the direction pass after four steps.
-   If Wi-Fi disappears, remain stopped and retry detection before moving.
+   an unsuccessful BLE check. Keep the selected heading while RSSI stays
+   stable or improves; there is no direction pass after a fixed number of steps.
+   Measure a fresh baseline at the current position after selecting the heading.
+   Search again only after three consecutive filtered samples are at least
+   4 dBm below the best reading recorded since that baseline. A recovered
+   reading clears the decline count. If Wi-Fi disappears, remain stopped and
+   retry detection, then search again before advancing.
 6. After the BLE close-range check passes, keep the motors stopped while
    transferring. A transfer failure allows three stationary attempts. Once
    proximity has passed, failed retries do not cause another movement step.
@@ -131,8 +136,9 @@ checks do not establish hardware navigation, radio range or transfer reliability
 ## Host checks
 
 These checks compile the actual navigation and BLE client sources with mocked
-hardware and SDK event definitions. They cover approach steps, repeated
-direction passes, missing signals, stationary retries, run limits, signed RSSI,
+hardware and SDK event definitions. They cover continued forward movement,
+signal improvement, temporary drops, sustained decline, lost-signal recovery,
+stationary retries, run limits, signed RSSI,
 the close-range gate, payload verification, notifications arriving before write
 completion, connection failures and cleanup. They also check the one-second
 tone and stopping it.
