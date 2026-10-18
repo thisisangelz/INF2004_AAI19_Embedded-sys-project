@@ -17,6 +17,7 @@ endif()
 
 add_executable(pico_rssi_tracker
     pico_rssi_tracker.c
+    imu_mpu9250.c
 )
 
 target_include_directories(pico_rssi_tracker PRIVATE
@@ -31,6 +32,7 @@ target_link_libraries(pico_rssi_tracker
     pico_btstack_ble
     hardware_pwm
     hardware_clocks
+    hardware_i2c
 )
 
 pico_enable_stdio_usb(pico_rssi_tracker 1)

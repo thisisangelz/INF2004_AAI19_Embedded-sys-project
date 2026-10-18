@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "btstack.h"
@@ -9,8 +10,11 @@
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
 #include "transfer_protocol.h"
+#include "imu_mpu9250.h"
 
 #define AP_COUNT 3
+#define IMU_SDA_PIN 6
+#define IMU_SCL_PIN 7
 
 static const char *const AP_SSIDS[AP_COUNT] = {
     "I AM PICO W", "I AM PICO W 2", "I AM PICO W 3",
@@ -35,18 +39,17 @@ static const uint AP_LED_PINS[AP_COUNT] = {2, 3, 4};
 #define BLE_CLOSE_REQUIRED_AVERAGES 3
 #endif
 
-// Wi-Fi RSSI filter: each full scan contributes one reading per AP (the
-// strongest report seen in that scan); the displayed value is the
-// interquartile mean of the last WIFI_RSSI_SAMPLE_COUNT scans.
+// Keep a separate Wi-Fi RSSI history for each of the three APs.
 #ifndef WIFI_RSSI_SAMPLE_COUNT
 #define WIFI_RSSI_SAMPLE_COUNT 5
 #endif
-
 #define RSSI_FILTER_MAX_SAMPLES 16
 #if BLE_RSSI_SAMPLE_COUNT > RSSI_FILTER_MAX_SAMPLES || \
-    WIFI_RSSI_SAMPLE_COUNT > RSSI_FILTER_MAX_SAMPLES
-#error "RSSI sample counts must not exceed RSSI_FILTER_MAX_SAMPLES"
+    WIFI_RSSI_SAMPLE_COUNT > RSSI_FILTER_MAX_SAMPLES || \
+    BLE_RSSI_SAMPLE_COUNT < 1 || WIFI_RSSI_SAMPLE_COUNT < 1
+#error "RSSI sample counts must be between 1 and RSSI_FILTER_MAX_SAMPLES"
 #endif
+
 #define PRINT_INTERVAL_MS 500
 #define RSSI_TIMEOUT_MS 5000
 #define BUTTON_DEBOUNCE_MS 40
@@ -201,13 +204,10 @@ static bool ssid_matches(const cyw43_ev_scan_result_t *result,
            memcmp(result->ssid, target, length) == 0;
 }
 
-// Interquartile mean: sort, drop the lowest and highest quarter, average the
-// rest. Rejects single deep fades/spikes better than a plain mean while
-// keeping more resolution than a median.
+// Sort, discard the lowest and highest quarter, then average the rest.
 static int rssi_robust_average(const int *samples, int count)
 {
     int sorted[RSSI_FILTER_MAX_SAMPLES];
-    if (count > RSSI_FILTER_MAX_SAMPLES) count = RSSI_FILTER_MAX_SAMPLES;
     for (int i = 0; i < count; ++i) {
         int value = samples[i];
         int j = i;
@@ -221,7 +221,6 @@ static int rssi_robust_average(const int *samples, int count)
     int sum = 0;
     for (int i = trim; i < count - trim; ++i) sum += sorted[i];
     int kept = count - 2 * trim;
-    // Round to nearest for negative values.
     return (sum - kept / 2) / kept;
 }
 
@@ -237,9 +236,7 @@ static int wifi_scan_result(void *env, const cyw43_ev_scan_result_t *result)
     for (int i = 0; i < AP_COUNT; ++i) {
         if (ssid_matches(result, AP_SSIDS[i])) {
             // A valid received Wi-Fi RSSI is negative. Ignore occasional
-            // zero-valued scan results. The same AP is often reported several
-            // times per scan (including weaker adjacent-channel copies), so
-            // keep only the strongest report from this scan.
+            // zero-valued reports and keep the strongest report per scan.
             if (result->rssi < 0 && result->rssi > ap_scan_best[i]) {
                 ap_scan_best[i] = result->rssi;
             }
@@ -253,13 +250,17 @@ static void wifi_scan_complete(uint32_t now_ms)
 {
     for (int i = 0; i < AP_COUNT; ++i) {
         if (ap_scan_best[i] <= -127) continue;
+        // A beacon returning after a long absence starts a fresh history.
+        if ((uint32_t)(now_ms - ap_last_seen_ms[i]) >= RSSI_TIMEOUT_MS) {
+            ap_rssi_history_count[i] = 0;
+            ap_rssi_history_index[i] = 0;
+        }
         ap_raw_rssi[i] = ap_scan_best[i];
         ap_rssi_history[i][ap_rssi_history_index[i]] = ap_scan_best[i];
         ap_rssi_history_index[i] =
             (uint8_t)((ap_rssi_history_index[i] + 1) % WIFI_RSSI_SAMPLE_COUNT);
-        if (ap_rssi_history_count[i] < WIFI_RSSI_SAMPLE_COUNT) {
+        if (ap_rssi_history_count[i] < WIFI_RSSI_SAMPLE_COUNT)
             ap_rssi_history_count[i]++;
-        }
         ap_rssi[i] = rssi_robust_average(ap_rssi_history[i],
                                          ap_rssi_history_count[i]);
         ap_last_seen_ms[i] = now_ms;
@@ -971,8 +972,7 @@ static void handle_advertisement(uint8_t *packet)
         return;
     }
 
-    // Each advertisement arrives on one of three BLE channels whose RSSI can
-    // differ by several dB, so trim outliers instead of taking a plain mean.
+    // BLE advertising channels can differ in RSSI; discard outliers.
     int average = rssi_robust_average(ble_rssi_samples, BLE_RSSI_SAMPLE_COUNT);
     ble_average_rssi = average;
     ble_average_available = true;
@@ -1108,6 +1108,16 @@ int main(void)
     printf("BLE filter: %d samples, %d qualifying averages\n\n",
            BLE_RSSI_SAMPLE_COUNT, BLE_CLOSE_REQUIRED_AVERAGES);
 
+    mpu9250_t imu;
+    bool imu_ready = mpu9250_init(&imu, i2c1, IMU_SDA_PIN, IMU_SCL_PIN, 400000);
+    if (imu_ready) {
+        printf("IMU | MPU-9250/6500 on I2C1 SDA GP%d SCL GP%d | WHO_AM_I=0x%02x\n",
+               IMU_SDA_PIN, IMU_SCL_PIN, imu.who_am_i);
+    } else {
+        printf("IMU | MPU-9250/6500 on I2C1 SDA GP%d SCL GP%d | NOT FOUND; check 3V3, GND, SDA and SCL\n",
+               IMU_SDA_PIN, IMU_SCL_PIN);
+    }
+
     if (cyw43_arch_init()) {
         printf("ERROR: failed to initialise Wi-Fi/Bluetooth\n");
         return 1;
@@ -1125,12 +1135,30 @@ int main(void)
     bool wifi_scan_in_progress = false;
     uint32_t next_wifi_scan_ms = 0;
     uint32_t next_print_ms = 0;
+    uint32_t next_imu_print_ms = 0;
     bool last_button = true;
     uint32_t button_changed_ms = 0;
     bool stable_button = true;
 
     while (true) {
         uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
+
+        if (imu_ready && (int32_t)(now_ms - next_imu_print_ms) >= 0) {
+            float gyro_dps[3];
+            if (mpu9250_read_gyro_dps(&imu, gyro_dps)) {
+                int gx = (int)(gyro_dps[0] * 100.0f);
+                int gy = (int)(gyro_dps[1] * 100.0f);
+                int gz = (int)(gyro_dps[2] * 100.0f);
+                printf("IMU GYRO | X: %s%d.%02d dps | Y: %s%d.%02d dps | Z: %s%d.%02d dps\n",
+                       gx < 0 ? "-" : "", abs(gx) / 100, abs(gx) % 100,
+                       gy < 0 ? "-" : "", abs(gy) / 100, abs(gy) % 100,
+                       gz < 0 ? "-" : "", abs(gz) / 100, abs(gz) % 100);
+            } else {
+                printf("IMU GYRO | read failed\n");
+            }
+            next_imu_print_ms = now_ms + 100;
+        }
+
         if (!wifi_scans_paused && !wifi_scan_in_progress &&
             (int32_t)(now_ms - next_wifi_scan_ms) >= 0) {
             cyw43_wifi_scan_options_t options = {0};

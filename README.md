@@ -1,6 +1,21 @@
 # Pico W Three-Beacon Wi-Fi + BLE Test
 
-This branch implements a four-board prototype:
+The `getting-there` branch adds the robot approach programme in
+[`getting_there`](getting_there/README.md). It repeatedly moves towards AP1,
+waits for the -50 dBm BLE close-range check, receives and verifies the beacon
+payload, then plays a one-second tone on the Robo Pico's GP22 buzzer.
+Flash `getting_there/build/getting_there.uf2` onto the robot for this programme.
+
+The `first-beacon` branch adds a one-beacon movement proof of concept in
+[`wheel_rssi_test`](wheel_rssi_test/README.md). It probes four directions for
+2400 ms each and then drives for 2400 ms towards the strongest valid AP1 RSSI,
+without requiring a gain over the starting value or a margin over other
+directions. Use `wheel_rssi_test/build/wheel_rssi_test.uf2` for this test.
+The movement firmware checks a gyro range of +/-1000 degrees per second, uses
+slower turns and corrects heading during both forwards and backwards travel.
+These motion settings still need a test on the assembled robot.
+
+The remaining sections describe the existing four-board prototype:
 
 - AP1: Wi-Fi SSID `I AM PICO W`, BLE name `PICO-BEACON-1`
 - AP2: Wi-Fi SSID `I AM PICO W 2`, BLE name `PICO-BEACON-2`
@@ -20,7 +35,7 @@ resumes for the next target and the robot waits for another GP20 press.
 2. The robot displays live Wi-Fi RSSI for AP1, AP2 and AP3. Wi-Fi RSSI is for
    guidance only and does not authorize a transfer.
 3. When ready for AP1, press the Maker Pi Pico button on **GP20**.
-4. The robot pauses Wi-Fi scans and averages AP1's BLE RSSI advertisements.
+4. The robot pauses Wi-Fi scans and filters AP1's BLE RSSI advertisements.
 5. When the configured average threshold is met repeatedly, the buzzer becomes
    a constant tone, the boards connect, handshake and exchange test payloads.
 6. Both boards verify the received payload with CRC-32, print completion, and
@@ -48,15 +63,18 @@ The settings are near the top of
 ```
 
 The current `-50 dBm` value is an arbitrary starting point. It does **not** mean
-15 cm on every Pico W. The robot keeps the last twelve target advertisements
-and uses their interquartile mean (sort, drop the weakest and strongest
-quarter, average the rest), then requires three consecutive qualifying
-averages. A single strong or faded packet therefore cannot start a transfer.
+15 cm on every Pico W. The robot keeps 12 target BLE advertisements, drops the
+lowest and highest quarter, then averages the rest. It requires three
+consecutive qualifying filtered values. A single strong packet therefore
+cannot start a transfer.
 
-Wi-Fi RSSI is filtered the same way: each full scan contributes one reading per
-AP (the strongest report of that scan), and the displayed value is the
-interquartile mean of the last five scans. The status line also shows the
-latest unfiltered value, e.g. `AP1: -52 dBm (raw -58, n=5)`.
+The robot applies the same filter separately to AP1, AP2 and AP3 Wi-Fi RSSI.
+Each completed scan contributes the strongest valid report for each AP. The
+display shows the filtered value, latest raw value and number of collected
+scans. Five scans fill each AP's history; after five seconds without a valid
+reading, that AP's history is cleared when it returns. The AP firmware does
+not measure its own transmitted RSSI, so no smoothing change is needed on
+the three transmitting boards.
 
 RSSI cannot provide an exact distance because antenna orientation, the robot
 body, people, reflections, power supply noise and the room change the result.
@@ -130,7 +148,7 @@ Use a USB serial monitor on the robot and, when debugging, on the beacon being
 tested. Important robot messages include:
 
 ```text
-Wi-Fi RSSI | AP1: -51 dBm | AP2: -63 dBm | AP3: -70 dBm
+Wi-Fi RSSI | AP1: -51 dBm (raw -49, n=5) | AP2: -63 dBm (raw -61, n=5) | AP3: -70 dBm (raw -72, n=5)
 BLE status | Wi-Fi round for AP1 | Press GP20 to switch to BLE
 GP20 accepted: switching from Wi-Fi RSSI to BLE for AP1.
 BLE status | Target: AP1 | State: SCANNING FOR TARGET
@@ -151,7 +169,7 @@ ROBOT NOTIFICATION: all LEDs ON and permanent buzzer ON until power-off.
 ```
 
 After GP20, the robot prints a separate `BLE RSSI` row for the current target.
-Before the twelve-reading average is ready, it prints the latest reading and
+Before the 12-reading average is ready, it prints the latest reading and
 `collecting sample n/12`. While scanning, the row is marked `LIVE`; after the
 scanner stops to connect, it is marked `LAST BEFORE CONNECTION`. During
 transfer, the periodic BLE status uses readable stages such as `CLOSE ENOUGH -
@@ -212,6 +230,10 @@ picow_access_point/     AP1 build target
 picow_access_point2/    AP2 build target
 picow_access_point3/    AP3 build target
 ```
+
+Hardware bring-up for the navigation work is documented in
+[`MPU9250_CONNECTION.md`](MPU9250_CONNECTION.md). The first firmware step
+probes an MPU-9250/MPU-6500 over I2C1 on GP6/GP7 and reports WHO_AM_I at boot.
 
 Each AP CMake file compiles the shared server with a different beacon ID and
 Wi-Fi SSID.
