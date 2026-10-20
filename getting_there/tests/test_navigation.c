@@ -24,6 +24,7 @@ static char log_text[32768];
 static size_t log_length;
 static bool ui_test, ui_armed, ui_finished, ui_radio, ui_log_failure;
 static unsigned ui_stage, ui_replays, ui_begins;
+static unsigned ui_calibrations;
 static jmp_buf ui_exit;
 int cyw43_state;
 
@@ -78,7 +79,12 @@ void pwm_set_gpio_level(uint pin, uint16_t level)
     if (level) ++tone_starts; else ++tone_stops;
 }
 bool motion_init(void) { return true; }
-bool motion_calibrate(void) { sleep_ms(2000); return !stopped; }
+bool motion_calibrate(void)
+{
+    if (ui_test) { assert(ui_armed && !ui_radio); ++ui_calibrations; }
+    sleep_ms(2000);
+    return !stopped;
+}
 bool motion_learn_direction(void) { ++sign_checks; return !stopped; }
 bool motion_turn_to_heading(float heading)
 { assert(!motors_on); current_heading = heading; return !stopped && !fail_turn; }
@@ -128,7 +134,7 @@ payload_result_t payload_client_attempt(void)
 }
 int cyw43_arch_init(void)
 {
-    if (ui_test) assert(ui_armed && ui_begins == 1);
+    if (ui_test) assert(ui_armed && ui_begins == 1 && ui_calibrations == 1);
     ui_radio = true;
     return 0;
 }
@@ -163,6 +169,7 @@ static void reset(void)
 {
     ui_test = ui_armed = ui_finished = ui_radio = ui_log_failure = false;
     ui_stage = ui_replays = ui_begins = 0;
+    ui_calibrations = 0;
     sim_time = 0;
     stopped = motors_on = wifi_missing = fail_drive = fail_turn = stop_during_pause = false;
     complete_first = stop_on_confirmation = expire_on_confirmation = fail_scan = model = false;

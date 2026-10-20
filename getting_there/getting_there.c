@@ -238,7 +238,6 @@ static bool approach_beacon(void)
 {
     run_started_ms = now_ms();
     target.locked = false;
-    if (!motion_calibrate()) return false;
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -392,6 +391,14 @@ int main(void)
     while (motion_start_pressed() && !motion_stop_requested()) sleep_ms(10);
     ready = ready && !motion_stop_requested();
     report_printf("GP20 released. Persistent log %s.\n", recording ? "ready" : "FAILED");
+    // Calibrate immediately after the new run is safely logged. Radio startup
+    // can take several seconds; it should not make the requested calibration
+    // appear as if GP20 did nothing.
+    if (ready) {
+        report_printf("Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.\n");
+        ready = motion_calibrate();
+        if (!ready) report_printf("FAILED: gyro calibration; check IMU wiring and keep the robot still\n");
+    }
     bool radio_initialised = false;
     if (ready) {
         report_printf("Starting Wi-Fi/Bluetooth hardware.\n");
