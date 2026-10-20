@@ -16,6 +16,7 @@ set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
 add_subdirectory(pico_rssi_tracker)
+add_subdirectory(getting_there)
 add_subdirectory(picow_access_point)
 add_subdirectory(picow_access_point2)
 add_subdirectory(picow_access_point3)

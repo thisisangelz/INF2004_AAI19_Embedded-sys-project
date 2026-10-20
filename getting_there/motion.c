@@ -52,8 +52,9 @@ static float gyro_heading_degrees;
 // FAULT_STOP_LATCHED bit, because GP21 can be polled from any context.
 enum { TURN_SIGN_UNKNOWN, TURN_SIGN_POSITIVE, TURN_SIGN_NEGATIVE, TURN_SIGN_MAX = TURN_SIGN_NEGATIVE };
 _Static_assert(2 == BITS_NEEDED(TURN_SIGN_MAX), "turn sign field is not minimal");
-static struct {
+static volatile struct {
     uint8_t turn_sign : 2;
+    uint8_t stop_armed : 1;
 } motion_state;
 
 static float turn_sign(void)
@@ -73,7 +74,7 @@ static uint32_t now_ms(void)
 
 static bool stop_pressed(void)
 {
-    if (!gpio_get(STOP_BUTTON)) fault_raise(FAULT_STOP_LATCHED);
+    if (motion_state.stop_armed && !gpio_get(STOP_BUTTON)) fault_raise(FAULT_STOP_LATCHED);
     return fault_test(FAULT_STOP_LATCHED);
 }
 
@@ -89,7 +90,7 @@ static void motor_write(uint pin_a, uint pin_b, int speed, bool forward_uses_a)
 
 static void motors_set(int left, int right)
 {
-    if (stop_pressed()) left = right = 0;
+    if (!motion_state.stop_armed || stop_pressed()) left = right = 0;
     motor_write(M1_A, M1_B, left, M1_FORWARD_USES_A);
     motor_write(M2_A, M2_B, right, M2_FORWARD_USES_A);
 }
@@ -105,10 +106,17 @@ static void motors_init(void)
     const uint pins[] = {M1_A, M1_B, M2_A, M2_B};
     for (uint i = 0; i < 4; ++i) {
         gpio_set_function(pins[i], GPIO_FUNC_PWM);
-        uint slice = pwm_gpio_to_slice_num(pins[i]);
+        pwm_set_gpio_level(pins[i], 0);
+    }
+    // Each motor's two pins share one slice. Configure each slice once,
+    // deriving it from a constant pin (also avoids SDK/GCC range warnings).
+    _Static_assert(M1_A / 2 == M1_B / 2 && M2_A / 2 == M2_B / 2,
+                   "motor pins must share their PWM slice");
+    const uint slices[] = {pwm_gpio_to_slice_num(M1_A), pwm_gpio_to_slice_num(M2_A)};
+    for (uint i = 0; i < 2; ++i) {
+        uint slice = slices[i];
         pwm_set_wrap(slice, 9999);
         pwm_set_clkdiv(slice, 1.25f); // 10 kHz at the normal 125 MHz clock
-        pwm_set_gpio_level(pins[i], 0);
         pwm_set_enabled(slice, true);
     }
     motors_stop();
@@ -296,8 +304,6 @@ static bool turn_degrees(float degrees)
                 }
                 if (sign_samples >= 3) {
                     set_turn_sign(direction * sign_candidate);
-                    report_printf("Gyro direction learnt: positive motor turn gives gyro Z sign %+d\n",
-                                  (int)turn_sign());
                 }
             }
             progress = turn_sign() *
@@ -399,8 +405,9 @@ bool motion_init(void)
         report_printf("FAILED: IMU initialisation or gyro range configuration\n");
         return false;
     }
-    report_printf("IMU WHO_AM_I=0x%02x | gyro +/- %d dps | turns %d%%, approach %d%%\n",
-                  imu.who_am_i, GYRO_RANGE_DPS, TURN_DUTY_PERCENT, TURN_SLOW_DUTY_PERCENT);
+    report_printf("IMU WHO_AM_I=0x%02x | gyro +/- %d dps | turns %d%% (slow %d%%), drive %d%%\n",
+                  imu.who_am_i, GYRO_RANGE_DPS, TURN_DUTY_PERCENT, TURN_SLOW_DUTY_PERCENT,
+                  DRIVE_DUTY_PERCENT);
     return true;
 }
 
@@ -414,7 +421,12 @@ bool motion_calibrate(void)
 bool motion_learn_direction(void)
 {
     report_printf("Learning gyro direction: 15 degree turn, then return to original heading\n");
-    return turn_degrees(GYRO_DIRECTION_CHECK_DEGREES) && turn_to_heading(0.0f);
+    bool ok = turn_degrees(GYRO_DIRECTION_CHECK_DEGREES) && turn_to_heading(0.0f);
+    // USB output can block: report only after the motors are stopped.
+    motors_stop();
+    if (ok) report_printf("Gyro direction learnt: positive motor turn gives gyro Z sign %+d\n",
+                          (int)turn_sign());
+    return ok;
 }
 
 bool motion_drive(bool forwards, uint32_t duration_ms, float heading_degrees)
@@ -436,4 +448,12 @@ float motion_heading(void)
 bool motion_pause_ms(uint32_t duration_ms) { return pause_checked(duration_ms); }
 bool motion_stop_requested(void) { return stop_pressed(); }
 bool motion_start_pressed(void) { return !gpio_get(START_BUTTON); }
+bool motion_replay_pressed(void) { return !gpio_get(STOP_BUTTON); }
+void motion_arm_stop(void)
+{
+    uint32_t irq = save_and_disable_interrupts();
+    motion_state.stop_armed = true;
+    restore_interrupts(irq);
+    (void)stop_pressed();
+}
 void motion_stop(void) { motors_stop(); }

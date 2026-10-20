@@ -11,5 +11,7 @@ float motion_heading(void);
 bool motion_pause_ms(uint32_t duration_ms);
 bool motion_stop_requested(void);
 bool motion_start_pressed(void);
+bool motion_replay_pressed(void);
+void motion_arm_stop(void);
 void motion_stop(void);
 #endif

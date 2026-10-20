@@ -1,0 +1,53 @@
+#include "report_store.h"
+#include "motion.h"
+#include <string.h>
+#include "hardware/flash.h"
+#include "hardware/regs/addressmap.h"
+#include "pico/flash.h"
+#include "pico/stdlib.h"
+
+_Static_assert(PICO_FLASH_SIZE_BYTES == REPORT_FLASH_OFFSET, "linker/log reservation mismatch");
+_Static_assert(REPORT_PAGE_BYTES == FLASH_PAGE_SIZE, "journal/flash page mismatch");
+_Static_assert(REPORT_FLASH_OFFSET + REPORT_FLASH_BYTES == 2u * 1024u * 1024u,
+               "journal must end at physical Pico W flash limit");
+
+typedef struct {
+    uint32_t offset;
+    const uint8_t *page;
+} flash_operation_t;
+
+void report_flash_read(uint32_t offset, void *data, size_t length)
+{
+    memcpy(data, (const void *)(XIP_BASE + REPORT_FLASH_OFFSET + offset), length);
+}
+
+static void erase_sector(void *arg)
+{
+    flash_operation_t *op = arg;
+    flash_range_erase(REPORT_FLASH_OFFSET + op->offset, FLASH_SECTOR_SIZE);
+}
+
+bool report_flash_erase(void)
+{
+    // Before radio initialisation and movement. Yield between sectors for USB.
+    for (uint32_t offset = 0; offset < REPORT_FLASH_BYTES; offset += FLASH_SECTOR_SIZE) {
+        flash_operation_t op = {.offset = offset};
+        if (flash_safe_execute(erase_sector, &op, 1000) != PICO_OK) return false;
+        // Motors are OFF, but remember a STOP pressed during log preparation.
+        (void)motion_stop_requested();
+        sleep_ms(1);
+    }
+    return true;
+}
+
+static void program_page(void *arg)
+{
+    flash_operation_t *op = arg;
+    flash_range_program(REPORT_FLASH_OFFSET + op->offset, op->page, FLASH_PAGE_SIZE);
+}
+
+bool report_flash_program(uint32_t offset, const void *page)
+{
+    flash_operation_t op = {.offset = offset, .page = page};
+    return flash_safe_execute(program_page, &op, 1000) == PICO_OK;
+}

@@ -9,20 +9,24 @@
 #define MPU9250_GYRO_CONFIG 0x1B
 #define MPU9250_GYRO_RANGE_MASK 0x18
 #define MPU9250_GYRO_XOUT_H 0x43
+#define IMU_I2C_TIMEOUT_US 5000
 
 static bool write_reg(const mpu9250_t *imu, uint8_t reg, uint8_t value)
 {
     uint8_t data[2] = {reg, value};
-    return i2c_write_blocking(imu->i2c, imu->address, data, 2, false) == 2;
+    return i2c_write_timeout_us(imu->i2c, imu->address, data, 2, false,
+                              IMU_I2C_TIMEOUT_US) == 2;
 }
 
 static bool read_regs(const mpu9250_t *imu, uint8_t reg, uint8_t *data,
                      size_t length)
 {
-    if (i2c_write_blocking(imu->i2c, imu->address, &reg, 1, true) != 1) {
+    if (i2c_write_timeout_us(imu->i2c, imu->address, &reg, 1, true,
+                             IMU_I2C_TIMEOUT_US) != 1) {
         return false;
     }
-    return i2c_read_blocking(imu->i2c, imu->address, data, length, false) ==
+    return i2c_read_timeout_us(imu->i2c, imu->address, data, length, false,
+                              IMU_I2C_TIMEOUT_US) ==
            (int)length;
 }
 

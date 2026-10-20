@@ -102,17 +102,27 @@ static void reset(void)
 }
 static void notification(const uint8_t *value, uint16_t length)
 {
-    uint8_t packet[28] = {GATT_EVENT_NOTIFICATION, (uint8_t)(length + 6)};
+#ifdef TEST_EXTENDED_GATT_EVENTS
+    const unsigned extra = 4;
+#else
+    const unsigned extra = 0;
+#endif
+    uint8_t packet[32] = {GATT_EVENT_NOTIFICATION, (uint8_t)(length + 6 + extra)};
     transfer_write_u16(packet + 2, connection_handle);
-    transfer_write_u16(packet + 4, characteristic.value_handle);
-    transfer_write_u16(packet + 6, length);
-    memcpy(packet + 8, value, length);
-    gatt_handler(HCI_EVENT_PACKET, 0, packet, 8 + length);
+    transfer_write_u16(packet + 4 + extra, characteristic.value_handle);
+    transfer_write_u16(packet + 6 + extra, length);
+    memcpy(packet + 8 + extra, value, length);
+    gatt_handler(HCI_EVENT_PACKET, 0, packet, 8 + extra + length);
 }
 static void query_complete(uint8_t status)
 {
+#ifdef TEST_EXTENDED_GATT_EVENTS
+    uint8_t packet[] = {GATT_EVENT_QUERY_COMPLETE, 7, (uint8_t)connection_handle,
+                        (uint8_t)(connection_handle >> 8), 0, 0, 0, 0, status};
+#else
     uint8_t packet[] = {GATT_EVENT_QUERY_COMPLETE, 3, (uint8_t)connection_handle,
                         (uint8_t)(connection_handle >> 8), status};
+#endif
     gatt_handler(HCI_EVENT_PACKET, 0, packet, sizeof(packet));
 }
 static void advertisement(int rssi, uint8_t id)

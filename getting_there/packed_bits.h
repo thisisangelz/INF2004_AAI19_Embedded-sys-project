@@ -71,7 +71,10 @@ static inline void bitarray_put(uint8_t *buffer, unsigned index, unsigned width,
 #define RSSI_MISSING_CODE 127u
 _Static_assert(RSSI_BITS == BITS_NEEDED(RSSI_MISSING_CODE), "RSSI field is not minimal");
 
-static inline uint32_t rssi_encode(int dbm) { return (uint32_t)(-dbm); }
+static inline uint32_t rssi_encode(int dbm)
+{
+    return dbm < 0 && dbm > -127 ? (uint32_t)(-dbm) : RSSI_MISSING_CODE;
+}
 static inline int rssi_decode(uint32_t code) { return -(int)code; }
 
 #endif

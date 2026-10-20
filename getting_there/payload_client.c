@@ -140,6 +140,12 @@ static void close_attempt(payload_result_t result)
     counters.pending_length = 0;
     if (current_state() == BLE_SCANNING || current_state() == BLE_STOPPING_FOR_CONNECT) {
         bool already_stopping = current_state() == BLE_STOPPING_FOR_CONNECT;
+        if (!already_stopping)
+            report_printf("BLE CHECK ENDED: %u/12 valid AP1 readings, close averages %u/3; %s\n",
+                          (unsigned)counters.sample_count, (unsigned)counters.close_count,
+                          counters.sample_count == 0 ? "no matching advertisements received" :
+                          counters.sample_count < RSSI_SAMPLE_COUNT ? "too few readings" :
+                          "proximity threshold not confirmed");
         set_state(BLE_STOPPING_SCAN);
         if (!already_stopping) gap_stop_scan();
         if (!flag(F_SCAN_CONFIRMED)) {
