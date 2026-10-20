@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 add_executable(getting_there
-    getting_there.c motion.c payload_client.c run_report.c
+    getting_there.c motion.c payload_client.c run_report.c faults.c
     ../pico_rssi_tracker/imu_mpu9250.c
 )
 target_include_directories(getting_there PRIVATE

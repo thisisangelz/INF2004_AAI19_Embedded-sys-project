@@ -140,3 +140,36 @@ tone and stopping it.
 ```powershell
 python getting_there/tests/run_host_checks.py --cc C:/msys64/ucrt64/bin/gcc.exe --sdk 'C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk'
 ```
+
+## Minimum-bit data representation
+
+Application data is stored in the fewest bits its valid range needs. Each width
+is checked at compile time with `_Static_assert(... == BITS_NEEDED(max))`, so a
+field can be neither too narrow nor wider than necessary.
+
+| Data | Range | Bits | Where |
+|---|---|---:|---|
+| BLE state machine | 23 states | 5 | `payload_client.c` status word |
+| Attempt / closing result | 4 values | 2 + 2 | `payload_client.c` status word |
+| BLE flags (ready, running, abort, close, scan, verified, listening, service, characteristic) | on/off | 1 each | `payload_client.c` status word |
+| Fault conditions (IMU, gyro saturated, heading, turn, Wi-Fi lost, Wi-Fi scan, BLE radio, payload, stop latched, run limit, no direction, step limit) | on/off | 1 each in a `uint16_t` | `faults.c` |
+| RSSI sample, probe score, Wi-Fi result | -1..-127 dBm | 7 | `packed_bits.h` (`rssi_encode`) |
+| 12 BLE RSSI samples / 4 probe scores | | 84 / 28 | `bitarray_*` |
+| Sample count / sample index / close count | 0..12 / 0..11 / 0..3 | 4 / 4 / 2 | `payload_client.c` `counters` |
+| Pending length / file offsets / reply length | 0..20 / 0..256 | 5 / 9 | `payload_client.c` `counters` |
+| Approach step / steps since pass | 0..40 / 0..4 | 6 / 3 | `getting_there.c` |
+| Gyro turn sign | unknown, +1, -1 | 2 | `motion.c` |
+
+Fault bits are raised with `fault_raise()` and the run report ends with
+`FAULT MASK: 0x...` plus the name of each raised fault.
+
+Shared data is updated with interrupts masked around the whole read-modify-write
+(`packed_put`, `packed_set_bits`, `packed_clear_bits`, `fault_raise`,
+`fault_clear`), because BTstack callbacks and the Wi-Fi scan callback run in the
+async-context IRQ while the main loop reads the same words. The RP2040 (Cortex-M0+)
+has no exclusive-access instructions, so C11 atomics are not used. Only core 0
+touches this data; use a spin lock instead if core 1 ever does.
+
+The wire protocol (`ble_transfer/transfer_protocol.h`) is already binary and is
+unchanged. Its 8-bit message type, sequence number and 16/32-bit length and CRC
+fields are fixed by the beacon firmware.
