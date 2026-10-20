@@ -1,4 +1,6 @@
 #include "motion.h"
+#include "faults.h"
+#include "packed_bits.h"
 #include "run_report.h"
 #include "hardware/pwm.h"
 #include "imu_mpu9250.h"
@@ -42,12 +44,28 @@
 #define TURN_START_TIMEOUT_MS 1000
 #define MAX_STRAIGHT_YAW_DEGREES 25.0f
 
-static bool stopped;
 static mpu9250_t imu;
 // Sensor coordinates are kept across movement and motor-off settling.
 static float gyro_heading_degrees;
 // Gyro sign for motors_set(-duty, +duty), learnt before the first probe.
-static float positive_turn_gyro_sign;
+// Three states (unknown, +1, -1) fit in two bits. The stop latch is the
+// FAULT_STOP_LATCHED bit, because GP21 can be polled from any context.
+enum { TURN_SIGN_UNKNOWN, TURN_SIGN_POSITIVE, TURN_SIGN_NEGATIVE, TURN_SIGN_MAX = TURN_SIGN_NEGATIVE };
+_Static_assert(2 == BITS_NEEDED(TURN_SIGN_MAX), "turn sign field is not minimal");
+static struct {
+    uint8_t turn_sign : 2;
+} motion_state;
+
+static float turn_sign(void)
+{
+    return motion_state.turn_sign == TURN_SIGN_POSITIVE ? 1.0f :
+           motion_state.turn_sign == TURN_SIGN_NEGATIVE ? -1.0f : 0.0f;
+}
+static void set_turn_sign(float sign)
+{
+    motion_state.turn_sign = sign > 0.0f ? TURN_SIGN_POSITIVE :
+                             sign < 0.0f ? TURN_SIGN_NEGATIVE : TURN_SIGN_UNKNOWN;
+}
 static uint32_t now_ms(void)
 {
     return (uint32_t)(time_us_64() / 1000);
@@ -55,8 +73,8 @@ static uint32_t now_ms(void)
 
 static bool stop_pressed(void)
 {
-    if (!gpio_get(STOP_BUTTON)) stopped = true;
-    return stopped;
+    if (!gpio_get(STOP_BUTTON)) fault_raise(FAULT_STOP_LATCHED);
+    return fault_test(FAULT_STOP_LATCHED);
 }
 
 static void motor_write(uint pin_a, uint pin_b, int speed, bool forward_uses_a)
@@ -140,12 +158,14 @@ static bool read_motion_gyro(float gyro[3], uint64_t *previous_us,
     }
     if (!mpu9250_read_gyro_dps(&imu, gyro)) {
         motors_stop();
+        fault_raise(FAULT_IMU);
         report_printf("%s FAILED: IMU read error\n", motion);
         return false;
     }
     if (gyro[2] >= GYRO_SATURATION_DPS ||
         gyro[2] <= -GYRO_SATURATION_DPS) {
         motors_stop();
+        fault_raise(FAULT_GYRO_SATURATED);
         report_printf("%s FAILED: gyro Z near %d dps range limit; angle cannot be trusted\n",
                       motion, GYRO_RANGE_DPS);
         return false;
@@ -172,7 +192,7 @@ static bool settle_motion(const char *motion, uint64_t *previous_us)
 
 static bool drive_for(int speed, uint32_t duration_ms, float heading_degrees)
 {
-    if (positive_turn_gyro_sign == 0.0f) {
+    if (turn_sign() == 0.0f) {
         motors_stop();
         report_printf("DRIVE FAILED: gyro direction has not been learnt\n");
         return false;
@@ -182,7 +202,7 @@ static bool drive_for(int speed, uint32_t duration_ms, float heading_degrees)
                   direction, speed < 0 ? -speed : speed,
                   (unsigned long)duration_ms, (int)heading_degrees);
     float start_heading = gyro_heading_degrees;
-    float target_heading = heading_degrees * positive_turn_gyro_sign;
+    float target_heading = heading_degrees * turn_sign();
     int peak_adjustment = 0;
     uint32_t start = now_ms();
     uint64_t previous_us = time_us_64();
@@ -194,12 +214,13 @@ static bool drive_for(int speed, uint32_t duration_ms, float heading_degrees)
         if (yaw_error > MAX_STRAIGHT_YAW_DEGREES ||
             yaw_error < -MAX_STRAIGHT_YAW_DEGREES) {
             motors_stop();
+            fault_raise(FAULT_HEADING);
             report_printf("DRIVE FAILED: heading error %+d degrees; check M1/M2 direction\n",
-                          (int)(positive_turn_gyro_sign * yaw_error));
+                          (int)(turn_sign() * yaw_error));
             return false;
         }
         int adjustment = steering_adjustment(speed, yaw_error, gyro[2],
-                                             positive_turn_gyro_sign);
+                                             turn_sign());
         int magnitude = adjustment < 0 ? -adjustment : adjustment;
         if (magnitude > peak_adjustment) peak_adjustment = magnitude;
         // A signed wheel differential counters the same yaw in either travel direction.
@@ -212,13 +233,14 @@ static bool drive_for(int speed, uint32_t duration_ms, float heading_degrees)
     float yaw_error = normalise_degrees(gyro_heading_degrees - target_heading);
     if (yaw_error > MAX_STRAIGHT_YAW_DEGREES ||
         yaw_error < -MAX_STRAIGHT_YAW_DEGREES) {
+        fault_raise(FAULT_HEADING);
         report_printf("DRIVE FAILED: excessive rotation while settling\n");
         return false;
     }
     report_printf("DRIVE OK: %s, powered %lu ms, settled gyro Z rotation %+d degrees, heading error %+d degrees, peak correction %d duty points\n",
                   direction, (unsigned long)elapsed,
                   (int)(gyro_heading_degrees - start_heading),
-                  (int)(positive_turn_gyro_sign * yaw_error), peak_adjustment);
+                  (int)(turn_sign() * yaw_error), peak_adjustment);
     return true;
 }
 
@@ -233,10 +255,10 @@ static bool turn_degrees(float degrees)
     uint64_t previous_us = time_us_64();
 
     for (int attempt = 0; attempt <= TURN_MAX_CORRECTIONS; ++attempt) {
-        float progress = positive_turn_gyro_sign *
+        float progress = turn_sign() *
                          (gyro_heading_degrees - start_heading);
         float error = degrees - progress;
-        if (positive_turn_gyro_sign != 0.0f &&
+        if (turn_sign() != 0.0f &&
             error <= TURN_TOLERANCE_DEGREES &&
             error >= -TURN_TOLERANCE_DEGREES) {
             return true;
@@ -253,6 +275,7 @@ static bool turn_degrees(float degrees)
         while (true) {
             if ((uint32_t)(now_ms() - start) >= TURN_TIMEOUT_MS) {
                 motors_stop();
+                fault_raise(FAULT_TURN);
                 report_printf("TURN FAILED: 6 s timeout\n");
                 return false;
             }
@@ -260,7 +283,7 @@ static bool turn_degrees(float degrees)
             if (!read_motion_gyro(gyro, &previous_us, "TURN")) return false;
             float rate = gyro[2] < 0.0f ? -gyro[2] : gyro[2];
             if (rate > peak_rate) peak_rate = rate;
-            if (positive_turn_gyro_sign == 0.0f) {
+            if (turn_sign() == 0.0f) {
                 float candidate = gyro[2] > 5.0f ? 1.0f :
                                   gyro[2] < -5.0f ? -1.0f : 0.0f;
                 if (candidate == 0.0f) {
@@ -272,33 +295,35 @@ static bool turn_degrees(float degrees)
                     sign_samples = 1;
                 }
                 if (sign_samples >= 3) {
-                    positive_turn_gyro_sign = direction * sign_candidate;
+                    set_turn_sign(direction * sign_candidate);
                     report_printf("Gyro direction learnt: positive motor turn gives gyro Z sign %+d\n",
-                                  (int)positive_turn_gyro_sign);
+                                  (int)turn_sign());
                 }
             }
-            progress = positive_turn_gyro_sign *
+            progress = turn_sign() *
                        (gyro_heading_degrees - start_heading);
             error = degrees - progress;
             float remaining = direction * error;
-            float projected_rate = direction * positive_turn_gyro_sign * gyro[2];
+            float projected_rate = direction * turn_sign() * gyro[2];
             if (projected_rate < 0.0f) projected_rate = 0.0f;
             float coast_angle = projected_rate * TURN_COAST_SECONDS;
-            if (positive_turn_gyro_sign != 0.0f &&
+            if (turn_sign() != 0.0f &&
                 (remaining <= TURN_TOLERANCE_DEGREES ||
                  (attempt == 0 && remaining <= coast_angle))) {
                 break;
             }
-            float segment_progress = direction * positive_turn_gyro_sign *
+            float segment_progress = direction * turn_sign() *
                                      (gyro_heading_degrees - segment_heading);
             if (segment_progress < -3.0f) {
                 motors_stop();
+                fault_raise(FAULT_HEADING);
                 report_printf("TURN FAILED: rotation opposite to learnt motor direction\n");
                 return false;
             }
             if ((uint32_t)(now_ms() - segment_start) >= TURN_START_TIMEOUT_MS &&
                 segment_progress < 1.0f) {
                 motors_stop();
+                fault_raise(FAULT_TURN);
                 report_printf("TURN FAILED: no sustained Z rotation within 1 s at %d%% duty\n", duty);
                 return false;
             }
@@ -313,7 +338,7 @@ static bool turn_degrees(float degrees)
         }
         motors_stop();
         if (!settle_motion("TURN", &previous_us)) return false;
-        progress = positive_turn_gyro_sign *
+        progress = turn_sign() *
                    (gyro_heading_degrees - start_heading);
         error = degrees - progress;
         if (error <= TURN_TOLERANCE_DEGREES && error >= -TURN_TOLERANCE_DEGREES) {
@@ -326,6 +351,7 @@ static bool turn_degrees(float degrees)
                       attempt < TURN_MAX_CORRECTIONS ? "correcting" : "correction limit reached");
     }
     motors_stop();
+    fault_raise(FAULT_TURN);
     report_printf("TURN FAILED: settled heading outside %d degree tolerance\n",
                   (int)TURN_TOLERANCE_DEGREES);
     return false;
@@ -333,9 +359,9 @@ static bool turn_degrees(float degrees)
 
 static bool turn_to_heading(float heading_degrees)
 {
-    if (positive_turn_gyro_sign == 0.0f) return false;
+    if (turn_sign() == 0.0f) return false;
     float error = normalise_degrees(heading_degrees -
-                                    positive_turn_gyro_sign * gyro_heading_degrees);
+                                    turn_sign() * gyro_heading_degrees);
     return turn_degrees(error);
 }
 
@@ -345,7 +371,10 @@ static bool calibrate_gyro(void)
     float sum = 0.0f;
     for (int i = 0; i < 200; ++i) {
         float gyro[3];
-        if (!mpu9250_read_gyro_dps(&imu, gyro)) return false;
+        if (!mpu9250_read_gyro_dps(&imu, gyro)) {
+            fault_raise(FAULT_IMU);
+            return false;
+        }
         sum += gyro[2];
         if (!pause_checked(10)) return false;
     }
@@ -366,6 +395,7 @@ bool motion_init(void)
     motors_init();
     if (!mpu9250_init(&imu, i2c1, IMU_SDA, IMU_SCL, 400000) ||
         !mpu9250_set_gyro_range(&imu, GYRO_RANGE_DPS)) {
+        fault_raise(FAULT_IMU);
         report_printf("FAILED: IMU initialisation or gyro range configuration\n");
         return false;
     }
@@ -377,7 +407,7 @@ bool motion_init(void)
 bool motion_calibrate(void)
 {
     gyro_heading_degrees = 0.0f;
-    positive_turn_gyro_sign = 0.0f;
+    set_turn_sign(0.0f);
     return calibrate_gyro();
 }
 
@@ -400,7 +430,7 @@ bool motion_turn_to_heading(float heading_degrees)
 
 float motion_heading(void)
 {
-    return positive_turn_gyro_sign * gyro_heading_degrees;
+    return turn_sign() * gyro_heading_degrees;
 }
 
 bool motion_pause_ms(uint32_t duration_ms) { return pause_checked(duration_ms); }

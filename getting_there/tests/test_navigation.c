@@ -170,8 +170,16 @@ int main(void)
     const int tied[] = {-71, -71, -71, -71};
     const int one[] = {-127, -127, -90, -127};
     const int missing[] = {-127, -127, -127, -127};
-    assert(strongest_heading(supplied) == 3 && strongest_heading(tied) == 0);
-    assert(strongest_heading(one) == 2 && strongest_heading(missing) == -1);
+    uint8_t packed[BITARRAY_BYTES(PROBE_COUNT, RSSI_BITS)];
+    const int *cases[] = {supplied, tied, one, missing};
+    const int expected[] = {3, 0, 2, -1};
+    for (int c = 0; c < 4; ++c) {
+        memset(packed, 0, sizeof(packed));
+        for (int i = 0; i < PROBE_COUNT; ++i)
+            bitarray_put(packed, i, RSSI_BITS, rssi_encode(cases[c][i]));
+        assert(strongest_heading(packed) == expected[c]);
+    }
+    assert(sizeof(packed) == 4);
     reset(); run_started_ms = 0; sim_time = (uint64_t)MAX_RUN_MS * 1000;
     assert(!run_can_continue());
     puts("Navigation, stationary retries, limits and one-second completion tone: passed");

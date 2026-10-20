@@ -92,12 +92,12 @@ static void reset(void)
     sim_time = 0; stopped = scan_ack_pending = auto_scan_ack = false;
     stop_scan_calls = connect_calls = cancel_calls = disconnect_calls = write_calls = 0;
     write_status = connect_status = 0;
-    attempt_running = false; abort_requested = false; bluetooth_ready = true;
-    ble_state = BLE_IDLE; phase_started_ms = 0;
-    close_confirmed = scan_confirmed = payload_verified = listening = false;
+    flag_assign(F_ATTEMPT_RUNNING, false); flag_assign(F_ABORT_REQUESTED, false); flag_assign(F_BLUETOOTH_READY, true);
+    set_state(BLE_IDLE); phase_started_ms = 0;
+    flag_assign(F_CLOSE_CONFIRMED, false); flag_assign(F_SCAN_CONFIRMED, false); flag_assign(F_PAYLOAD_VERIFIED, false); flag_assign(F_LISTENING, false);
     connection_handle = HCI_CON_HANDLE_INVALID;
-    sample_count = sample_index = close_count = 0;
-    pending_length = reply_length = reply_offset = 0;
+    counters.sample_count = counters.sample_index = counters.close_count = 0;
+    counters.pending_length = counters.reply_length = counters.reply_offset = 0;
     memset(rssi_samples, 0, sizeof(rssi_samples));
 }
 static void notification(const uint8_t *value, uint16_t length)
@@ -124,7 +124,7 @@ static void advertisement(int rssi, uint8_t id)
 }
 static void start_connected(ble_state_t state)
 {
-    reset(); attempt_running = true; close_confirmed = true;
+    reset(); flag_assign(F_ATTEMPT_RUNNING, true); flag_assign(F_CLOSE_CONFIRMED, true);
     connection_handle = 42; characteristic.value_handle = 7; set_state(state);
 }
 
@@ -137,7 +137,7 @@ static void successful_exchange(bool early_notifications)
     uint8_t peer_sequence = 0;
     start_connected(BLE_ENABLE_NOTIFICATIONS);
     query_complete(0);
-    for (int iterations = 0; attempt_running; ++iterations) {
+    for (int iterations = 0; flag(F_ATTEMPT_RUNNING); ++iterations) {
         assert(iterations < 30);
         uint8_t request[20];
         memcpy(request, write_value, write_length);
@@ -177,18 +177,18 @@ static void successful_exchange(bool early_notifications)
             }
             break;
         case MSG_COMPLETE:
-            assert(!payload_verified);
+            assert(!flag(F_PAYLOAD_VERIFIED));
             response[0] = MSG_COMPLETE_ACK; response[1] = 1; length = 2; break;
         default: assert(false);
         }
         if (early_notifications && length) {
             notification(response, length);
-            assert(pending_length == length && !payload_verified);
+            assert(counters.pending_length == length && !flag(F_PAYLOAD_VERIFIED));
         }
         query_complete(0);
         if (!early_notifications && length) notification(response, length);
     }
-    assert(attempt_result == PAYLOAD_COMPLETE && payload_verified && disconnect_calls == 1);
+    assert(result_get(ST_RESULT_SHIFT) == PAYLOAD_COMPLETE && flag(F_PAYLOAD_VERIFIED) && disconnect_calls == 1);
     uint16_t length;
     const uint8_t *data = payload_client_data(&length);
     assert(length == sizeof(peer_reply) - 1 && memcmp(data, peer_reply, length) == 0);
@@ -196,69 +196,101 @@ static void successful_exchange(bool early_notifications)
 
 int main(void)
 {
-    reset(); attempt_running = true; start_attempt_callback(NULL); scan_ack();
+    reset(); flag_assign(F_ATTEMPT_RUNNING, true); start_attempt_callback(NULL); scan_ack();
     for (int i = 0; i < 20; ++i) advertisement(-70, 1);
-    assert(sample_count == 12 && close_count == 0 && !connect_calls && ble_state == BLE_SCANNING);
+    assert(counters.sample_count == 12 && counters.close_count == 0 && !connect_calls && current_state() == BLE_SCANNING);
     for (int i = 0; i < 13; ++i) advertisement(-50, 1);
-    assert(ble_state == BLE_STOPPING_FOR_CONNECT && !connect_calls);
-    assert(attempt_running && stop_scan_calls == 1);
-    scan_ack(); assert(ble_state == BLE_CONNECTING && connect_calls == 1);
+    assert(current_state() == BLE_STOPPING_FOR_CONNECT && !connect_calls);
+    assert(flag(F_ATTEMPT_RUNNING) && stop_scan_calls == 1);
+    scan_ack(); assert(current_state() == BLE_CONNECTING && connect_calls == 1);
     connection_complete(0x3e, HCI_CON_HANDLE_INVALID);
-    assert(!attempt_running && attempt_result == PAYLOAD_RETRY && !cancel_calls);
+    assert(!flag(F_ATTEMPT_RUNNING) && result_get(ST_RESULT_SHIFT) == PAYLOAD_RETRY && !cancel_calls);
 
-    reset(); attempt_running = true; start_attempt_callback(NULL); scan_ack();
+    reset(); flag_assign(F_ATTEMPT_RUNNING, true); start_attempt_callback(NULL); scan_ack();
     for (int i = 0; i < 20; ++i) advertisement(-40, 2);
-    assert(!sample_count && !connect_calls);
-    advertisement(0, 1); advertisement(-127, 1); assert(!sample_count);
+    assert(!counters.sample_count && !connect_calls);
+    advertisement(0, 1); advertisement(-127, 1); assert(!counters.sample_count);
     close_attempt(PAYLOAD_NOT_CLOSE);
-    assert(attempt_running); scan_ack();
-    assert(!attempt_running && attempt_result == PAYLOAD_NOT_CLOSE);
+    assert(flag(F_ATTEMPT_RUNNING)); scan_ack();
+    assert(!flag(F_ATTEMPT_RUNNING) && result_get(ST_RESULT_SHIFT) == PAYLOAD_NOT_CLOSE);
 
     successful_exchange(false); successful_exchange(true);
 
     start_connected(BLE_WAIT_HELLO_ACK);
     const uint8_t wrong_identity[] = {MSG_HELLO_ACK, 2};
     notification(wrong_identity, sizeof(wrong_identity));
-    assert(!attempt_running && attempt_result == PAYLOAD_RETRY && !payload_verified);
+    assert(!flag(F_ATTEMPT_RUNNING) && result_get(ST_RESULT_SHIFT) == PAYLOAD_RETRY && !flag(F_PAYLOAD_VERIFIED));
 
     start_connected(BLE_WAIT_REPLY_START);
     uint8_t metadata[7] = {MSG_REPLY_START}; transfer_write_u16(metadata + 1, 257);
-    notification(metadata, sizeof(metadata)); assert(!attempt_running && !payload_verified);
+    notification(metadata, sizeof(metadata)); assert(!flag(F_ATTEMPT_RUNNING) && !flag(F_PAYLOAD_VERIFIED));
     start_connected(BLE_WAIT_REPLY_START); transfer_write_u16(metadata + 1, 0);
-    notification(metadata, sizeof(metadata)); assert(!attempt_running && !payload_verified);
+    notification(metadata, sizeof(metadata)); assert(!flag(F_ATTEMPT_RUNNING) && !flag(F_PAYLOAD_VERIFIED));
+    // 513 would wrap to 1 if it were narrowed into the 9-bit field before the range check.
+    start_connected(BLE_WAIT_REPLY_START); transfer_write_u16(metadata + 1, 513);
+    notification(metadata, sizeof(metadata)); assert(!flag(F_ATTEMPT_RUNNING) && !counters.reply_length);
+    assert(fault_test(FAULT_PAYLOAD));
 
-    start_connected(BLE_WAIT_REPLY_PIECE); reply_length = 4; reply_sequence = 0;
+    start_connected(BLE_WAIT_REPLY_PIECE); counters.reply_length = 4; reply_sequence = 0;
     const uint8_t bad_sequence[] = {MSG_REPLY_DATA, 1, 1, 'x'};
-    notification(bad_sequence, sizeof(bad_sequence)); assert(!attempt_running && !payload_verified);
-    start_connected(BLE_WAIT_REPLY_PIECE); reply_length = reply_offset = 1;
+    notification(bad_sequence, sizeof(bad_sequence)); assert(!flag(F_ATTEMPT_RUNNING) && !flag(F_PAYLOAD_VERIFIED));
+    start_connected(BLE_WAIT_REPLY_PIECE); counters.reply_length = counters.reply_offset = 1;
     reply_file[0] = 'x'; reply_crc = transfer_crc32(reply_file, 1);
     const uint8_t bad_crc[] = {MSG_REPLY_END, 0, 0, 0, 0};
-    notification(bad_crc, sizeof(bad_crc)); assert(!attempt_running && !payload_verified);
+    notification(bad_crc, sizeof(bad_crc)); assert(!flag(F_ATTEMPT_RUNNING) && !flag(F_PAYLOAD_VERIFIED));
     start_connected(BLE_WAIT_COMPLETE_ACK);
     const uint8_t bad_ack[] = {MSG_COMPLETE_ACK, 2};
-    notification(bad_ack, sizeof(bad_ack)); assert(!attempt_running && !payload_verified);
+    notification(bad_ack, sizeof(bad_ack)); assert(!flag(F_ATTEMPT_RUNNING) && !flag(F_PAYLOAD_VERIFIED));
 
     start_connected(BLE_WRITE_HELLO);
     const uint8_t early_ack[] = {MSG_HELLO_ACK, 1};
     notification(early_ack, sizeof(early_ack));
     query_complete(ATT_ERROR_UNLIKELY_ERROR);
-    assert(!attempt_running && !payload_verified && pending_length == 0);
+    assert(!flag(F_ATTEMPT_RUNNING) && !flag(F_PAYLOAD_VERIFIED) && counters.pending_length == 0);
 
     start_connected(BLE_ENABLE_NOTIFICATIONS); write_status = ERROR_CODE_COMMAND_DISALLOWED;
-    query_complete(0); assert(!attempt_running && !payload_verified);
+    query_complete(0); assert(!flag(F_ATTEMPT_RUNNING) && !flag(F_PAYLOAD_VERIFIED));
 
     reset(); auto_scan_ack = true;
     assert(payload_client_attempt() == PAYLOAD_NOT_CLOSE);
-    assert(!attempt_running && ble_state == BLE_IDLE && sim_time >= 5000000 && !connect_calls);
+    assert(!flag(F_ATTEMPT_RUNNING) && current_state() == BLE_IDLE && sim_time >= 5000000 && !connect_calls);
     reset(); stopped = true;
-    assert(payload_client_attempt() == PAYLOAD_FATAL && !attempt_running);
-    reset(); bluetooth_ready = false;
-    assert(payload_client_attempt() == PAYLOAD_FATAL && !attempt_running);
+    assert(payload_client_attempt() == PAYLOAD_FATAL && !flag(F_ATTEMPT_RUNNING));
+    reset(); flag_assign(F_BLUETOOTH_READY, false);
+    assert(payload_client_attempt() == PAYLOAD_FATAL && !flag(F_ATTEMPT_RUNNING));
 
     start_connected(BLE_CLOSING); connection_handle = HCI_CON_HANDLE_INVALID;
-    abort_requested = true; closing_result = PAYLOAD_RETRY;
+    flag_assign(F_ABORT_REQUESTED, true); result_put(ST_CLOSING_SHIFT, PAYLOAD_RETRY);
     connection_complete(0, 42);
-    assert(!attempt_running && disconnect_calls == 1 && attempt_result == PAYLOAD_RETRY);
+    assert(!flag(F_ATTEMPT_RUNNING) && disconnect_calls == 1 && result_get(ST_RESULT_SHIFT) == PAYLOAD_RETRY);
+
+    // Packed RSSI buffer: every 7-bit slot round-trips without disturbing its neighbours.
+    memset(rssi_samples, 0, sizeof(rssi_samples));
+    for (int i = 0; i < RSSI_SAMPLE_COUNT; ++i)
+        bitarray_put(rssi_samples, i, RSSI_BITS, rssi_encode(-1 - i * 10));
+    for (int i = 0; i < RSSI_SAMPLE_COUNT; ++i)
+        assert(rssi_decode(bitarray_get(rssi_samples, i, RSSI_BITS)) == -1 - i * 10);
+    bitarray_put(rssi_samples, 5, RSSI_BITS, rssi_encode(-126));
+    assert(rssi_decode(bitarray_get(rssi_samples, 4, RSSI_BITS)) == -41);
+    assert(rssi_decode(bitarray_get(rssi_samples, 5, RSSI_BITS)) == -126);
+    assert(rssi_decode(bitarray_get(rssi_samples, 6, RSSI_BITS)) == -61);
+    assert(sizeof(rssi_samples) == 11);
+
+    // Shared status word: updating one field or flag must leave the others alone.
+    reset();
+    result_put(ST_CLOSING_SHIFT, PAYLOAD_FATAL); flag_assign(F_LISTENING, true);
+    set_state(BLE_CLOSING); result_put(ST_RESULT_SHIFT, PAYLOAD_RETRY);
+    assert(current_state() == BLE_CLOSING && result_get(ST_RESULT_SHIFT) == PAYLOAD_RETRY);
+    assert(result_get(ST_CLOSING_SHIFT) == PAYLOAD_FATAL && flag(F_LISTENING));
+    flag_assign(F_LISTENING, false); assert(!flag(F_LISTENING) && current_state() == BLE_CLOSING);
+    assert(BITS_NEEDED(BLE_CLOSING) == 5 && BITS_NEEDED(5) == 3 && BITS_NEEDED(1) == 1);
+
+    // Fault mask: bits are independent and clear individually.
+    for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
+    fault_raise(FAULT_IMU); fault_raise(FAULT_STEP_LIMIT);
+    assert(fault_mask() == ((1u << FAULT_IMU) | (1u << FAULT_STEP_LIMIT)));
+    fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_STEP_LIMIT));
+    fault_clear(FAULT_STEP_LIMIT); assert(!fault_mask());
 
     puts("BLE signed RSSI, proximity gate, payload CRC, early notifications, cleanup and faults: passed");
     return 0;

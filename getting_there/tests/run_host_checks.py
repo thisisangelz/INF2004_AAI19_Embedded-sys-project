@@ -16,7 +16,7 @@ common = [args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-ffunction-sectio
           '-fdata-sections', '-I', str(tests / 'stubs')]
 for name in ['navigation', 'payload_client']:
     executable = output / f'test_{name}.exe'
-    command = common + [str(tests / f'test_{name}.c')]
+    command = common + [str(tests / f'test_{name}.c'), str(tests.parent / 'faults.c')]
     if name == 'payload_client':
         command += ['-DENABLE_BLE', '-I', str(btstack), '-I', str(repo / 'ble_transfer'),
                     str(btstack / 'ad_parser.c'), str(btstack / 'btstack_util.c')]
