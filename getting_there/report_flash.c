@@ -5,6 +5,7 @@
 #include "hardware/regs/addressmap.h"
 #include "pico/flash.h"
 #include "pico/stdlib.h"
+#include "run_report.h"
 
 _Static_assert(PICO_FLASH_SIZE_BYTES == REPORT_FLASH_OFFSET, "linker/log reservation mismatch");
 _Static_assert(REPORT_PAGE_BYTES == FLASH_PAGE_SIZE, "journal/flash page mismatch");
@@ -30,12 +31,22 @@ static void erase_sector(void *arg)
 bool report_flash_erase(void)
 {
     // Before radio initialisation and movement. Yield between sectors for USB.
+    const uint32_t sectors = REPORT_FLASH_BYTES / FLASH_SECTOR_SIZE;
     for (uint32_t offset = 0; offset < REPORT_FLASH_BYTES; offset += FLASH_SECTOR_SIZE) {
         flash_operation_t op = {.offset = offset};
-        if (flash_safe_execute(erase_sector, &op, 1000) != PICO_OK) return false;
+        if (flash_safe_execute(erase_sector, &op, 1000) != PICO_OK) {
+            report_printf("LOG PREPARATION FAILED at flash sector %lu/%lu\n",
+                          (unsigned long)(offset / FLASH_SECTOR_SIZE + 1),
+                          (unsigned long)sectors);
+            return false;
+        }
         // Motors are OFF, but remember a STOP pressed during log preparation.
         (void)motion_stop_requested();
         sleep_ms(1);
+        if ((offset / FLASH_SECTOR_SIZE + 1) % 16 == 0)
+            report_printf("Preparing persistent log: %lu/%lu flash sectors erased\n",
+                          (unsigned long)(offset / FLASH_SECTOR_SIZE + 1),
+                          (unsigned long)sectors);
     }
     return true;
 }

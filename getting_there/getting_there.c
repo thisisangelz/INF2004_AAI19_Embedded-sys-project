@@ -391,13 +391,16 @@ int main(void)
     if (!recording) { fault_raise(FAULT_REPORT); ready = false; }
     while (motion_start_pressed() && !motion_stop_requested()) sleep_ms(10);
     ready = ready && !motion_stop_requested();
+    report_printf("GP20 released. Persistent log %s.\n", recording ? "ready" : "FAILED");
     bool radio_initialised = false;
     if (ready) {
+        report_printf("Starting Wi-Fi/Bluetooth hardware.\n");
         if (cyw43_arch_init()) {
             report_printf("FAILED: Wi-Fi/Bluetooth initialisation\n");
             ready = false;
         } else {
             radio_initialised = true;
+            report_printf("Wi-Fi hardware initialised; starting Bluetooth.\n");
             cyw43_arch_enable_sta_mode();
             payload_client_init();
             uint32_t start = now_ms();
@@ -405,6 +408,7 @@ int main(void)
                    (uint32_t)(now_ms() - start) < 10000) sleep_ms(10);
             ready = payload_client_ready() && !motion_stop_requested();
             if (!ready) report_printf("FAILED: Bluetooth did not become ready or GP21 pressed\n");
+            else report_printf("Bluetooth ready; beginning AP1 approach.\n");
         }
     }
     if (ready && save_checkpoint() && !motion_stop_requested()) {
