@@ -5,13 +5,12 @@
 // Robot status sounds on the Robo Pico buzzer (GP22). All non-blocking.
 typedef enum {
     CUE_START,       // GP20 accepted: hands off
-    CUE_CALIBRATING, // repeating tick while the gyro calibrates: keep still
-    CUE_READY,       // calibration done; the robot will soon move
+    CUE_CALIBRATING, // steady tone while the gyro calibrates: keep still
     CUE_PASS,        // a direction pass is starting
-    CUE_IN_RANGE,    // BLE close-range check passed; transfer starting
-    CUE_COLLECTED,   // this beacon's payload verified
-    CUE_ALL_DONE,    // every target beacon collected
-    CUE_FAULT,       // run stopped without a payload, or GP21 pressed
+    CUE_IN_RANGE,    // BLE close-range check passed: beeps speed up, then
+                     // stay fast until cue_stop() at the end of the transfer
+    CUE_COLLECTED,   // payload verified, run complete: three rising beeps
+    CUE_FAULT,       // stopped without a payload: three falling beeps
     CUE_BUTTON,      // GP20 held long enough to print the saved log
 } robot_cue_t;
 

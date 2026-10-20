@@ -55,8 +55,8 @@ void cues_init(void) { }
 void cue_play(robot_cue_t cue)
 {
     ++cue_counts[cue];
-    uint64_t length = cue == CUE_COLLECTED ? 1000000 : cue == CUE_ALL_DONE ? 1200000 :
-                      cue == CUE_CALIBRATING ? UINT64_MAX / 2 : 100000;
+    uint64_t length = cue == CUE_COLLECTED ? 1000000 :
+                      cue == CUE_CALIBRATING || cue == CUE_IN_RANGE ? UINT64_MAX / 2 : 100000;
     cue_end = sim_time + length;
 }
 void cue_stop(void) { ++cue_stops; cue_end = sim_time; }
@@ -93,11 +93,14 @@ payload_result_t payload_client_attempt(void)
 {
     assert(!motors_on);
     ++ble_calls;
+    payload_result_t result = PAYLOAD_NOT_CLOSE;
     if (complete_first || (complete_probe && probe_forwards) ||
-        (complete_after_step > 0 && approach_steps >= complete_after_step)) return PAYLOAD_COMPLETE;
-    if (retry_mode == 1) return PAYLOAD_RETRY;
-    if (retry_mode == 2) return ble_calls == 1 ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE;
-    return PAYLOAD_NOT_CLOSE;
+        (complete_after_step > 0 && approach_steps >= complete_after_step)) result = PAYLOAD_COMPLETE;
+    else if (retry_mode == 1) result = PAYLOAD_RETRY;
+    else if (retry_mode == 2) result = ble_calls == 1 ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE;
+    // The real client calls the close callback once BLE range is confirmed.
+    if (result != PAYLOAD_NOT_CLOSE) on_in_range();
+    return result;
 }
 int cyw43_arch_init(void) { return 0; }
 void cyw43_arch_enable_sta_mode(void) { }
@@ -136,17 +139,15 @@ int main(void)
     reset(); complete_first = true;
     assert(approach_beacon());
     assert(!wifi_calls && !probe_forwards && !approach_steps && !sign_checks);
-    // Calibration ticks until the gyro is calibrated, then the ready cue plays.
-    assert(cue_counts[CUE_CALIBRATING] == 1 && cue_stops == 1 && cue_counts[CUE_READY] == 1);
-    assert(!cue_counts[CUE_COLLECTED] && saves == 1);
+    // The calibration tone and the in-range beeps both stop when their stage ends.
+    assert(cue_counts[CUE_CALIBRATING] == 1 && cue_counts[CUE_IN_RANGE] == 1 && cue_stops == 2);
+    assert(!in_range_cue_on && !cue_counts[CUE_COLLECTED] && saves == 1);
     uint64_t before = sim_time;
     completion_sound();
-    assert(cue_counts[CUE_COLLECTED] == 1 && cue_counts[CUE_ALL_DONE] == 1);
-    assert(sim_time - before == 1000000 + 300000 + 1200000);
+    assert(cue_counts[CUE_COLLECTED] == 1 && sim_time - before == 1000000);
     reset(); stopped = true; completion_sound(); assert(!cue_counts[CUE_COLLECTED]);
     reset(); stop_at = 100000; completion_sound();
-    assert(cue_counts[CUE_COLLECTED] == 1 && !cue_counts[CUE_ALL_DONE]);
-    assert(cue_stops == 1 && sim_time == 100000);
+    assert(cue_counts[CUE_COLLECTED] == 1 && cue_stops == 1 && sim_time == 100000);
 
     reset(); direction_fixture = true; complete_after_step = 1;
     assert(approach_beacon());
@@ -171,6 +172,8 @@ int main(void)
     reset(); retry_mode = 1;
     assert(!approach_beacon());
     assert(ble_calls == 3 && !wifi_calls && !approach_steps && !cue_counts[CUE_COLLECTED]);
+    // Each close attempt starts the in-range beeps and stops them when it ends.
+    assert(cue_counts[CUE_IN_RANGE] == 3 && cue_stops == 1 + 3 && !in_range_cue_on);
     reset(); retry_mode = 2;
     assert(!approach_beacon());
     assert(ble_calls == 3 && !approach_steps);

@@ -18,6 +18,7 @@ static const buzzer_note_t *pattern;
 static size_t pattern_count;
 static size_t pattern_index;
 static bool pattern_repeat;
+static size_t pattern_loop_from;
 static alarm_id_t alarm;
 static volatile bool playing;
 
@@ -46,7 +47,7 @@ static int64_t next_note(alarm_id_t id, void *user_data)
             alarm = 0;
             return 0;
         }
-        pattern_index = 0;
+        pattern_index = pattern_loop_from;
     }
     set_tone(pattern[pattern_index].freq_hz);
     // A positive return reschedules relative to this alarm's due time, so
@@ -66,7 +67,8 @@ void buzzer_init(unsigned pin)
     initialised = true;
 }
 
-void buzzer_play(const buzzer_note_t *notes, size_t count, bool repeat)
+static void start_pattern(const buzzer_note_t *notes, size_t count,
+                          bool repeat, size_t loop_from)
 {
     if (!initialised) return;
     uint32_t irq = save_and_disable_interrupts();
@@ -76,6 +78,7 @@ void buzzer_play(const buzzer_note_t *notes, size_t count, bool repeat)
     pattern_count = count;
     pattern_index = 0;
     pattern_repeat = repeat;
+    pattern_loop_from = loop_from < count ? loop_from : 0;
     playing = count > 0;
     if (playing) {
         set_tone(notes[0].freq_hz);
@@ -93,9 +96,20 @@ void buzzer_play(const buzzer_note_t *notes, size_t count, bool repeat)
     restore_interrupts(irq);
 }
 
+void buzzer_play(const buzzer_note_t *notes, size_t count, bool repeat)
+{
+    start_pattern(notes, count, repeat, 0);
+}
+
+void buzzer_play_looping_tail(const buzzer_note_t *notes, size_t count,
+                              size_t loop_from)
+{
+    start_pattern(notes, count, true, loop_from);
+}
+
 void buzzer_stop(void)
 {
-    buzzer_play(NULL, 0, false);
+    start_pattern(NULL, 0, false, 0);
 }
 
 bool buzzer_busy(void)

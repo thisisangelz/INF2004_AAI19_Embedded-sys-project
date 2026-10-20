@@ -36,6 +36,8 @@ static volatile struct {
 } scan_result;
 static uint8_t scan_bssid[6];
 static uint32_t run_started_ms;
+// Set while the in-range beeps play; they last until the transfer attempt ends.
+static bool in_range_cue_on;
 static uint32_t now_ms(void) { return (uint32_t)(time_us_64() / 1000); }
 
 static bool run_can_continue(void)
@@ -119,6 +121,10 @@ static payload_result_t check_payload(void)
     for (int attempt = 0; attempt < MAX_PAYLOAD_ATTEMPTS; ++attempt) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
         payload_result_t result = payload_client_attempt();
+        if (in_range_cue_on) {
+            cue_stop();
+            in_range_cue_on = false;
+        }
         if (result == PAYLOAD_COMPLETE || result == PAYLOAD_FATAL) return result;
         if (result == PAYLOAD_NOT_CLOSE && !was_close) return result;
         was_close = true;
@@ -198,12 +204,12 @@ static payload_result_t choose_direction(float *heading)
 static bool approach_beacon(void)
 {
     run_started_ms = now_ms();
-    // Ticks for as long as the robot must stay still.
+    // A steady tone for as long as the robot must stay still; the tone ending
+    // means calibration is done.
     cue_play(CUE_CALIBRATING);
     bool calibrated = motion_calibrate();
     cue_stop();
     if (!calibrated) return false;
-    cue_play(CUE_READY);
     report_save();
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
@@ -279,14 +285,14 @@ static void completion_sound(void)
         return;
     }
     // Only AP1 is targeted for now, so collecting it also completes the run.
-    report_printf("COMPLETION TONE: AP1 collected (1 s tone), then all-done melody\n");
-    bool finished = play_cue_to_end(CUE_COLLECTED) && motion_pause_ms(300) &&
-                    play_cue_to_end(CUE_ALL_DONE);
+    report_printf("COMPLETION TONE: AP1 collected, three rising beeps\n");
+    bool finished = play_cue_to_end(CUE_COLLECTED);
     report_printf("Completion tone %s; motors stopped\n", finished ? "finished" : "stopped by GP21");
 }
 
 static void on_in_range(void)
 {
+    in_range_cue_on = true;
     cue_play(CUE_IN_RANGE);
 }
 

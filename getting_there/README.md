@@ -28,7 +28,7 @@ Wi-Fi and BLE beacon firmware from `picow_access_point`, with Wi-Fi SSID
 `I AM PICO W`, BLE service `0xFF20`, protocol version 1 and beacon ID 1.
 AP2 and AP3 are ignored. Tap GP20 (press and release) to start. The robot
 waits one second so your hand is clear, then keeps still for the two-second
-gyro calibration while the buzzer ticks. GP21 stops and latches until reset.
+gyro calibration while the buzzer sounds a steady tone. GP21 stops and latches until reset.
 Holding GP20 for two seconds instead prints the previous run's saved log
 (see below) and does not start a run.
 
@@ -56,9 +56,8 @@ Holding GP20 for two seconds instead prints the previous run's saved log
    transferring. A transfer failure allows three stationary attempts. Once
    proximity has passed, failed retries do not cause another movement step.
 7. Verify the beacon payload's length and CRC-32, send `COMPLETE`, and require
-   AP1's `COMPLETE_ACK`. Disconnect, sound a one-second tone on GP22 followed
-   by the all-done melody, then remain stopped and quiet. GP21 also interrupts
-   the completion tone.
+   AP1's `COMPLETE_ACK`. Disconnect, sound three rising beeps on GP22, then
+   remain stopped and quiet. GP21 also interrupts the completion beeps.
 
 The BLE close-range check retains the requested threshold of **-50 dBm**.
 It uses 12 fresh target advertisements, trims the lowest and highest quarter,
@@ -109,19 +108,22 @@ scanning or BLE.
 
 | Sound | Meaning |
 |---|---|
-| One short beep | GP20 accepted: hands off |
-| Fast ticking (four per second) | Gyro calibrating: keep the robot still |
-| Two rising beeps | Calibration done; the robot will move soon |
-| One short beep | A four-direction pass is starting |
-| Three quick high beeps | BLE close-range check passed; transfer starting |
-| One long beep (1 s) | AP1 payload verified |
-| Long, short, long | Run complete |
-| Three slow low beeps | Stopped without a payload, start-up failed or GP21 pressed |
+| One short beep | GP20 tapped: hands off |
+| Steady tone (about 2 s) | Gyro calibrating: keep the robot still. The tone stopping means calibration is done |
+| One long beep (0.6 s) | A four-direction pass is starting |
+| High beeps that speed up, then stay fast | BLE close-range check passed; the transfer is running. They stop when the attempt ends |
+| Three beeps, each higher | AP1 payload verified: run complete |
+| Three beeps, each lower | Stopped without a payload, start-up failed or GP21 pressed |
 | Two very short beeps | GP20 held for 2 s: saved log will print |
 
-Each beacon also beeps: once when it starts advertising, twice when the robot
-connects (the robot passed its range check), and one long beep when the
-transfer is complete on the beacon's side.
+The buzzer is driven by its own PWM output and a timer interrupt only when a
+note changes. It does not share the gyro's I2C pins or the radio, so the tone
+during calibration does not disturb the gyro reading or a transfer.
+
+Each beacon also beeps: once when it starts advertising, continuously while
+the robot is connected (the robot passed its range check), and three rising
+beeps when the transfer is complete on the beacon's side. If the robot
+disconnects before finishing, the beacon goes quiet.
 
 ## Run log
 
@@ -151,7 +153,7 @@ AP1 close-range check passed; motors stopped for payload transfer
 AP1 reply payload length and CRC verified
 AP1 PAYLOAD COMPLETE: verified reply and final acknowledgement
 AP1 payload: Reply file from beacon AP1
-COMPLETION TONE: AP1 collected (1 s tone), then all-done melody
+COMPLETION TONE: AP1 collected, three rising beeps
 RESULT: PAYLOAD CONFIRMED
 ```
 

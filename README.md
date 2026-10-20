@@ -151,8 +151,8 @@ and its sounds are listed in `getting_there/README.md`.
 | Sound | Meaning |
 |---|---|
 | One short beep | Beacon started and is advertising |
-| Two quick high beeps | Robot connected: it passed its BLE range check |
-| One long beep (1 s) | Transfer complete on the beacon's side |
+| Continuous beeping | Robot connected: it passed its BLE range check. Stops if the robot disconnects early |
+| Three beeps, each higher | Transfer complete on the beacon's side |
 
 Override the pin with `BEACON_BUZZER_PIN` if a beacon uses a different board.
 

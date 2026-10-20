@@ -10,18 +10,20 @@
 #define COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
 static const buzzer_note_t start[] = {N(2000, 80)};
-static const buzzer_note_t calibrating[] = {N(2500, 20), N(0, 230)};
-static const buzzer_note_t ready[] = {N(1500, 100), N(0, 60), N(2500, 150)};
-static const buzzer_note_t pass[] = {N(1800, 60)};
+// One note repeated with no gap: a steady tone until cue_stop().
+static const buzzer_note_t calibrating[] = {N(1500, 200)};
+static const buzzer_note_t pass[] = {N(1800, 600)};
+// Gaps shrink from 300 ms to 60 ms, then the last beep and gap repeat.
 static const buzzer_note_t in_range[] = {
-    N(3000, 80), N(0, 60), N(3000, 80), N(0, 60), N(3000, 80),
+    N(3000, 60), N(0, 300), N(3000, 60), N(0, 220), N(3000, 60), N(0, 160),
+    N(3000, 60), N(0, 110), N(3000, 60), N(0, 80), N(3000, 50), N(0, 60),
 };
-static const buzzer_note_t collected[] = {N(2000, 1000)};
-static const buzzer_note_t all_done[] = {
-    N(2500, 400), N(0, 100), N(2500, 120), N(0, 100), N(2500, 400),
+#define IN_RANGE_LOOP_FROM 10
+static const buzzer_note_t collected[] = {
+    N(1500, 200), N(0, 80), N(2000, 200), N(0, 80), N(2700, 350),
 };
 static const buzzer_note_t fault[] = {
-    N(800, 300), N(0, 200), N(800, 300), N(0, 200), N(800, 300),
+    N(1500, 250), N(0, 120), N(1000, 250), N(0, 120), N(700, 500),
 };
 static const buzzer_note_t button[] = {N(2500, 40), N(0, 40), N(2500, 40)};
 
@@ -35,11 +37,11 @@ void cue_play(robot_cue_t cue)
     switch (cue) {
     case CUE_START: buzzer_play(start, COUNT(start), false); break;
     case CUE_CALIBRATING: buzzer_play(calibrating, COUNT(calibrating), true); break;
-    case CUE_READY: buzzer_play(ready, COUNT(ready), false); break;
     case CUE_PASS: buzzer_play(pass, COUNT(pass), false); break;
-    case CUE_IN_RANGE: buzzer_play(in_range, COUNT(in_range), false); break;
+    case CUE_IN_RANGE:
+        buzzer_play_looping_tail(in_range, COUNT(in_range), IN_RANGE_LOOP_FROM);
+        break;
     case CUE_COLLECTED: buzzer_play(collected, COUNT(collected), false); break;
-    case CUE_ALL_DONE: buzzer_play(all_done, COUNT(all_done), false); break;
     case CUE_FAULT: buzzer_play(fault, COUNT(fault), false); break;
     case CUE_BUTTON: buzzer_play(button, COUNT(button), false); break;
     }

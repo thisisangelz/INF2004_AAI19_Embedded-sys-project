@@ -26,12 +26,16 @@
 #define BEACON_BUZZER_PIN 22
 #endif
 
-// Beacon sounds: alive at boot, robot connected (it passed its BLE range
-// check), and transfer complete on this beacon's side.
+// Beacon sounds: one beep when advertising starts; continuous beeping while
+// the robot is connected (it passed its BLE range check); three rising beeps
+// when the transfer is complete on this beacon's side.
 static const buzzer_note_t cue_alive[] = {{2000, 60}};
-static const buzzer_note_t cue_connected[] = {{3000, 80}, {0, 80}, {3000, 80}};
-static const buzzer_note_t cue_complete[] = {{2000, 1000}};
+static const buzzer_note_t cue_connected[] = {{3000, 80}, {0, 120}};
+static const buzzer_note_t cue_complete[] = {
+    {1500, 200}, {0, 80}, {2000, 200}, {0, 80}, {2700, 350},
+};
 #define CUE(notes) (notes), sizeof(notes) / sizeof((notes)[0])
+static bool connected_cue_on;
 
 extern uint8_t const profile_data[];
 
@@ -297,6 +301,7 @@ static int att_write_callback(hci_con_handle_t con_handle,
         printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
                BEACON_ID);
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        connected_cue_on = false;
         buzzer_play(CUE(cue_complete), false);
         send_simple(MSG_COMPLETE_ACK, BEACON_ID);
         break;
@@ -341,7 +346,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
                 hci_subevent_le_connection_complete_get_connection_handle(packet);
             beacon_status = BEACON_STATUS_CONNECTED;
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-            buzzer_play(CUE(cue_connected), false);
+            connected_cue_on = true;
+            buzzer_play(CUE(cue_connected), true);
             printf("BLE robot connected\n");
         }
         break;
@@ -352,6 +358,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
         pending_notification_length = 0;
         reset_transfer();
         beacon_status = BEACON_STATUS_ADVERTISING;
+        // Disconnected before completing: stop the connected beeping. A
+        // completion tone, if playing, is left to finish.
+        if (connected_cue_on) {
+            connected_cue_on = false;
+            buzzer_stop();
+        }
         printf("BLE robot disconnected; ready for another transfer\n");
         break;
 
