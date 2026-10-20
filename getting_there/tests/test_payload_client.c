@@ -16,6 +16,10 @@ static uint16_t write_length;
 static uint8_t write_status;
 static uint8_t connect_status;
 const hci_cmd_t hci_le_set_scan_enable = {0x200c, "11"};
+static bool feed_close;
+static int close_callbacks;
+static void advertisement(int rssi, uint8_t id);
+static void on_close(void) { ++close_callbacks; }
 
 static void scan_ack(void)
 {
@@ -28,6 +32,10 @@ void sleep_ms(uint32_t ms)
 {
     sim_time += (uint64_t)ms * 1000;
     if (auto_scan_ack && scan_ack_pending) scan_ack();
+    // Simulate AP1 close by: strong advertisements, then a failed connection.
+    if (feed_close && current_state() == BLE_SCANNING) advertisement(-40, 1);
+    if (feed_close && current_state() == BLE_CONNECTING)
+        connection_complete(0x3e, HCI_CON_HANDLE_INVALID);
 }
 void report_printf(const char *format, ...) { (void)format; }
 void hci_dump_log(int level, const char *format, ...) { (void)level; (void)format; }
@@ -92,6 +100,8 @@ static void reset(void)
     sim_time = 0; stopped = scan_ack_pending = auto_scan_ack = false;
     stop_scan_calls = connect_calls = cancel_calls = disconnect_calls = write_calls = 0;
     write_status = connect_status = 0;
+    feed_close = false; close_callbacks = 0;
+    payload_client_set_close_callback(on_close);
     flag_assign(F_ATTEMPT_RUNNING, false); flag_assign(F_ABORT_REQUESTED, false); flag_assign(F_BLUETOOTH_READY, true);
     set_state(BLE_IDLE); phase_started_ms = 0;
     flag_assign(F_CLOSE_CONFIRMED, false); flag_assign(F_SCAN_CONFIRMED, false); flag_assign(F_PAYLOAD_VERIFIED, false); flag_assign(F_LISTENING, false);
@@ -254,6 +264,14 @@ int main(void)
     reset(); auto_scan_ack = true;
     assert(payload_client_attempt() == PAYLOAD_NOT_CLOSE);
     assert(!flag(F_ATTEMPT_RUNNING) && current_state() == BLE_IDLE && sim_time >= 5000000 && !connect_calls);
+    assert(!close_callbacks);
+    // A close flag left over from an earlier attempt must not fire the callback.
+    reset(); auto_scan_ack = true; flag_assign(F_CLOSE_CONFIRMED, true);
+    assert(payload_client_attempt() == PAYLOAD_NOT_CLOSE && !close_callbacks);
+    // Passing the close-range check fires the callback exactly once.
+    reset(); auto_scan_ack = true; feed_close = true;
+    assert(payload_client_attempt() == PAYLOAD_RETRY);
+    assert(close_callbacks == 1 && connect_calls == 1);
     reset(); stopped = true;
     assert(payload_client_attempt() == PAYLOAD_FATAL && !flag(F_ATTEMPT_RUNNING));
     reset(); flag_assign(F_BLUETOOTH_READY, false);
@@ -292,6 +310,6 @@ int main(void)
     fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_STEP_LIMIT));
     fault_clear(FAULT_STEP_LIMIT); assert(!fault_mask());
 
-    puts("BLE signed RSSI, proximity gate, payload CRC, early notifications, cleanup and faults: passed");
+    puts("BLE signed RSSI, proximity gate, payload CRC, early notifications, cleanup, faults and in-range callback: passed");
     return 0;
 }

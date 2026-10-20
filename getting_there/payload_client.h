@@ -12,5 +12,8 @@ void payload_client_init(void);
 bool payload_client_ready(void);
 // Call with motors stopped and no Wi-Fi scan running. Returns after BLE cleanup.
 payload_result_t payload_client_attempt(void);
+// Called from the main loop, once per attempt, when the BLE close-range check
+// passes and the transfer is about to start. NULL disables it.
+void payload_client_set_close_callback(void (*callback)(void));
 const uint8_t *payload_client_data(uint16_t *length);
 #endif

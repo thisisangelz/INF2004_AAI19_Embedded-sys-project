@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "btstack.h"
+#include "buzzer.h"
 #include "file_transfer.h"
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
@@ -19,6 +20,18 @@
 
 #define WIFI_PASSWORD "pico12345"
 #define APP_AD_FLAGS 0x06
+
+// Robo Pico onboard piezo buzzer.
+#ifndef BEACON_BUZZER_PIN
+#define BEACON_BUZZER_PIN 22
+#endif
+
+// Beacon sounds: alive at boot, robot connected (it passed its BLE range
+// check), and transfer complete on this beacon's side.
+static const buzzer_note_t cue_alive[] = {{2000, 60}};
+static const buzzer_note_t cue_connected[] = {{3000, 80}, {0, 80}, {3000, 80}};
+static const buzzer_note_t cue_complete[] = {{2000, 1000}};
+#define CUE(notes) (notes), sizeof(notes) / sizeof((notes)[0])
 
 extern uint8_t const profile_data[];
 
@@ -284,6 +297,7 @@ static int att_write_callback(hci_con_handle_t con_handle,
         printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
                BEACON_ID);
         cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        buzzer_play(CUE(cue_complete), false);
         send_simple(MSG_COMPLETE_ACK, BEACON_ID);
         break;
 
@@ -315,6 +329,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             gap_advertisements_set_data(sizeof(adv_data), adv_data);
             gap_advertisements_enable(1);
             beacon_status = BEACON_STATUS_ADVERTISING;
+            buzzer_play(CUE(cue_alive), false);
             printf("BLE beacon AP%d advertising\n", BEACON_ID);
         }
         break;
@@ -326,6 +341,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
                 hci_subevent_le_connection_complete_get_connection_handle(packet);
             beacon_status = BEACON_STATUS_CONNECTED;
             cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+            buzzer_play(CUE(cue_connected), false);
             printf("BLE robot connected\n");
         }
         break;
@@ -358,6 +374,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
 int main(void)
 {
     stdio_init_all();
+    buzzer_init(BEACON_BUZZER_PIN);
     sleep_ms(2000);
 
     printf("\nAP%d Wi-Fi + BLE transfer beacon\n", BEACON_ID);

@@ -14,8 +14,11 @@ static int probe_backwards;
 static int approach_steps;
 static int ble_calls;
 static int sign_checks;
-static int tone_starts;
-static int tone_stops;
+static int cue_counts[CUE_BUTTON + 1];
+static int cue_stops;
+static uint64_t cue_end;
+static uint64_t stop_at;
+static int saves;
 static bool wifi_missing;
 static bool direction_fixture;
 static bool fail_drive;
@@ -30,7 +33,11 @@ static char log_text[32768];
 static size_t log_length;
 int cyw43_state;
 uint64_t time_us_64(void) { return sim_time; }
-void sleep_ms(uint32_t ms) { sim_time += (uint64_t)ms * 1000; }
+void sleep_ms(uint32_t ms)
+{
+    sim_time += (uint64_t)ms * 1000;
+    if (stop_at && sim_time >= stop_at) stopped = true;
+}
 void report_printf(const char *format, ...)
 {
     va_list args;
@@ -41,20 +48,23 @@ void report_printf(const char *format, ...)
 }
 void report_init(void) { }
 void report_replay(void) { }
+void report_begin_run(void) { }
+void report_save(void) { assert(!motors_on); ++saves; }
+bool report_print_saved(void) { return true; }
+void cues_init(void) { }
+void cue_play(robot_cue_t cue)
+{
+    ++cue_counts[cue];
+    uint64_t length = cue == CUE_COLLECTED ? 1000000 : cue == CUE_ALL_DONE ? 1200000 :
+                      cue == CUE_CALIBRATING ? UINT64_MAX / 2 : 100000;
+    cue_end = sim_time + length;
+}
+void cue_stop(void) { ++cue_stops; cue_end = sim_time; }
+bool cue_busy(void) { return sim_time < cue_end; }
+void payload_client_set_close_callback(void (*callback)(void)) { (void)callback; }
 void stdio_init_all(void) { }
 bool stdio_usb_connected(void) { return false; }
 void gpio_set_function(uint pin, uint function) { (void)pin; (void)function; }
-uint32_t clock_get_hz(int clock) { (void)clock; return 125000000; }
-pwm_config pwm_get_default_config(void) { return (pwm_config){0}; }
-void pwm_config_set_clkdiv(pwm_config *config, float divider) { (void)config; (void)divider; }
-void pwm_config_set_wrap(pwm_config *config, uint16_t wrap) { config->wrap = wrap; }
-void pwm_init(uint slice, const pwm_config *config, bool enabled) { (void)slice; (void)config; (void)enabled; }
-uint pwm_gpio_to_slice_num(uint pin) { return pin / 2; }
-void pwm_set_gpio_level(uint pin, uint16_t level)
-{
-    assert(pin == 22 && !motors_on);
-    if (level) ++tone_starts; else ++tone_stops;
-}
 bool motion_init(void) { return true; }
 bool motion_calibrate(void) { sleep_ms(2000); return !stopped; }
 bool motion_learn_direction(void) { ++sign_checks; return !stopped; }
@@ -112,7 +122,9 @@ static void reset(void)
 {
     sim_time = 0; stopped = motors_on = false;
     wifi_calls = probe_forwards = probe_backwards = approach_steps = ble_calls = sign_checks = 0;
-    tone_starts = tone_stops = retry_mode = complete_after_step = 0;
+    retry_mode = complete_after_step = 0;
+    memset(cue_counts, 0, sizeof(cue_counts));
+    cue_stops = saves = 0; cue_end = stop_at = 0;
     wifi_missing = direction_fixture = fail_drive = complete_first = complete_probe = false;
     stop_during_pause = false;
     current_heading = last_approach_heading = 0;
@@ -123,19 +135,24 @@ int main(void)
 {
     reset(); complete_first = true;
     assert(approach_beacon());
-    assert(!wifi_calls && !probe_forwards && !approach_steps && !sign_checks && !tone_starts);
-    buzzer_init(); tone_stops = 0;
+    assert(!wifi_calls && !probe_forwards && !approach_steps && !sign_checks);
+    // Calibration ticks until the gyro is calibrated, then the ready cue plays.
+    assert(cue_counts[CUE_CALIBRATING] == 1 && cue_stops == 1 && cue_counts[CUE_READY] == 1);
+    assert(!cue_counts[CUE_COLLECTED] && saves == 1);
     uint64_t before = sim_time;
     completion_sound();
-    assert(tone_starts == 1 && tone_stops == 1 && sim_time - before == 1000000);
-    reset(); stopped = true; completion_sound(); assert(!tone_starts);
-    reset(); stop_during_pause = true; completion_sound();
-    assert(tone_starts == 1 && tone_stops == 1 && sim_time == 100000);
+    assert(cue_counts[CUE_COLLECTED] == 1 && cue_counts[CUE_ALL_DONE] == 1);
+    assert(sim_time - before == 1000000 + 300000 + 1200000);
+    reset(); stopped = true; completion_sound(); assert(!cue_counts[CUE_COLLECTED]);
+    reset(); stop_at = 100000; completion_sound();
+    assert(cue_counts[CUE_COLLECTED] == 1 && !cue_counts[CUE_ALL_DONE]);
+    assert(cue_stops == 1 && sim_time == 100000);
 
     reset(); direction_fixture = true; complete_after_step = 1;
     assert(approach_beacon());
     assert(probe_forwards == 4 && probe_backwards == 4 && approach_steps == 1);
-    assert(last_approach_heading == 270 && sign_checks == 1 && !tone_starts);
+    assert(last_approach_heading == 270 && sign_checks == 1 && !cue_counts[CUE_COLLECTED]);
+    assert(cue_counts[CUE_PASS] == 1);
 
     reset(); complete_probe = true;
     assert(approach_beacon());
@@ -144,27 +161,29 @@ int main(void)
     reset(); complete_after_step = 5;
     assert(approach_beacon());
     assert(probe_forwards == 8 && probe_backwards == 8 && approach_steps == 5);
+    // Two direction passes; checkpoints after calibration, each pass and each step.
+    assert(cue_counts[CUE_PASS] == 2 && saves == 1 + 2 + 4);
 
     reset(); wifi_missing = true;
     assert(!approach_beacon());
-    assert(wifi_calls == 15 && !probe_forwards && !approach_steps && !sign_checks && !tone_starts);
+    assert(wifi_calls == 15 && !probe_forwards && !approach_steps && !sign_checks && !cue_counts[CUE_COLLECTED]);
 
     reset(); retry_mode = 1;
     assert(!approach_beacon());
-    assert(ble_calls == 3 && !wifi_calls && !approach_steps && !tone_starts);
+    assert(ble_calls == 3 && !wifi_calls && !approach_steps && !cue_counts[CUE_COLLECTED]);
     reset(); retry_mode = 2;
     assert(!approach_beacon());
     assert(ble_calls == 3 && !approach_steps);
 
     reset(); fail_drive = true;
     assert(!approach_beacon());
-    assert(probe_forwards == 1 && !probe_backwards && !approach_steps && !tone_starts);
+    assert(probe_forwards == 1 && !probe_backwards && !approach_steps && !cue_counts[CUE_COLLECTED]);
 
     reset(); stopped = true;
-    assert(!approach_beacon() && !ble_calls && !probe_forwards && !tone_starts);
+    assert(!approach_beacon() && !ble_calls && !probe_forwards && !cue_counts[CUE_COLLECTED]);
 
     reset(); assert(!approach_beacon());
-    assert(approach_steps == 40 && !tone_starts);
+    assert(approach_steps == 40 && !cue_counts[CUE_COLLECTED]);
 
     const int supplied[] = {-70, -70, -127, -69};
     const int tied[] = {-71, -71, -71, -71};
@@ -182,6 +201,6 @@ int main(void)
     assert(sizeof(packed) == 4);
     reset(); run_started_ms = 0; sim_time = (uint64_t)MAX_RUN_MS * 1000;
     assert(!run_can_continue());
-    puts("Navigation, stationary retries, limits and one-second completion tone: passed");
+    puts("Navigation, stationary retries, limits, completion cues and flash checkpoints: passed");
     return 0;
 }

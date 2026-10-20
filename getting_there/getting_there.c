@@ -2,8 +2,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include "hardware/clocks.h"
-#include "hardware/pwm.h"
 #include "pico/cyw43_arch.h"
 #include "pico/stdio_usb.h"
 #include "pico/stdlib.h"
@@ -11,6 +9,7 @@
 #include "motion.h"
 #include "packed_bits.h"
 #include "payload_client.h"
+#include "robot_cues.h"
 #include "run_report.h"
 
 #define AP1_SSID "I AM PICO W"
@@ -26,11 +25,9 @@
 #define MAX_RUN_MS 900000
 #define MAX_MISSING_SAMPLES 3
 #define MAX_PAYLOAD_ATTEMPTS 3
-#ifndef BUZZER_PIN
-#define BUZZER_PIN 22
-#endif
-#define BUZZER_HZ 2000
-#define COMPLETION_TONE_MS 1000
+#define HANDS_OFF_MS 1000
+#define LOG_HOLD_MS 2000
+#define BUTTON_DEBOUNCE_MS 30
 
 // Written by the Wi-Fi scan callback (async context), read by the main loop only
 // after the scan has ended. One 7-bit magnitude; see packed_bits.h.
@@ -39,7 +36,6 @@ static volatile struct {
 } scan_result;
 static uint8_t scan_bssid[6];
 static uint32_t run_started_ms;
-static uint16_t buzzer_wrap;
 static uint32_t now_ms(void) { return (uint32_t)(time_us_64() / 1000); }
 
 static bool run_can_continue(void)
@@ -52,20 +48,6 @@ static bool run_can_continue(void)
         return false;
     }
     return true;
-}
-
-static void buzzer_init(void)
-{
-    gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
-    uint slice = pwm_gpio_to_slice_num(BUZZER_PIN);
-    pwm_config config = pwm_get_default_config();
-    pwm_config_set_clkdiv(&config, 16.0f);
-    uint32_t wrap = clock_get_hz(clk_sys) / (16u * BUZZER_HZ) - 1u;
-    if (wrap > 65535) wrap = 65535;
-    buzzer_wrap = (uint16_t)wrap;
-    pwm_config_set_wrap(&config, buzzer_wrap);
-    pwm_init(slice, &config, true);
-    pwm_set_gpio_level(BUZZER_PIN, 0);
 }
 
 static int wifi_result(void *unused, const cyw43_ev_scan_result_t *result)
@@ -181,6 +163,7 @@ static payload_result_t choose_direction(float *heading)
 {
     float origin = motion_heading();
     uint8_t scores[BITARRAY_BYTES(PROBE_COUNT, RSSI_BITS)] = {0};
+    cue_play(CUE_PASS);
     report_printf("DIRECTION PASS: four 2400 ms probes from current position\n");
     for (int i = 0; i < PROBE_COUNT; ++i) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
@@ -208,13 +191,20 @@ static payload_result_t choose_direction(float *heading)
     report_printf("Selected pass direction %d degrees: %d dBm; no gain or margin required\n",
                   best * 90, rssi_decode(bitarray_get(scores, best, RSSI_BITS)));
     if (!motion_turn_to_heading(*heading)) return PAYLOAD_FATAL;
+    report_save();
     return PAYLOAD_NOT_CLOSE;
 }
 
 static bool approach_beacon(void)
 {
     run_started_ms = now_ms();
-    if (!motion_calibrate()) return false;
+    // Ticks for as long as the robot must stay still.
+    cue_play(CUE_CALIBRATING);
+    bool calibrated = motion_calibrate();
+    cue_stop();
+    if (!calibrated) return false;
+    cue_play(CUE_READY);
+    report_save();
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -260,10 +250,25 @@ static bool approach_beacon(void)
         if (result == PAYLOAD_FATAL || !sample_ap1(&score)) return false;
         loop.wifi_visible = score != RSSI_MISSING;
         if (++loop.steps_since_pass >= RECALIBRATE_EVERY_STEPS) loop.needs_direction_pass = true;
+        report_save();
     }
     fault_raise(FAULT_STEP_LIMIT);
     report_printf("FAILED: 40 approach steps without a confirmed payload\n");
     return false;
+}
+
+// Plays a cue to its end; GP21 cuts it short. Returns false if cut short.
+static bool play_cue_to_end(robot_cue_t cue)
+{
+    cue_play(cue);
+    while (cue_busy()) {
+        if (motion_stop_requested()) {
+            cue_stop();
+            return false;
+        }
+        sleep_ms(10);
+    }
+    return true;
 }
 
 static void completion_sound(void)
@@ -273,11 +278,35 @@ static void completion_sound(void)
         report_printf("Completion tone cancelled by GP21\n");
         return;
     }
-    report_printf("COMPLETION TONE: GP%d, 2000 Hz for 1000 ms\n", BUZZER_PIN);
-    pwm_set_gpio_level(BUZZER_PIN, buzzer_wrap / 2);
-    bool finished = motion_pause_ms(COMPLETION_TONE_MS);
-    pwm_set_gpio_level(BUZZER_PIN, 0);
+    // Only AP1 is targeted for now, so collecting it also completes the run.
+    report_printf("COMPLETION TONE: AP1 collected (1 s tone), then all-done melody\n");
+    bool finished = play_cue_to_end(CUE_COLLECTED) && motion_pause_ms(300) &&
+                    play_cue_to_end(CUE_ALL_DONE);
     report_printf("Completion tone %s; motors stopped\n", finished ? "finished" : "stopped by GP21");
+}
+
+static void on_in_range(void)
+{
+    cue_play(CUE_IN_RANGE);
+}
+
+typedef enum { PRESS_NONE, PRESS_TAP, PRESS_HOLD } press_t;
+
+// A tap starts the run; holding GP20 for 2 s asks for the saved log instead.
+static press_t read_start_button(void)
+{
+    if (!motion_start_pressed()) return PRESS_NONE;
+    uint32_t pressed_ms = now_ms();
+    bool held = false;
+    while (motion_start_pressed()) {
+        if (!held && (uint32_t)(now_ms() - pressed_ms) >= LOG_HOLD_MS) {
+            held = true;
+            cue_play(CUE_BUTTON);
+        }
+        sleep_ms(10);
+    }
+    if (held) return PRESS_HOLD;
+    return (uint32_t)(now_ms() - pressed_ms) >= BUTTON_DEBOUNCE_MS ? PRESS_TAP : PRESS_NONE;
 }
 
 static void report_faults(void)
@@ -292,7 +321,7 @@ int main(void)
     stdio_init_all();
     report_init();
     bool ready = motion_init();
-    buzzer_init();
+    cues_init();
     sleep_ms(2000);
     report_printf("Getting there | AP1 only | GP20 start | GP21 stop and latch until reset\n");
     report_printf("Move using Wi-Fi direction; receive payload only after BLE averages >= -50 dBm\n");
@@ -303,6 +332,7 @@ int main(void)
         } else {
             cyw43_arch_enable_sta_mode();
             payload_client_init();
+            payload_client_set_close_callback(on_in_range);
             uint32_t start = now_ms();
             while (!payload_client_ready() && !motion_stop_requested() &&
                    (uint32_t)(now_ms() - start) < 10000) sleep_ms(10);
@@ -310,31 +340,48 @@ int main(void)
             if (!ready) report_printf("FAILED: Bluetooth did not become ready or GP21 pressed\n");
         }
     }
+    bool ran = false;
+    bool completed = false;
     if (ready) {
-        report_printf("Waiting for GP20. Keep battery on after the run to read the stored report.\n");
-        while (!motion_start_pressed() && !motion_stop_requested()) sleep_ms(10);
-        while (motion_start_pressed() && !motion_stop_requested()) sleep_ms(10);
-        if (!motion_stop_requested()) {
-            bool completed = approach_beacon();
+        report_printf("Waiting for GP20: tap to start | hold 2 s to print the previous run's saved log\n");
+        bool was_connected = false;
+        bool start = false;
+        while (!start && !motion_stop_requested()) {
+            bool connected = stdio_usb_connected();
+            if (connected && !was_connected) { sleep_ms(500); report_print_saved(); }
+            was_connected = connected;
+            press_t press = read_start_button();
+            if (press == PRESS_HOLD) report_print_saved();
+            start = press == PRESS_TAP;
+            sleep_ms(10);
+        }
+        if (start && !motion_stop_requested()) {
+            ran = true;
+            cue_play(CUE_START);
+            report_begin_run();
+            report_printf("RUN STARTED: hands off for 1 s, then keep still while the buzzer ticks\n");
+            report_save();
+            completed = motion_pause_ms(HANDS_OFF_MS) && approach_beacon();
             motion_stop();
             if (completed) completion_sound();
             report_printf("RESULT: %s\n", completed ? "PAYLOAD CONFIRMED" : "STOPPED WITHOUT PAYLOAD");
         }
     }
     motion_stop();
-    pwm_set_gpio_level(BUZZER_PIN, 0);
     report_faults();
     if (motion_stop_requested()) report_printf("GP21 stop latched\n");
-    report_printf("Run ended. Connect Pico USB to read the report. Reset erases RAM.\n");
+    report_printf("Run ended. Connect USB to read the report; it is also saved in flash.\n");
+    if (ran) report_save();
+    // Also covers a failed start-up or GP21 before the run.
+    if (!completed) cue_play(CUE_FAULT);
     bool was_connected = false;
-    bool last_start = false;
     while (true) {
         bool connected = stdio_usb_connected();
         if (connected && !was_connected) { sleep_ms(500); report_replay(); }
-        bool start = motion_start_pressed();
-        if (connected && start && !last_start) report_replay();
-        was_connected = stdio_usb_connected();
-        last_start = start;
+        was_connected = connected;
+        press_t press = read_start_button();
+        if (press == PRESS_TAP) report_replay();
+        else if (press == PRESS_HOLD) report_print_saved();
         sleep_ms(20);
     }
 }

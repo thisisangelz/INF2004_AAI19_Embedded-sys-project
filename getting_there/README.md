@@ -2,7 +2,9 @@
 
 The `getting-there` branch runs this separate Pico W programme. Flash
 `build/getting_there.uf2` onto the robot. It approaches AP1, receives and
-verifies AP1's reply payload over BLE, then plays a one-second completion tone.
+verifies AP1's reply payload over BLE, then plays a completion tone. The
+buzzer reports each stage while it runs, and the run log is saved to flash so
+it can be read after a reset or power-off.
 
 ## Hardware and starting a run
 
@@ -24,8 +26,11 @@ wheels drive forwards with positive commands before a floor test.
 Power the robot from its battery and switch on AP1. AP1 must run the existing
 Wi-Fi and BLE beacon firmware from `picow_access_point`, with Wi-Fi SSID
 `I AM PICO W`, BLE service `0xFF20`, protocol version 1 and beacon ID 1.
-AP2 and AP3 are ignored. Press and release GP20, then keep the robot still
-for the two-second gyro calibration. GP21 stops and latches until reset.
+AP2 and AP3 are ignored. Tap GP20 (press and release) to start. The robot
+waits one second so your hand is clear, then keeps still for the two-second
+gyro calibration while the buzzer ticks. GP21 stops and latches until reset.
+Holding GP20 for two seconds instead prints the previous run's saved log
+(see below) and does not start a run.
 
 ## Approach sequence
 
@@ -51,8 +56,9 @@ for the two-second gyro calibration. GP21 stops and latches until reset.
    transferring. A transfer failure allows three stationary attempts. Once
    proximity has passed, failed retries do not cause another movement step.
 7. Verify the beacon payload's length and CRC-32, send `COMPLETE`, and require
-   AP1's `COMPLETE_ACK`. Disconnect, sound a 2000 Hz tone on GP22 for 1000 ms,
-   then remain stopped and quiet. GP21 also interrupts the completion tone.
+   AP1's `COMPLETE_ACK`. Disconnect, sound a one-second tone on GP22 followed
+   by the all-done melody, then remain stopped and quiet. GP21 also interrupts
+   the completion tone.
 
 The BLE close-range check retains the requested threshold of **-50 dBm**.
 It uses 12 fresh target advertisements, trims the lowest and highest quarter,
@@ -96,14 +102,47 @@ obstacle avoidance. The -50 dBm threshold is a configurable starting value;
 it does not establish a particular physical distance. Test the assembled robot
 on a clear floor with GP21 available to stop it.
 
-## Stored report
+## Buzzer sounds
 
-The latest 32767 bytes of report text and the received payload remain in RAM.
-When the report fills, whole older lines are discarded so completion or failure
-messages remain available. Keep the battery on after the run, connect Pico USB
-and open its serial port at 115200 baud. The stored report prints on connection;
-GP20 prints it again. GP20 does not repeat the movement. Reset or power loss
-erases the report and payload.
+All sounds play in the background from a timer, so they never pause driving,
+scanning or BLE.
+
+| Sound | Meaning |
+|---|---|
+| One short beep | GP20 accepted: hands off |
+| Fast ticking (four per second) | Gyro calibrating: keep the robot still |
+| Two rising beeps | Calibration done; the robot will move soon |
+| One short beep | A four-direction pass is starting |
+| Three quick high beeps | BLE close-range check passed; transfer starting |
+| One long beep (1 s) | AP1 payload verified |
+| Long, short, long | Run complete |
+| Three slow low beeps | Stopped without a payload, start-up failed or GP21 pressed |
+| Two very short beeps | GP20 held for 2 s: saved log will print |
+
+Each beacon also beeps: once when it starts advertising, twice when the robot
+connects (the robot passed its range check), and one long beep when the
+transfer is complete on the beacon's side.
+
+## Run log
+
+The latest 32767 bytes of report text and the received payload are kept in
+RAM. When the report fills, whole older lines are discarded so completion or
+failure messages remain available. Connect Pico USB and open its serial port
+at 115200 baud: after a run the report prints on connection and a GP20 tap
+prints it again. GP20 does not repeat the movement.
+
+The report is also saved to flash, so it survives reset and power loss.
+Checkpoints are written only while the motors are stopped and the radio is
+idle: at the start of a run, after calibration, after each direction pass,
+after each approach step and when the run ends. A battery failure loses only
+the lines since the last checkpoint. The log lives in nine 4 KB flash sectors
+just below BTstack's own storage at the end of flash; only sectors that
+changed are rewritten.
+
+To read the previous run's log after a reset or power-off, connect USB before
+tapping GP20: it prints automatically as `SAVED LOG: RUN #n`. Holding GP20 for
+two seconds prints it again, before or after a run. The previous log is kept
+until a new run is started; the new run then overwrites it.
 
 Successful runs include these lines:
 
@@ -112,7 +151,7 @@ AP1 close-range check passed; motors stopped for payload transfer
 AP1 reply payload length and CRC verified
 AP1 PAYLOAD COMPLETE: verified reply and final acknowledgement
 AP1 payload: Reply file from beacon AP1
-COMPLETION TONE: GP22, 2000 Hz for 1000 ms
+COMPLETION TONE: AP1 collected (1 s tone), then all-done melody
 RESULT: PAYLOAD CONFIRMED
 ```
 
@@ -134,8 +173,9 @@ These checks compile the actual navigation and BLE client sources with mocked
 hardware and SDK event definitions. They cover approach steps, repeated
 direction passes, missing signals, stationary retries, run limits, signed RSSI,
 the close-range gate, payload verification, notifications arriving before write
-completion, connection failures and cleanup. They also check the one-second
-tone and stopping it.
+completion, connection failures and cleanup. They also check the completion
+cues, stopping them with GP21, the in-range callback and the flash
+checkpoint points.
 
 ```powershell
 python getting_there/tests/run_host_checks.py --cc C:/msys64/ucrt64/bin/gcc.exe --sdk 'C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/pico-sdk'

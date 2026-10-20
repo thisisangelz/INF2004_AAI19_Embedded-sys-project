@@ -142,6 +142,20 @@ configured for the Maker Pi Pico arrangement already used by the repository.
 - After each completed AP: its LED remains on.
 - After all three complete: all LEDs on and constant buzzer until power-off.
 
+These describe `pico_rssi_tracker`, which drives the buzzer on GP18 (Maker Pi
+Pico layout). On a Robo Pico the buzzer is on GP22; `getting_there` uses GP22
+and its sounds are listed in `getting_there/README.md`.
+
+### Beacon buzzer (Robo Pico GP22)
+
+| Sound | Meaning |
+|---|---|
+| One short beep | Beacon started and is advertising |
+| Two quick high beeps | Robot connected: it passed its BLE range check |
+| One long beep (1 s) | Transfer complete on the beacon's side |
+
+Override the pin with `BEACON_BUZZER_PIN` if a beacon uses a different board.
+
 ## Serial evidence
 
 Use a USB serial monitor on the robot and, when debugging, on the beacon being

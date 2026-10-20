@@ -567,18 +567,29 @@ void payload_client_init(void)
 
 bool payload_client_ready(void) { return flag(F_BLUETOOTH_READY); }
 
+static void (*close_callback)(void);
+void payload_client_set_close_callback(void (*callback)(void)) { close_callback = callback; }
+
 payload_result_t payload_client_attempt(void)
 {
     motion_stop();
     if (!flag(F_BLUETOOTH_READY) || flag(F_ATTEMPT_RUNNING) || motion_stop_requested()) return PAYLOAD_FATAL;
     flag_assign(F_ABORT_REQUESTED, false);
+    // Cleared here too, so a stale flag from the last attempt cannot fire the
+    // close callback before start_attempt_callback runs.
+    flag_assign(F_CLOSE_CONFIRMED, false);
     flag_assign(F_ATTEMPT_RUNNING, true);
     set_state(BLE_STARTING);
     start_registration.callback = start_attempt_callback;
     btstack_run_loop_execute_on_main_thread(&start_registration);
     uint32_t start = now_ms();
     uint32_t abort_started = 0;
+    bool close_announced = false;
     while (flag(F_ATTEMPT_RUNNING)) {
+        if (!close_announced && flag(F_CLOSE_CONFIRMED)) {
+            close_announced = true;
+            if (close_callback) close_callback();
+        }
         uint32_t elapsed = now_ms() - phase_started_ms;
         bool cleanup = current_state() == BLE_CLOSING || current_state() == BLE_STOPPING_SCAN;
         if (cleanup && elapsed >= CLEANUP_TIMEOUT_MS) {
