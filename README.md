@@ -1,5 +1,15 @@
 # Pico W Three-Beacon Wi-Fi + BLE Test
 
+The `line-search` branch follows the first direction with confirmed AP1 RSSI
+improvement in 250 ms forward steps. Reversal requires three successive weak
+positions, with two fresh batches at each. On confirmed decline it returns only to
+the retained best point, then checks only the two perpendicular directions.
+An inconsistent return or two unsuccessful side checks stops the run. See [the robot instructions](getting_there/README.md)
+for limits, sampling settings and the hardware test procedure. Flash
+`getting_there/build/getting_there.uf2` and confirm `line-search v7 two-directions`.
+The default firmware stops for Wi-Fi samples; moving acquisition requires
+explicit enablement and timing qualification.
+
 The `getting-there` branch adds the robot approach programme in
 [`getting_there`](getting_there/README.md). It repeatedly moves towards AP1,
 waits for the -50 dBm BLE close-range check, receives and verifies the beacon
@@ -49,6 +59,12 @@ resumes for the next target and the robot waits for another GP20 press.
 
 The access points are *detected*, not joined by the robot. Their Wi-Fi networks
 remain useful as RSSI beacons; BLE is used for close-range gating and transfer.
+
+Separate [power-bank test variants](ble_transfer_powerbank/README.md) are in
+`picow_access_point_powerbank`, `picow_access_point2_powerbank` and
+`picow_access_point3_powerbank`. They keep the onboard LED on and request that
+Wi-Fi power saving be disabled. The original AP folders and shared server retain
+their original behaviour. The sections below describe the original firmware.
 
 ## BLE proximity settings
 

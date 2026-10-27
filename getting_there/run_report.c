@@ -9,8 +9,12 @@
 #include "pico/stdio_usb.h"
 
 #define REPORT_CAPACITY 32768
+#define USB_QUEUE_CAPACITY 4096u
 static char pending[REPORT_CAPACITY];
 static char snapshot[REPORT_CAPACITY];
+static char usb_queue[USB_QUEUE_CAPACITY];
+static uint16_t usb_head, usb_length;
+static bool usb_overflow;
 static uint16_t pending_length; // 0..32768
 static volatile struct {
     uint8_t active : 1;
@@ -23,6 +27,8 @@ void report_init(void)
 {
     critical_section_init(&report_lock);
     pending_length = 0;
+    usb_head = usb_length = 0;
+    usb_overflow = false;
     report_state.active = report_state.failed = report_state.closed = false;
 }
 
@@ -33,13 +39,10 @@ static void report_failed(void)
     critical_section_exit(&report_lock);
 }
 
-void report_printf(const char *format, ...)
+static void report_format(bool defer_usb, const char *format, va_list args)
 {
     char line[512];
-    va_list args;
-    va_start(args, format);
     int written = vsnprintf(line, sizeof(line), format, args);
-    va_end(args);
     if (written <= 0) return;
     size_t length = (size_t)written;
     if (length >= sizeof(line)) length = sizeof(line) - 1;
@@ -53,8 +56,53 @@ void report_printf(const char *format, ...)
             pending_length += length;
         }
     }
+    // This display queue is separate from the persistent report. Dropping a
+    // USB copy never drops saved text. Never call USB from a radio callback.
+    if (length <= USB_QUEUE_CAPACITY - usb_length) {
+        for (size_t i = 0; i < length; ++i)
+            usb_queue[(usb_head + usb_length + i) % USB_QUEUE_CAPACITY] = line[i];
+        usb_length += (uint16_t)length;
+    } else usb_overflow = true;
     critical_section_exit(&report_lock);
-    if (stdio_usb_connected()) printf("%s", line);
+    if (!defer_usb) report_flush_usb();
+}
+
+void report_printf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    report_format(false, format, args);
+    va_end(args);
+}
+
+void report_defer_printf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    report_format(true, format, args);
+    va_end(args);
+}
+
+void report_flush_usb(void)
+{
+    if (!stdio_usb_connected()) {
+        critical_section_enter_blocking(&report_lock);
+        usb_head = usb_length = 0;
+        usb_overflow = false;
+        critical_section_exit(&report_lock);
+        return;
+    }
+    char text[512];
+    critical_section_enter_blocking(&report_lock);
+    unsigned length = usb_length > sizeof(text) ? sizeof(text) : usb_length;
+    for (unsigned i = 0; i < length; ++i) text[i] = usb_queue[(usb_head + i) % USB_QUEUE_CAPACITY];
+    usb_head = (uint16_t)((usb_head + length) % USB_QUEUE_CAPACITY);
+    usb_length -= (uint16_t)length;
+    bool overflow = usb_overflow;
+    usb_overflow = false;
+    critical_section_exit(&report_lock);
+    if (length) fwrite(text, 1, length, stdout);
+    if (overflow) printf("USB display queue full; use saved-run replay for the recorded text.\n");
 }
 
 bool report_ok(void) { return !report_state.failed; }
@@ -72,6 +120,7 @@ bool report_begin(void)
 
 bool report_checkpoint(void)
 {
+    report_flush_usb();
     if (!report_state.active) return !report_state.failed;
     // Foreground only: motors OFF, outside radio operations. Never in callbacks.
     critical_section_enter_blocking(&report_lock);

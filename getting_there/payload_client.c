@@ -34,7 +34,7 @@ static volatile uint32_t phase_started_ms;
 //   bits 0-4   BLE state, 23 states
 //   bits 5-6   result of the last attempt, 4 values
 //   bits 7-8   result to report once cleanup finishes, 4 values
-//   bits 9-17  one bit per flag below
+//   bits 9-18  one bit per flag below
 #define BLE_STATE_LAST BLE_CLOSING
 #define ST_STATE_SHIFT 0u
 #define ST_STATE_BITS 5u
@@ -50,6 +50,7 @@ static volatile uint32_t phase_started_ms;
 #define F_LISTENING (1u << 15)
 #define F_SERVICE_FOUND (1u << 16)
 #define F_CHARACTERISTIC_FOUND (1u << 17)
+#define F_STARTUP_FAILED (1u << 18)
 _Static_assert(ST_STATE_BITS == BITS_NEEDED(BLE_STATE_LAST), "BLE state field is not minimal");
 _Static_assert(ST_RESULT_BITS == BITS_NEEDED(PAYLOAD_FATAL), "result field is not minimal");
 _Static_assert(ST_CLOSING_SHIFT == ST_RESULT_SHIFT + ST_RESULT_BITS, "result fields overlap");
@@ -95,6 +96,7 @@ _Static_assert(9 == BITS_NEEDED(TRANSFER_MAX_FILE_SIZE), "file offset width");
 static btstack_packet_callback_registration_t event_registration;
 static btstack_context_callback_registration_t start_registration;
 static btstack_context_callback_registration_t abort_registration;
+static btstack_context_callback_registration_t init_registration;
 static bd_addr_t beacon_address;
 static bd_addr_type_t beacon_address_type;
 static hci_con_handle_t connection_handle = HCI_CON_HANDLE_INVALID;
@@ -141,7 +143,7 @@ static void close_attempt(payload_result_t result)
     if (current_state() == BLE_SCANNING || current_state() == BLE_STOPPING_FOR_CONNECT) {
         bool already_stopping = current_state() == BLE_STOPPING_FOR_CONNECT;
         if (!already_stopping)
-            report_printf("BLE CHECK ENDED: %u/12 valid AP1 readings, close averages %u/3; %s\n",
+            report_defer_printf("BLE CHECK ENDED: %u/12 valid AP1 readings, close averages %u/3; %s\n",
                           (unsigned)counters.sample_count, (unsigned)counters.close_count,
                           counters.sample_count == 0 ? "no matching advertisements received" :
                           counters.sample_count < RSSI_SAMPLE_COUNT ? "too few readings" :
@@ -169,7 +171,7 @@ static void close_attempt(payload_result_t result)
 
 static void transfer_failed(const char *reason)
 {
-    report_printf("AP1 PAYLOAD FAILED: %s\n", reason);
+    report_defer_printf("AP1 PAYLOAD FAILED: %s\n", reason);
     fault_raise(FAULT_PAYLOAD);
     flag_assign(F_PAYLOAD_VERIFIED, false);
     close_attempt(flag(F_CLOSE_CONFIRMED) ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE);
@@ -243,7 +245,7 @@ static void handle_notification(const uint8_t *value, uint16_t length)
         tx_packet[0] = MSG_FILE_START;
         transfer_write_u16(tx_packet + 1, sizeof(robot_file) - 1);
         transfer_write_u32(tx_packet + 3, robot_crc);
-        report_printf("AP1 handshake confirmed; sending robot test file\n");
+        report_defer_printf("AP1 handshake confirmed; sending robot test file\n");
         (void)write_packet(7, BLE_WRITE_FILE_START);
         break;
     case MSG_FILE_READY:
@@ -272,7 +274,7 @@ static void handle_notification(const uint8_t *value, uint16_t length)
         reply_crc = transfer_read_u32(value + 3);
         counters.reply_offset = 0;
         reply_sequence = 0;
-        report_printf("AP1 reply announced: %u bytes, CRC %08lx\n",
+        report_defer_printf("AP1 reply announced: %u bytes, CRC %08lx\n",
                       counters.reply_length, (unsigned long)reply_crc);
         write_simple(MSG_REPLY_NEXT, BLE_WRITE_REPLY_NEXT);
         break;
@@ -297,7 +299,7 @@ static void handle_notification(const uint8_t *value, uint16_t length)
             transfer_read_u32(value + 1) != reply_crc) {
             transfer_failed("reply payload CRC or length failed"); return;
         }
-        report_printf("AP1 reply payload length and CRC verified\n");
+        report_defer_printf("AP1 reply payload length and CRC verified\n");
         write_simple(MSG_COMPLETE, BLE_WRITE_COMPLETE);
         break;
     case MSG_COMPLETE_ACK:
@@ -306,8 +308,8 @@ static void handle_notification(const uint8_t *value, uint16_t length)
             transfer_failed("invalid final acknowledgement"); return;
         }
         flag_assign(F_PAYLOAD_VERIFIED, true);
-        report_printf("AP1 PAYLOAD COMPLETE: verified reply and final acknowledgement\n");
-        report_printf("AP1 payload: %.*s\n", counters.reply_length, (const char *)reply_file);
+        report_defer_printf("AP1 PAYLOAD COMPLETE: verified reply and final acknowledgement\n");
+        report_defer_printf("AP1 payload: %.*s\n", counters.reply_length, (const char *)reply_file);
         close_attempt(PAYLOAD_COMPLETE);
         break;
     default:
@@ -434,7 +436,7 @@ static void advertisement_received(uint8_t *packet)
     if (counters.sample_count < RSSI_SAMPLE_COUNT) return;
     int average = filtered_rssi();
     counters.close_count = average >= CLOSE_RSSI_DBM ? counters.close_count + 1 : 0;
-    report_printf("AP1 BLE: filtered %d dBm, need >= %d, close %d/%d\n",
+    report_defer_printf("AP1 BLE: filtered %d dBm, need >= %d, close %d/%d\n",
                   average, CLOSE_RSSI_DBM, counters.close_count, REQUIRED_CLOSE_AVERAGES);
     if (counters.close_count < REQUIRED_CLOSE_AVERAGES) return;
     flag_assign(F_CLOSE_CONFIRMED, true);
@@ -442,7 +444,7 @@ static void advertisement_received(uint8_t *packet)
     beacon_address_type = gap_event_advertising_report_get_address_type(packet);
     set_state(BLE_STOPPING_FOR_CONNECT);
     gap_stop_scan();
-    report_printf("AP1 close-range check passed; motors stopped for payload transfer\n");
+    report_defer_printf("AP1 close-range check passed; motors stopped for payload transfer\n");
 }
 
 static void connection_complete(uint8_t status, hci_con_handle_t handle)
@@ -466,7 +468,7 @@ static void connection_complete(uint8_t status, hci_con_handle_t handle)
     }
     flag_assign(F_SERVICE_FOUND, false);
     set_state(BLE_DISCOVER_SERVICE);
-    report_printf("AP1 BLE connected; discovering payload service\n");
+    report_defer_printf("AP1 BLE connected; discovering payload service\n");
     if (gatt_client_discover_primary_services_by_uuid16(gatt_handler, handle,
                                                        BEACON_SERVICE_UUID) != ERROR_CODE_SUCCESS) {
         transfer_failed("service discovery could not start");
@@ -480,12 +482,12 @@ static void hci_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_
     switch (hci_event_packet_get_type(packet)) {
     case BTSTACK_EVENT_STATE:
         flag_assign(F_BLUETOOTH_READY, btstack_event_state_get_state(packet) == HCI_STATE_WORKING);
-        if (flag(F_BLUETOOTH_READY)) report_printf("Bluetooth ready\n");
+        if (flag(F_BLUETOOTH_READY)) report_defer_printf("Bluetooth ready\n");
         break;
     case HCI_EVENT_COMMAND_COMPLETE:
         if (hci_event_command_complete_get_command_opcode(packet) != hci_le_set_scan_enable.opcode) break;
         if (hci_event_command_complete_get_return_parameters(packet)[0] != ERROR_CODE_SUCCESS) {
-            report_printf("BLE scan command failed; stopping approach\n");
+            report_defer_printf("BLE scan command failed; stopping approach\n");
             fault_raise(FAULT_BLE_RADIO);
             result_put(ST_CLOSING_SHIFT, PAYLOAD_FATAL);
             finish_attempt();
@@ -524,7 +526,7 @@ static void hci_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_
         if (current_state() != BLE_CLOSING) {
             flag_assign(F_PAYLOAD_VERIFIED, false);
             result_put(ST_CLOSING_SHIFT, flag(F_CLOSE_CONFIRMED) ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE);
-            report_printf("AP1 disconnected before payload confirmation\n");
+            report_defer_printf("AP1 disconnected before payload confirmation\n");
         }
         finish_attempt();
         break;
@@ -547,20 +549,22 @@ static void start_attempt_callback(void *context)
     set_state(BLE_SCANNING);
     gap_set_scan_parameters(0, 0x0030, 0x0030);
     gap_start_scan();
-    report_printf("BLE-only check: AP1, 12 readings, 3 averages >= -50 dBm; Wi-Fi paused\n");
+    report_defer_printf("BLE-only check: AP1, 12 readings, 3 averages >= -50 dBm; Wi-Fi paused\n");
 }
 
 static void abort_attempt_callback(void *context)
 {
     (void)context;
     if (!flag(F_ATTEMPT_RUNNING) || current_state() == BLE_STOPPING_SCAN || current_state() == BLE_CLOSING) return;
-    report_printf("BLE phase timed out or GP21 pressed; closing radio operation\n");
+    report_defer_printf("BLE phase timed out or GP21 pressed; closing radio operation\n");
     close_attempt(motion_stop_requested() ? PAYLOAD_FATAL :
                   (flag(F_CLOSE_CONFIRMED) ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE));
 }
 
-void payload_client_init(void)
+static void initialise_client_callback(void *context)
 {
+    (void)context;
+    if (motion_stop_requested()) { flag_assign(F_STARTUP_FAILED, true); return; }
     l2cap_init();
     sm_init();
     sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
@@ -568,10 +572,27 @@ void payload_client_init(void)
     gatt_client_init();
     event_registration.callback = hci_handler;
     hci_add_event_handler(&event_registration);
-    hci_power_control(HCI_POWER_ON);
+    int error = hci_power_control(HCI_POWER_ON);
+    if (error) {
+        flag_assign(F_BLUETOOTH_READY, false);
+        flag_assign(F_STARTUP_FAILED, true);
+        fault_raise(FAULT_BLE_RADIO);
+        report_defer_printf("FAILED: Bluetooth controller power-on returned error %d\n", error);
+    }
+}
+
+void payload_client_init(void)
+{
+    flag_assign(F_BLUETOOTH_READY, false);
+    flag_assign(F_STARTUP_FAILED, false);
+    // Keep stack setup/power-on in the same async context as HCI processing.
+    // Configuring the stack directly from main could be interrupted by it.
+    init_registration.callback = initialise_client_callback;
+    btstack_run_loop_execute_on_main_thread(&init_registration);
 }
 
 bool payload_client_ready(void) { return flag(F_BLUETOOTH_READY); }
+bool payload_client_start_failed(void) { return flag(F_STARTUP_FAILED); }
 
 payload_result_t payload_client_attempt(void)
 {
@@ -585,12 +606,13 @@ payload_result_t payload_client_attempt(void)
     uint32_t start = now_ms();
     uint32_t abort_started = 0;
     while (flag(F_ATTEMPT_RUNNING)) {
+        report_flush_usb();
         uint32_t elapsed = now_ms() - phase_started_ms;
         bool cleanup = current_state() == BLE_CLOSING || current_state() == BLE_STOPPING_SCAN;
         if (cleanup && elapsed >= CLEANUP_TIMEOUT_MS) {
             flag_assign(F_ABORT_REQUESTED, true);
             fault_raise(FAULT_BLE_RADIO);
-            report_printf("FAILED: BLE cleanup did not finish; no further movement\n");
+            report_defer_printf("FAILED: BLE cleanup did not finish; no further movement\n");
             return PAYLOAD_FATAL;
         }
         uint32_t timeout = current_state() == BLE_SCANNING ? SCAN_WINDOW_MS :
@@ -604,7 +626,7 @@ payload_result_t payload_client_attempt(void)
         }
         if (flag(F_ABORT_REQUESTED) && (uint32_t)(now_ms() - abort_started) >= CLEANUP_TIMEOUT_MS) {
             fault_raise(FAULT_BLE_RADIO);
-            report_printf("FAILED: BLE cleanup did not finish; no further movement\n");
+            report_defer_printf("FAILED: BLE cleanup did not finish; no further movement\n");
             return PAYLOAD_FATAL;
         }
         sleep_ms(10);

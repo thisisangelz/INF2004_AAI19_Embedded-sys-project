@@ -15,6 +15,9 @@ static uint8_t write_value[20];
 static uint16_t write_length;
 static uint8_t write_status;
 static uint8_t connect_status;
+static int power_error, power_calls;
+static bool defer_context_callback;
+static btstack_context_callback_registration_t *queued_context_callback;
 const hci_cmd_t hci_le_set_scan_enable = {0x200c, "11"};
 
 static void scan_ack(void)
@@ -30,6 +33,8 @@ void sleep_ms(uint32_t ms)
     if (auto_scan_ack && scan_ack_pending) scan_ack();
 }
 void report_printf(const char *format, ...) { (void)format; }
+void report_defer_printf(const char *format, ...) { (void)format; }
+void report_flush_usb(void) { }
 void hci_dump_log(int level, const char *format, ...) { (void)level; (void)format; }
 bool motion_stop_requested(void) { return stopped; }
 void motion_stop(void) { }
@@ -40,9 +45,12 @@ void att_server_init(const uint8_t *db, att_read_callback_t read, att_write_call
 { (void)db; (void)read; (void)write; }
 void gatt_client_init(void) { }
 void hci_add_event_handler(btstack_packet_callback_registration_t *registration) { (void)registration; }
-int hci_power_control(HCI_POWER_MODE mode) { (void)mode; return 0; }
+int hci_power_control(HCI_POWER_MODE mode) { (void)mode; ++power_calls; return power_error; }
 void btstack_run_loop_execute_on_main_thread(btstack_context_callback_registration_t *registration)
-{ registration->callback(registration->context); }
+{
+    if (defer_context_callback) queued_context_callback = registration;
+    else registration->callback(registration->context);
+}
 void gap_set_scan_parameters(uint8_t type, uint16_t interval, uint16_t window)
 { (void)type; (void)interval; (void)window; }
 void gap_start_scan(void) { scan_ack_pending = true; }
@@ -92,6 +100,8 @@ static void reset(void)
     sim_time = 0; stopped = scan_ack_pending = auto_scan_ack = false;
     stop_scan_calls = connect_calls = cancel_calls = disconnect_calls = write_calls = 0;
     write_status = connect_status = 0;
+    power_error = power_calls = 0; defer_context_callback = false; queued_context_callback = NULL;
+    flag_assign(F_STARTUP_FAILED, false);
     flag_assign(F_ATTEMPT_RUNNING, false); flag_assign(F_ABORT_REQUESTED, false); flag_assign(F_BLUETOOTH_READY, true);
     set_state(BLE_IDLE); phase_started_ms = 0;
     flag_assign(F_CLOSE_CONFIRMED, false); flag_assign(F_SCAN_CONFIRMED, false); flag_assign(F_PAYLOAD_VERIFIED, false); flag_assign(F_LISTENING, false);
@@ -206,6 +216,18 @@ static void successful_exchange(bool early_notifications)
 
 int main(void)
 {
+    reset(); defer_context_callback=true; payload_client_init();
+    assert(!payload_client_ready() && !payload_client_start_failed() && power_calls==0 && queued_context_callback);
+    queued_context_callback->callback(queued_context_callback->context);
+    assert(power_calls==1 && !payload_client_start_failed());
+    uint8_t working[] = {BTSTACK_EVENT_STATE,1,HCI_STATE_WORKING};
+    hci_handler(HCI_EVENT_PACKET,0,working,sizeof(working));
+    assert(payload_client_ready());
+    reset(); power_error=-7; payload_client_init();
+    assert(power_calls==1 && !payload_client_ready() && payload_client_start_failed() && fault_test(FAULT_BLE_RADIO));
+    reset(); defer_context_callback=true; payload_client_init(); stopped=true;
+    queued_context_callback->callback(queued_context_callback->context);
+    assert(!power_calls && payload_client_start_failed());
     reset(); flag_assign(F_ATTEMPT_RUNNING, true); start_attempt_callback(NULL); scan_ack();
     for (int i = 0; i < 20; ++i) advertisement(-70, 1);
     assert(counters.sample_count == 12 && counters.close_count == 0 && !connect_calls && current_state() == BLE_SCANNING);
@@ -297,10 +319,10 @@ int main(void)
 
     // Fault mask: bits are independent and clear individually.
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
-    fault_raise(FAULT_IMU); fault_raise(FAULT_STEP_LIMIT);
-    assert(fault_mask() == ((1u << FAULT_IMU) | (1u << FAULT_STEP_LIMIT)));
-    fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_STEP_LIMIT));
-    fault_clear(FAULT_STEP_LIMIT); assert(!fault_mask());
+    fault_raise(FAULT_IMU); fault_raise(FAULT_TRANSLATION_LIMIT);
+    assert(fault_mask() == ((1u << FAULT_IMU) | (1u << FAULT_TRANSLATION_LIMIT)));
+    fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_TRANSLATION_LIMIT));
+    fault_clear(FAULT_TRANSLATION_LIMIT); assert(!fault_mask());
 
     puts("BLE signed RSSI, proximity gate, payload CRC, early notifications, cleanup and faults: passed");
     return 0;

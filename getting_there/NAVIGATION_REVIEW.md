@@ -1,5 +1,8 @@
 # Alvin → Alvin_2 navigation review
 
+Historical review of `Alvin_2`. The current `line-search` algorithm and its
+hardware validation procedure are described in [README.md](README.md).
+
 Baseline: `origin/Alvin` at `feb64f7f49f8e42560d29d148261c7b55665780f`.
 Scope: the AP1-only robot in `getting_there`, not the separate legacy tracker.
 No physical robot was connected or flashed during this review.

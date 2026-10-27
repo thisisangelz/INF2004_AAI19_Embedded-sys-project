@@ -27,8 +27,8 @@ const char *fault_name(fault_t fault)
 {
     static const char *const names[FAULT_COUNT] = {
         "IMU", "GYRO_SATURATED", "HEADING", "TURN", "WIFI_LOST", "WIFI_SCAN",
-        "BLE_RADIO", "PAYLOAD", "STOP_LATCHED", "RUN_LIMIT", "NO_DIRECTION", "STEP_LIMIT",
-        "REPORT",
+        "BLE_RADIO", "PAYLOAD", "STOP_LATCHED", "RUN_LIMIT", "NO_DIRECTION", "TRANSLATION_LIMIT",
+        "REPORT", "PROFILE", "START_BUTTON",
     };
     return fault < FAULT_COUNT ? names[fault] : "?";
 }

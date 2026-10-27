@@ -2,7 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 #include "../report_store.c"
+static size_t capture_usb_write(const void *data, size_t size, size_t count, FILE *stream);
+#define fwrite capture_usb_write
 #include "../run_report.c"
+#undef fwrite
 
 static uint8_t flash_image[REPORT_FLASH_BYTES];
 static uint8_t saved_image[REPORT_FLASH_BYTES];
@@ -12,8 +15,20 @@ static int torn_after = -1;
 static bool erase_fails;
 static bool inject_callback;
 static unsigned erase_calls, write_calls;
+static bool usb_connected, callback_active;
+static unsigned usb_queries;
+static char live_usb[16384];
+static size_t live_usb_length;
 
-bool stdio_usb_connected(void) { return false; }
+bool stdio_usb_connected(void) { assert(!callback_active); ++usb_queries; return usb_connected; }
+static size_t capture_usb_write(const void *data, size_t size, size_t count, FILE *stream)
+{
+    (void)stream;
+    assert(!callback_active && size * count < sizeof(live_usb) - live_usb_length);
+    memcpy(live_usb + live_usb_length, data, size * count);
+    live_usb_length += size * count; live_usb[live_usb_length]=0;
+    return count;
+}
 void report_flash_read(uint32_t offset, void *data, size_t length)
 {
     assert(offset + length <= sizeof(flash_image));
@@ -31,7 +46,7 @@ bool report_flash_program(uint32_t offset, const void *page)
     ++write_calls;
     if (inject_callback) {
         inject_callback = false;
-        report_printf("callback during checkpoint\n");
+        report_defer_printf("callback during checkpoint\n");
     }
     assert(offset % REPORT_PAGE_BYTES == 0 && offset + REPORT_PAGE_BYTES <= sizeof(flash_image));
     size_t size = torn_after < 0 ? REPORT_PAGE_BYTES : (size_t)torn_after;
@@ -63,6 +78,27 @@ static void reboot(void)
 
 int main(void)
 {
+    memset(flash_image, 0xff, sizeof(flash_image));
+    reboot(); usb_connected=true; callback_active=true; usb_queries=0;
+    report_defer_printf("Bluetooth callback queued\n");
+    assert(!usb_queries && !live_usb_length);
+    callback_active=false; report_flush_usb();
+    assert(strstr(live_usb,"Bluetooth callback queued"));
+    assert(report_begin() && report_finish()); replay();
+    assert(strstr(output,"Bluetooth callback queued"));
+    reboot(); live_usb_length=0; live_usb[0]=0;
+    char expected_usb[8192]={0}; size_t expected_length=0;
+    for (unsigned i=0;i<400;++i) {
+        char line[32]; int n=snprintf(line,sizeof(line),"deferred %03u\n",i);
+        memcpy(expected_usb+expected_length,line,(size_t)n); expected_length+=(size_t)n;
+        callback_active=true; report_defer_printf("%s",line); callback_active=false;
+        if (i%17u==16u) report_flush_usb();
+    }
+    while (usb_length) report_flush_usb();
+    assert(live_usb_length==expected_length && !memcmp(live_usb,expected_usb,expected_length));
+    assert(report_begin() && report_finish()); replay();
+    assert(strstr(output,expected_usb));
+    usb_connected=false;
     memset(flash_image, 0xff, sizeof(flash_image));
     reboot();
     replay();

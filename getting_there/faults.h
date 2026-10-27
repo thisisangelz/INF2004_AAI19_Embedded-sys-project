@@ -17,9 +17,11 @@ typedef enum {
     FAULT_PAYLOAD,        // BLE payload transfer failed
     FAULT_STOP_LATCHED,   // GP21 stop pressed; latched until reset
     FAULT_RUN_LIMIT,      // 15 minute run limit reached
-    FAULT_NO_DIRECTION,   // four headings without confirmed RSSI progress
-    FAULT_STEP_LIMIT,     // approach steps exhausted without a payload
+    FAULT_NO_DIRECTION,   // no valid next direction or inconsistent return
+    FAULT_TRANSLATION_LIMIT, // total powered translation budget exhausted
     FAULT_REPORT,         // persistent report full, truncated or write failed
+    FAULT_PROFILE,        // bounded RSSI/profile record storage exhausted
+    FAULT_START_BUTTON,   // GP20 did not release before the startup deadline
     FAULT_COUNT
 } fault_t;
 

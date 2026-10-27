@@ -5,6 +5,7 @@
 #include "hardware/pwm.h"
 #include "imu_mpu9250.h"
 #include "pico/stdlib.h"
+#include <string.h>
 
 // Robo Pico's built-in motor driver. M1 is assumed to be the left wheel.
 #define M1_A 8
@@ -13,6 +14,11 @@
 #define M2_B 11
 #define IMU_SDA 6
 #define IMU_SCL 7
+#define IMU_BUS_HZ 100000u
+#define IMU_RECOVERY_ATTEMPTS 2u
+#define MAX_MOVING_RECOVERIES 2u
+#define MAX_GYRO_RECOVERY_GAP_US 20000u
+#define MAX_GYRO_UNCERTAINTY_DEGREES 20.0f
 #define START_BUTTON 20
 #define STOP_BUTTON 21
 
@@ -45,8 +51,21 @@
 #define MAX_STRAIGHT_YAW_DEGREES 25.0f
 
 static mpu9250_t imu;
+static bool motors_powered;
+static unsigned moving_recoveries;
+static float gyro_uncertainty_degrees;
+static void stop_drive(void);
 // Sensor coordinates are kept across movement and motor-off settling.
 static float gyro_heading_degrees;
+static struct {
+    volatile bool active;
+    bool pending, failed;
+    int speed, peak_adjustment;
+    volatile uint32_t started_ms, elapsed_ms;
+    uint32_t duration_ms;
+    uint64_t previous_us;
+    float target_heading, start_heading;
+} drive;
 // Gyro sign for motors_set(-duty, +duty), learnt before the first probe.
 // Three states (unknown, +1, -1) fit in two bits. The stop latch is the
 // FAULT_STOP_LATCHED bit, because GP21 can be polled from any context.
@@ -93,12 +112,14 @@ static void motors_set(int left, int right)
     if (!motion_state.stop_armed || stop_pressed()) left = right = 0;
     motor_write(M1_A, M1_B, left, M1_FORWARD_USES_A);
     motor_write(M2_A, M2_B, right, M2_FORWARD_USES_A);
+    motors_powered = left != 0 || right != 0;
 }
 
 static void motors_stop(void)
 {
     motor_write(M1_A, M1_B, 0, M1_FORWARD_USES_A);
     motor_write(M2_A, M2_B, 0, M2_FORWARD_USES_A);
+    motors_powered = false;
 }
 
 static void motors_init(void)
@@ -157,6 +178,29 @@ static int steering_adjustment(int speed, float yaw_error, float yaw_rate,
     return adjustment;
 }
 
+static bool recover_gyro_stopped(float gyro[3], mpu9250_io_status_t *status, uint64_t *sample_us)
+{
+    for (unsigned attempt = 0; attempt < IMU_RECOVERY_ATTEMPTS; ++attempt) {
+        if (stop_pressed()) return false;
+        // Reset the controller's FIFO/repeated-start state without resetting
+        // the sensor, its range or its calibrated bias.
+        i2c_deinit(imu.i2c);
+        i2c_init(imu.i2c, IMU_BUS_HZ);
+        bool verified = mpu9250_verify_config(&imu, status);
+        if (stop_pressed()) return false;
+        if (verified && mpu9250_read_gyro_dps_status(&imu, gyro, status)) {
+            if (sample_us) *sample_us = time_us_64();
+            report_defer_printf("IMU RECOVERED: stopped retry %u/%u, identity/wake/range verified, I2C %u Hz\n",
+                                attempt + 1u, IMU_RECOVERY_ATTEMPTS, IMU_BUS_HZ);
+            return !stop_pressed();
+        }
+        report_defer_printf("IMU RETRY: %u/%u failed, reg 0x%02x, select %d, read %d; config must match\n",
+                            attempt + 1u, IMU_RECOVERY_ATTEMPTS, status->reg,
+                            status->select_result, status->read_result);
+    }
+    return false;
+}
+
 static bool read_motion_gyro(float gyro[3], uint64_t *previous_us,
                              const char *motion)
 {
@@ -164,12 +208,39 @@ static bool read_motion_gyro(float gyro[3], uint64_t *previous_us,
         motors_stop();
         return false;
     }
-    if (!mpu9250_read_gyro_dps(&imu, gyro)) {
-        motors_stop();
-        fault_raise(FAULT_IMU);
-        report_printf("%s FAILED: IMU read error\n", motion);
-        return false;
-    }
+    mpu9250_io_status_t status;
+    uint64_t sample_us;
+    if (!mpu9250_read_gyro_dps_status(&imu, gyro, &status)) {
+        bool drive_sample = strcmp(motion, "DRIVE") == 0;
+        if (drive.active) stop_drive();
+        else motors_stop();
+        report_defer_printf("IMU IO ERROR: %s, reg 0x%02x, select %d, read %d; motors stopped\n",
+                            motion, status.reg, status.select_result, status.read_result);
+        // A missed sample during a turn invalidates its angle. Straight-line
+        // recovery ends the current powered block; it never retries under PWM.
+        if (strcmp(motion, "TURN") == 0 ||
+            (drive_sample && moving_recoveries >= MAX_MOVING_RECOVERIES) ||
+            !recover_gyro_stopped(gyro, &status, &sample_us)) {
+            fault_raise(FAULT_IMU);
+            report_printf("%s FAILED: IMU recovery unavailable or exhausted\n", motion);
+            return false;
+        }
+        if (drive_sample) {
+            uint64_t gap = sample_us - *previous_us;
+            float rate = gyro[2] < 0 ? -gyro[2] : gyro[2];
+            float uncertainty = (GYRO_RANGE_DPS + rate) * (float)gap / 1000000.0f;
+            gyro_uncertainty_degrees += uncertainty;
+            if (gap > MAX_GYRO_RECOVERY_GAP_US || gyro_uncertainty_degrees > MAX_GYRO_UNCERTAINTY_DEGREES) {
+                fault_raise(FAULT_IMU);
+                report_printf("%s FAILED: recovered sensor but gyro gap %lu us makes heading uncertain\n",
+                              motion, (unsigned long)gap);
+                return false;
+            }
+            ++moving_recoveries;
+            report_defer_printf("IMU GAP: %lu us, accumulated yaw uncertainty bound %d degrees; powered block ended early\n",
+                                (unsigned long)gap, (int)(gyro_uncertainty_degrees + 0.999f));
+        }
+    } else sample_us = time_us_64();
     if (gyro[2] >= GYRO_SATURATION_DPS ||
         gyro[2] <= -GYRO_SATURATION_DPS) {
         motors_stop();
@@ -178,7 +249,7 @@ static bool read_motion_gyro(float gyro[3], uint64_t *previous_us,
                       motion, GYRO_RANGE_DPS);
         return false;
     }
-    uint64_t current_us = time_us_64();
+    uint64_t current_us = sample_us;
     gyro_heading_degrees += gyro[2] *
                             (float)(current_us - *previous_us) / 1000000.0f;
     *previous_us = current_us;
@@ -198,57 +269,109 @@ static bool settle_motion(const char *motion, uint64_t *previous_us)
     return read_motion_gyro(gyro, previous_us, motion);
 }
 
-static bool drive_for(int speed, uint32_t duration_ms, float heading_degrees)
+static void stop_drive(void)
 {
-    if (turn_sign() == 0.0f) {
-        motors_stop();
-        report_printf("DRIVE FAILED: gyro direction has not been learnt\n");
+    bool was_powered = motors_powered;
+    motors_stop();
+    if (drive.active) {
+        drive.elapsed_ms = now_ms() - drive.started_ms;
+        // A short failed transaction can end a block before the first whole
+        // millisecond. Charge one millisecond rather than reporting no travel.
+        if (was_powered && !drive.elapsed_ms) drive.elapsed_ms = 1;
+        drive.active = false;
+    }
+}
+
+bool motion_drive_start(bool forwards, uint32_t duration_ms, float heading_degrees)
+{
+    if (drive.pending || !motion_state.stop_armed || stop_pressed() ||
+        turn_sign() == 0.0f || duration_ms == 0) {
+        stop_drive();
         return false;
     }
-    const char *direction = speed >= 0 ? "forwards" : "backwards";
-    report_printf("DRIVE: %s, base duty %d%%, duration %lu ms, heading %d degrees, gyro correction on\n",
-                  direction, speed < 0 ? -speed : speed,
-                  (unsigned long)duration_ms, (int)heading_degrees);
-    float start_heading = gyro_heading_degrees;
-    float target_heading = heading_degrees * turn_sign();
-    int peak_adjustment = 0;
-    uint32_t start = now_ms();
-    uint64_t previous_us = time_us_64();
-    motors_set(speed, speed);
-    while ((uint32_t)(now_ms() - start) < duration_ms) {
-        float gyro[3];
-        if (!read_motion_gyro(gyro, &previous_us, "DRIVE")) return false;
-        float yaw_error = normalise_degrees(gyro_heading_degrees - target_heading);
-        if (yaw_error > MAX_STRAIGHT_YAW_DEGREES ||
-            yaw_error < -MAX_STRAIGHT_YAW_DEGREES) {
-            motors_stop();
-            fault_raise(FAULT_HEADING);
-            report_printf("DRIVE FAILED: heading error %+d degrees; check M1/M2 direction\n",
-                          (int)(turn_sign() * yaw_error));
-            return false;
-        }
-        int adjustment = steering_adjustment(speed, yaw_error, gyro[2],
-                                             turn_sign());
-        int magnitude = adjustment < 0 ? -adjustment : adjustment;
-        if (magnitude > peak_adjustment) peak_adjustment = magnitude;
-        // A signed wheel differential counters the same yaw in either travel direction.
-        motors_set(speed + adjustment, speed - adjustment);
-        sleep_ms(MOTION_SAMPLE_MS);
+    float preflight[3];
+    uint64_t preflight_us = time_us_64();
+    if (!read_motion_gyro(preflight, &preflight_us, "PRE-DRIVE")) return false;
+    float preflight_error = normalise_degrees(gyro_heading_degrees - heading_degrees * turn_sign());
+    if (preflight_error < 0) preflight_error = -preflight_error;
+    if (preflight_error + gyro_uncertainty_degrees > MAX_STRAIGHT_YAW_DEGREES) {
+        fault_raise(FAULT_HEADING);
+        report_printf("DRIVE FAILED: preflight error %d plus gyro uncertainty %d degrees exceeds %d\n",
+                      (int)preflight_error, (int)(gyro_uncertainty_degrees + 0.999f), (int)MAX_STRAIGHT_YAW_DEGREES);
+        return false;
     }
-    motors_stop();
-    uint32_t elapsed = now_ms() - start;
-    if (!settle_motion("DRIVE", &previous_us)) return false;
-    float yaw_error = normalise_degrees(gyro_heading_degrees - target_heading);
-    if (yaw_error > MAX_STRAIGHT_YAW_DEGREES ||
-        yaw_error < -MAX_STRAIGHT_YAW_DEGREES) {
+    drive.speed = forwards ? DRIVE_DUTY_PERCENT : -DRIVE_DUTY_PERCENT;
+    report_printf("DRIVE: %s, base duty %d%%, duration %lu ms, heading %d degrees, gyro correction on\n",
+                  forwards ? "forwards" : "backwards", DRIVE_DUTY_PERCENT,
+                  (unsigned long)duration_ms, (int)heading_degrees);
+    drive.start_heading = gyro_heading_degrees;
+    drive.target_heading = heading_degrees * turn_sign();
+    drive.duration_ms = duration_ms;
+    drive.elapsed_ms = 0;
+    drive.peak_adjustment = 0;
+    drive.failed = false;
+    drive.started_ms = now_ms();
+    drive.previous_us = time_us_64();
+    drive.pending = drive.active = true;
+    motors_set(drive.speed, drive.speed);
+    return true;
+}
+
+bool motion_drive_update(void)
+{
+    if (!drive.active) return !drive.failed;
+    float gyro[3];
+    if (!read_motion_gyro(gyro, &drive.previous_us, "DRIVE")) {
+        stop_drive();
+        drive.failed = true;
+        return false;
+    }
+    float yaw_error = normalise_degrees(gyro_heading_degrees - drive.target_heading);
+    float yaw_magnitude = yaw_error < 0 ? -yaw_error : yaw_error;
+    if (yaw_magnitude + gyro_uncertainty_degrees > MAX_STRAIGHT_YAW_DEGREES) {
+        stop_drive();
+        drive.failed = true;
+        fault_raise(FAULT_HEADING);
+        report_printf("DRIVE FAILED: heading error %+d plus gyro uncertainty %d degrees exceeds %d\n",
+                      (int)(turn_sign() * yaw_error), (int)(gyro_uncertainty_degrees + 0.999f), (int)MAX_STRAIGHT_YAW_DEGREES);
+        return false;
+    }
+    if (!drive.active) return true;
+    if ((uint32_t)(now_ms() - drive.started_ms) >= drive.duration_ms) {
+        stop_drive();
+        return true;
+    }
+    int adjustment = steering_adjustment(drive.speed, yaw_error, gyro[2], turn_sign());
+    int magnitude = adjustment < 0 ? -adjustment : adjustment;
+    if (magnitude > drive.peak_adjustment) drive.peak_adjustment = magnitude;
+    motors_set(drive.speed + adjustment, drive.speed - adjustment);
+    return true;
+}
+
+bool motion_drive_active(void) { return drive.active; }
+uint32_t motion_drive_elapsed_ms(void)
+{
+    return drive.active ? now_ms() - drive.started_ms : drive.elapsed_ms;
+}
+
+bool motion_drive_finish(void)
+{
+    stop_drive();
+    if (!drive.pending) return !drive.failed;
+    drive.pending = false;
+    if (drive.failed || stop_pressed()) return false;
+    if (!settle_motion("DRIVE", &drive.previous_us)) return false;
+    float yaw_error = normalise_degrees(gyro_heading_degrees - drive.target_heading);
+    float yaw_magnitude = yaw_error < 0 ? -yaw_error : yaw_error;
+    if (yaw_magnitude + gyro_uncertainty_degrees > MAX_STRAIGHT_YAW_DEGREES) {
         fault_raise(FAULT_HEADING);
         report_printf("DRIVE FAILED: excessive rotation while settling\n");
         return false;
     }
-    report_printf("DRIVE OK: %s, powered %lu ms, settled gyro Z rotation %+d degrees, heading error %+d degrees, peak correction %d duty points\n",
-                  direction, (unsigned long)elapsed,
-                  (int)(gyro_heading_degrees - start_heading),
-                  (int)(turn_sign() * yaw_error), peak_adjustment);
+    report_printf("DRIVE OK: %s, powered %lu ms, settled rotation %+d degrees, heading error %+d degrees, peak correction %d duty points\n",
+                  drive.speed > 0 ? "forwards" : "backwards", (unsigned long)drive.elapsed_ms,
+                  (int)(gyro_heading_degrees - drive.start_heading),
+                  (int)(turn_sign() * yaw_error), drive.peak_adjustment);
     return true;
 }
 
@@ -257,6 +380,9 @@ static bool turn_degrees(float degrees)
 {
     if (stop_pressed()) { motors_stop(); return false; }
     if (degrees == 0.0f) return true;
+    float preflight[3];
+    uint64_t preflight_us = time_us_64();
+    if (!read_motion_gyro(preflight, &preflight_us, "PRE-TURN")) return false;
     float start_heading = gyro_heading_degrees;
     float peak_rate = 0.0f;
     uint32_t start = now_ms();
@@ -374,10 +500,14 @@ static bool turn_to_heading(float heading_degrees)
 static bool calibrate_gyro(void)
 {
     report_printf("Keep robot still: calibrating gyro for 2 seconds\n");
+    // Reads subtract the current bias. Recalibration must measure the raw bias,
+    // rather than subtract the previous result and accidentally clear it.
+    imu.gyro_bias_dps[2] = 0.0f;
     float sum = 0.0f;
     for (int i = 0; i < 200; ++i) {
         float gyro[3];
-        if (!mpu9250_read_gyro_dps(&imu, gyro)) {
+        mpu9250_io_status_t status;
+        if (!mpu9250_read_gyro_dps_status(&imu, gyro, &status) && !recover_gyro_stopped(gyro, &status, NULL)) {
             fault_raise(FAULT_IMU);
             return false;
         }
@@ -399,7 +529,9 @@ bool motion_init(void)
     gpio_set_dir(STOP_BUTTON, GPIO_IN);
     gpio_pull_up(STOP_BUTTON);
     motors_init();
-    if (!mpu9250_init(&imu, i2c1, IMU_SDA, IMU_SCL, 400000) ||
+    moving_recoveries = 0;
+    gyro_uncertainty_degrees = 0;
+    if (!mpu9250_init(&imu, i2c1, IMU_SDA, IMU_SCL, IMU_BUS_HZ) ||
         !mpu9250_set_gyro_range(&imu, GYRO_RANGE_DPS)) {
         fault_raise(FAULT_IMU);
         report_printf("FAILED: IMU initialisation or gyro range configuration\n");
@@ -408,12 +540,19 @@ bool motion_init(void)
     report_printf("IMU WHO_AM_I=0x%02x | gyro +/- %d dps | turns %d%% (slow %d%%), drive %d%%\n",
                   imu.who_am_i, GYRO_RANGE_DPS, TURN_DUTY_PERCENT, TURN_SLOW_DUTY_PERCENT,
                   DRIVE_DUTY_PERCENT);
+    fault_clear(FAULT_IMU);
+    report_printf("IMU I2C: %u Hz, 5 ms transaction timeout, %u stopped recovery attempts\n",
+                  IMU_BUS_HZ, IMU_RECOVERY_ATTEMPTS);
     return true;
 }
 
 bool motion_calibrate(void)
 {
+    motion_stop();
+    drive.pending = drive.failed = false;
     gyro_heading_degrees = 0.0f;
+    moving_recoveries = 0;
+    gyro_uncertainty_degrees = 0;
     set_turn_sign(0.0f);
     return calibrate_gyro();
 }
@@ -431,8 +570,12 @@ bool motion_learn_direction(void)
 
 bool motion_drive(bool forwards, uint32_t duration_ms, float heading_degrees)
 {
-    return drive_for(forwards ? DRIVE_DUTY_PERCENT : -DRIVE_DUTY_PERCENT,
-                     duration_ms, heading_degrees);
+    if (!motion_drive_start(forwards, duration_ms, heading_degrees)) return false;
+    while (motion_drive_active()) {
+        if (!motion_drive_update()) break;
+        if (motion_drive_active()) sleep_ms(MOTION_SAMPLE_MS);
+    }
+    return motion_drive_finish();
 }
 
 bool motion_turn_to_heading(float heading_degrees)
@@ -456,4 +599,4 @@ void motion_arm_stop(void)
     restore_interrupts(irq);
     (void)stop_pressed();
 }
-void motion_stop(void) { motors_stop(); }
+void motion_stop(void) { stop_drive(); }
