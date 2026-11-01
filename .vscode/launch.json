@@ -1,0 +1,57 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "device": "RP2040",
+            "gdbPath": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-gdb.exe",
+            "serverpath": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/openocd/openocd.exe",
+            "searchDir": [
+                "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/openocd/scripts"
+            ],
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/rp2040.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "adapter speed 5000"
+            ],
+            "runToEntryPoint": "main",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            },
+            "name": "TCS34725 diag (root build)",
+            "executable": "${workspaceFolder}/build/tcs34725_diag/tcs34725_diag.elf"
+        },
+        {
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "device": "RP2040",
+            "gdbPath": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-gdb.exe",
+            "serverpath": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/openocd/openocd.exe",
+            "searchDir": [
+                "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/openocd/scripts"
+            ],
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/rp2040.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "adapter speed 5000"
+            ],
+            "runToEntryPoint": "main",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            },
+            "name": "TCS34725 diag (scripts build)",
+            "executable": "C:/tmp_pico/tcs34725_diag/tcs34725_diag.elf"
+        }
+    ]
+}
