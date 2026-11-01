@@ -1,0 +1,4 @@
+# Third-party and toolchain integration findings are outside the project-owned baseline.
+missingIncludeSystem
+unusedFunction:*/pico_sdk_import.cmake
+

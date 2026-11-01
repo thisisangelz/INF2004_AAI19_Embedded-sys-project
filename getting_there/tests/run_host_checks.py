@@ -6,14 +6,18 @@ import subprocess
 parser = argparse.ArgumentParser()
 parser.add_argument('--cc', default='gcc')
 parser.add_argument('--sdk', required=True, type=Path)
+parser.add_argument('--output-dir', type=Path)
+parser.add_argument('--coverage', action='store_true')
 args = parser.parse_args()
 tests = Path(__file__).resolve().parent
 repo = tests.parents[1]
-output = tests.parent / 'build' / 'host_checks'
+output = args.output_dir or tests.parent / 'build' / 'host_checks'
 output.mkdir(parents=True, exist_ok=True)
 btstack = args.sdk / 'lib' / 'btstack' / 'src'
 common = [args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-ffunction-sections',
           '-fdata-sections', '-I', str(tests / 'stubs')]
+if args.coverage:
+    common += ['--coverage', '-O0', '-g']
 for name in ['navigation', 'payload_client']:
     executable = output / f'test_{name}.exe'
     command = common + [str(tests / f'test_{name}.c'), str(tests.parent / 'faults.c')]

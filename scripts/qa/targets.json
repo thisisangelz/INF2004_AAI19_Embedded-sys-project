@@ -1,0 +1,31 @@
+{
+  "pico_sdk": "2.3.0",
+  "targets": [
+    {
+      "name": "root-four-board",
+      "source": ".",
+      "description": "pico_rssi_tracker plus AP1, AP2 and AP3"
+    },
+    {
+      "name": "getting-there",
+      "source": "getting_there",
+      "description": "AP1 navigation and verified payload firmware"
+    },
+    {
+      "name": "rssi-environment",
+      "source": "rssi_env_test",
+      "description": "RSSI environment diagnostic firmware"
+    },
+    {
+      "name": "wheel-rssi",
+      "source": "wheel_rssi_test",
+      "description": "wheel and Wi-Fi RSSI diagnostic firmware"
+    },
+    {
+      "name": "wheel-turn",
+      "source": "wheel_turn_check",
+      "description": "single-turn diagnostic firmware"
+    }
+  ]
+}
+

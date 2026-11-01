@@ -1,0 +1,14 @@
+---
+Checks: >
+  -*,
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  portability-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(?!.*(?:pico-sdk|build|artifacts|tests/stubs|qa/stubs)).*$'
+FormatStyle: none
+...
+

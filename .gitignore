@@ -2,3 +2,8 @@
 !**/build/
 !**/build/*.uf2
 **/build-v2/
+artifacts/
+compile_commands.json
+*.gcda
+*.gcno
+*.gcov

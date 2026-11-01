@@ -1,0 +1,23 @@
+{
+  "version": 4,
+  "configurePresets": [
+    {
+      "name": "pico-w-qa",
+      "displayName": "Pico W QA build",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/artifacts/qa/build/root",
+      "cacheVariables": {
+        "PICO_BOARD": "pico_w",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "pico-w-qa",
+      "configurePreset": "pico-w-qa"
+    }
+  ]
+}
+
