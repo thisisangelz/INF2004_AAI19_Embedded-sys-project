@@ -1,10 +1,15 @@
 [
     {
-        "name": "Pico ARM GCC",
+        "name": "Pico",
         "compilers": {
-            "C": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-gcc.exe",
-            "CXX": "C:/Program Files/Raspberry Pi/Pico SDK v1.5.1/gcc-arm-none-eabi/bin/arm-none-eabi-g++.exe"
+            "C": "${command:raspberry-pi-pico.getCompilerPath}",
+            "CXX": "${command:raspberry-pi-pico.getCxxCompilerPath}"
         },
-        "isTrusted": true
+        "environmentVariables": {
+            "PATH": "${command:raspberry-pi-pico.getEnvPath};${env:PATH}"
+        },
+        "cmakeSettings": {
+            "Python3_EXECUTABLE": "${command:raspberry-pi-pico.getPythonPath}"
+        }
     }
 ]
