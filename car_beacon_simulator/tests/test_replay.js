@@ -174,6 +174,7 @@ test('a new build clears old duration, locks its starting conditions and loads o
   response.scenario=requests[0].body.scenario;response.result.t=10.25;response.frames.at(-1).t=10.25;response.logs.at(-1).t=10.25;
   resolveRun({ok:true,json:async()=>response});await pending;
   assert.equal(h.evaluate('run.id'),'fresh-execution');assert.equal(h.evaluate('playTime'),0);
+  assert.equal(h.evaluate('playing'),false);
   assert.equal(h.elements.duration.textContent,'Total 0:10.2');
   assert.equal(h.elements.heading.value,'314.79');assert.equal(h.elements.x.disabled,false);
   assert.equal(h.elements.runBtn.disabled,false);assert.equal(requests.filter(r=>r.url==='/api/run').length,1);
@@ -199,6 +200,7 @@ test('every build click requests a separate fresh experiment even when its durat
   h.elements.endBtn.onclick();assert.equal(h.evaluate('playTime'),2);
   await h.evaluate('runExperiment()');assert.equal(builds,2);assert.equal(h.evaluate('run.id'),'fresh-run-2');
   assert.equal(h.evaluate('playTime'),0);assert.equal(h.evaluate('frame.t'),0);
+  assert.equal(h.evaluate('playing'),false);assert.match(h.elements.runStatus.textContent,/paused/);
   assert.equal(h.evaluate('frame.path'),0);assert.equal(h.evaluate('frame.faults'),0);
   assert.match(h.elements.runStatus.textContent,/New experiment.*fresh-run-2/);
   assert.equal(h.elements.duration.textContent,'Total 0:02.0');

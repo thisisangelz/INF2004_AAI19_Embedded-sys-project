@@ -79,7 +79,26 @@ function filteredLogs(){if(!run)return[];return run.logs.filter(l=>l.t<=playTime
 function renderLogs(){if(!run)return;const logs=filteredLogs();if(logs.length===lastLogCount)return;lastLogCount=logs.length;const el=$('events'),nearEnd=el.scrollTop+el.clientHeight>=el.scrollHeight-35;el.innerHTML=logs.slice(-250).map(l=>`<div class="log-row ${l.source==='beacon'?'beacon':''} ${/FAIL|FAULT:|ERROR/.test(l.message)?'fault':''}" data-time="${l.t}"><span class="time">${clock(l.t)}</span><span class="source">${escape(l.source)}</span><span class="message">${escape(l.message.trim())}</span></div>`).join('')||'<div class="empty">No matching events at this time. Play or scrub forward.</div>';if(nearEnd)el.scrollTop=el.scrollHeight;}
 function render(){drawArena();drawChart();renderStats();renderLogs();}
 function seek(t){if(!run)return;playTime=Math.min(run.result.t,Math.max(0,t));let lo=0,hi=run.frames.length-1;while(lo<hi){const m=Math.ceil((lo+hi)/2);if(run.frames[m].t<=playTime)lo=m;else hi=m-1;}frame=run.frames[lo];if(playTime>=run.result.t){playing=false;frame=run.frames.at(-1);$('playBtn').textContent='▶';}render();}
-function loadRun(data,autoplay=false){run=data;playing=autoplay;playTime=0;frame=run.frames[0];lastLogCount=-1;$('traceNotice').hidden=true;for(const k of keys)if(k in run.scenario)$(k).value=fmt(run.scenario[k]);$('moving').checked=run.metadata.moving_samples;if([...$('branch').options].some(o=>o.value===run.metadata.ref)){$('branch').value=run.metadata.ref;$('customRef').value='';}else $('customRef').value=run.metadata.ref;branchNote();$('preset').value='custom';$('editStartBtn').hidden=false;$('mapHint').textContent='Edit start to arrange the next run · scroll to zoom';for(const id of ['playBtn','stepBtn','endBtn','timeline','csvBtn','jsonBtn'])$(id).disabled=false;$('timeline').max=run.result.t;$('duration').textContent='Total '+clock(run.result.t);$('duration').title='Recorded duration of this execution, not a preset time limit.';$('runStatus').textContent=`Recorded execution · ${clock(run.result.t)} total. Playback starts at zero; its speed does not change the firmware run.`;$('playBtn').textContent=playing?'Ⅱ':'▶';$('outcome').classList.toggle('failed',!run.result.success);setText('outcomeIcon',run.result.success?'✓':'!');setText('outcomeTitle',run.result.success?'Payload confirmed by the firmware':'The firmware stopped without a confirmed payload');setText('outcomeDetail',run.result.success?`${fmt(run.result.t,1)} simulated seconds · ${fmt(run.result.path)} m travelled · both payload checks and final acknowledgement completed.`:run.result.failure_messages.join(' · ')||run.result.reason);setText('provenance',`${run.metadata.ref} · ${run.metadata.commit.slice(0,12)} · ${run.metadata.beacon_mode==='branch-firmware'?'car + AP1 branch firmware':'legacy run: car firmware + simulated peer'} · computed in ${run.result.wall_seconds}s`);setText('beaconSourceLabel',`${run.metadata.beacon_ssid||'I AM PICO W'} · ${run.metadata.beacon_mode==='branch-firmware'?'branch firmware':'legacy simulated peer'}`);fitView();seek(0);}
+function loadRun(data){
+  run=data;playing=false;playTime=0;frame=run.frames[0];lastLogCount=-1;$('traceNotice').hidden=true;
+  for(const k of keys)if(k in run.scenario)$(k).value=fmt(run.scenario[k]);
+  $('moving').checked=run.metadata.moving_samples;
+  if([...$('branch').options].some(o=>o.value===run.metadata.ref)){$('branch').value=run.metadata.ref;$('customRef').value='';}
+  else $('customRef').value=run.metadata.ref;
+  branchNote();$('preset').value='custom';$('editStartBtn').hidden=false;
+  $('mapHint').textContent='Edit start to arrange the next run · scroll to zoom';
+  for(const id of ['playBtn','stepBtn','endBtn','timeline','csvBtn','jsonBtn'])$(id).disabled=false;
+  $('timeline').max=run.result.t;$('duration').textContent='Total '+clock(run.result.t);
+  $('duration').title='Recorded duration of this execution, not a preset time limit.';
+  $('runStatus').textContent=`Recorded execution · ${clock(run.result.t)} total. Paused; press Play to view it. Playback does not run the firmware again.`;
+  $('playBtn').textContent='▶';$('outcome').classList.toggle('failed',!run.result.success);
+  setText('outcomeIcon',run.result.success?'✓':'!');
+  setText('outcomeTitle',run.result.success?'Payload confirmed by the firmware':'The firmware stopped without a confirmed payload');
+  setText('outcomeDetail',run.result.success?`${fmt(run.result.t,1)} simulated seconds · ${fmt(run.result.path)} m travelled · both payload checks and final acknowledgement completed.`:run.result.failure_messages.join(' · ')||run.result.reason);
+  setText('provenance',`${run.metadata.ref} · ${run.metadata.commit.slice(0,12)} · ${run.metadata.beacon_mode==='branch-firmware'?'car + AP1 branch firmware':'legacy run: car firmware + simulated peer'} · computed in ${run.result.wall_seconds}s`);
+  setText('beaconSourceLabel',`${run.metadata.beacon_ssid||'I AM PICO W'} · ${run.metadata.beacon_mode==='branch-firmware'?'branch firmware':'legacy simulated peer'}`);
+  fitView();seek(0);
+}
 async function runExperiment(){
   if(busy)return;showError('');for(const k of keys){if(!$(k).reportValidity())return;}
   if(!previewReady()){showError('Finish entering all starting conditions before running.');return;}
@@ -88,8 +107,8 @@ async function runExperiment(){
   setText('arenaState','RUNNING FIRMWARE');setText('runStatus','Executing this setup from the start. Recording until the firmware ends its run or the simulator time limit is reached.');
   setText('connection','Native engine running…');
   try{
-    const data=await api('/api/run',request);loadRun(data,true);
-    setText('runStatus',`New experiment · Run ${data.id} · executed from the starting conditions. Playback starts at 0:00.0.`);
+    const data=await api('/api/run',request);loadRun(data);
+    setText('runStatus',`New experiment · Run ${data.id} · executed from your starting conditions. Recording paused at 0:00.0; press Play to view it.`);
     setText('connection',`Native engine ready · ${data.metadata.commit.slice(0,7)}`);
     await loadHistory().catch(e=>showError('Run recorded, but history could not refresh: '+e.message));
   }catch(e){resetPreview();showError(e.message);setText('connection','Build / run failed · see setup panel');}
@@ -134,7 +153,7 @@ function validateTrace(data){
 }
 function openTrace(data,name){
   validateTrace(data); // Validate before replacing the current recording or setup.
-  loadRun(data,false);
+  loadRun(data);
   $('traceNotice').textContent=`Recorded run loaded: ${name}. Press Play to replay its movement, readings and logs. The saved outcome is preserved; the firmware is not run again.`;
   $('traceNotice').hidden=false;$('events').scrollTop=0;
   for(const button of $('evidenceTabs').children)button.classList.toggle('active',button.dataset.view==='events');

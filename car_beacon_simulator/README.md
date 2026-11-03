@@ -43,7 +43,8 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
    playback controls. Identical inputs can produce the same duration and outcome
    because the model is deterministic; they are still separate executions.
 4. Play, pause, step by 0.1 s, scrub the timeline, or jump to the final result.
-   Playback defaults to **1×**. Its speed changes viewing speed only, not firmware
+   Every recording opens paused, including a newly requested experiment. Press
+   **Play** explicitly to animate it. Playback defaults to **1×**. Its speed changes viewing speed only, not firmware
    timing or physics. **Total** is the duration of the recorded execution, known
    after it runs; it is not a preset countdown. Changing the setup, selecting
    **Custom arrangement**, or selecting another source clears the recording and
@@ -53,6 +54,12 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
    integer readings delivered to firmware.
 6. Compare saved runs using **Run comparison**. Use **CSV** for frame data or
    **Full trace** for settings, source identity, statistics, result and all logs.
+
+An experiment executes only when you explicitly choose **Build & run experiment**
+(or explicitly run the headless command). Page loads, setup edits, imports,
+history and playback never launch a new firmware execution. Code-review and
+verification work must not run experiments unless explicitly requested; see
+`AGENTS.md` for the repository instruction.
 
 ## Replay a downloaded run
 
