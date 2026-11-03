@@ -152,7 +152,7 @@ test('typing a new starting condition or changing source invalidates the old res
   assert.equal(h.elements.clock.textContent,'0:00.0');assert.match(h.elements.runStatus.textContent,/Finish entering/);
 });
 
-test('a new build clears old duration, locks its starting conditions and loads only the new execution',async()=>{
+test('the original build flow submits the selected setup and plays the new execution automatically',async()=>{
   let resolveRun;const requests=[];
   const h=harness((url,options)=>{
     requests.push({url,body:options?.body&&JSON.parse(options.body)});
@@ -168,22 +168,22 @@ test('a new build clears old duration, locks its starting conditions and loads o
   assert.equal(requests.length,1);assert.equal(requests[0].url,'/api/run');
   assert.equal(requests[0].body.scenario.x,-2.64);assert.equal(requests[0].body.scenario.heading,314.79);
   assert.equal(h.evaluate('run'),null);assert.equal(h.elements.clock.textContent,'0:00.0');
-  assert.equal(h.elements.duration.textContent,'Computing…');
-  for(const key of ['x','heading','preset','branch','loadTraceBtn','runBtn'])assert.equal(h.elements[key].disabled,true,key);
+  assert.equal(h.elements.duration.textContent,'Not run');
+  assert.equal(h.evaluate('busy'),true);assert.equal(h.elements.runBtn.disabled,true);
   const response=fixture();response.id='fresh-execution';response.metadata.ref='origin/main';
   response.scenario=requests[0].body.scenario;response.result.t=10.25;response.frames.at(-1).t=10.25;response.logs.at(-1).t=10.25;
   resolveRun({ok:true,json:async()=>response});await pending;
   assert.equal(h.evaluate('run.id'),'fresh-execution');assert.equal(h.evaluate('playTime'),0);
-  assert.equal(h.evaluate('playing'),false);
+  assert.equal(h.evaluate('playing'),true);
   assert.equal(h.elements.duration.textContent,'Total 0:10.2');
   assert.equal(h.elements.heading.value,'314.79');assert.equal(h.elements.x.disabled,false);
   assert.equal(h.elements.runBtn.disabled,false);assert.equal(requests.filter(r=>r.url==='/api/run').length,1);
 });
 
-test('playback defaults to real time instead of silently skipping ahead at 20 times speed',()=>{
+test('playback restores the original default of 20 times speed',()=>{
   const html=fs.readFileSync(path.join(root,'dist/index.html'),'utf8');
   const options=html.match(/<select id="playSpeed"[^>]*>(.*?)<\/select>/s)[1];
-  assert.match(options,/<option value="1" selected>/);assert.doesNotMatch(options,/<option value="20" selected>/);
+  assert.match(options,/<option value="20" selected>/);assert.doesNotMatch(options,/<option value="1" selected>/);
 });
 
 test('every build click requests a separate fresh experiment even when its duration is unchanged',async()=>{
@@ -200,7 +200,7 @@ test('every build click requests a separate fresh experiment even when its durat
   h.elements.endBtn.onclick();assert.equal(h.evaluate('playTime'),2);
   await h.evaluate('runExperiment()');assert.equal(builds,2);assert.equal(h.evaluate('run.id'),'fresh-run-2');
   assert.equal(h.evaluate('playTime'),0);assert.equal(h.evaluate('frame.t'),0);
-  assert.equal(h.evaluate('playing'),false);assert.match(h.elements.runStatus.textContent,/paused/);
+  assert.equal(h.evaluate('playing'),true);assert.match(h.elements.runStatus.textContent,/Playing from the start/);
   assert.equal(h.evaluate('frame.path'),0);assert.equal(h.evaluate('frame.faults'),0);
   assert.match(h.elements.runStatus.textContent,/New experiment.*fresh-run-2/);
   assert.equal(h.elements.duration.textContent,'Total 0:02.0');

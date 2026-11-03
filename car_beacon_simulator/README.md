@@ -48,9 +48,10 @@ BLE proximity gate and payload completion checks remain in place.
    using a virtual clock. Every click creates a new run ID, displayed below the
    playback controls. Identical inputs can produce the same duration and outcome
    because the model is deterministic; they are still separate executions.
-4. Play, pause, step by 0.1 s, scrub the timeline, or jump to the final result.
-   Every recording opens paused, including a newly requested experiment. Press
-   **Play** explicitly to animate it. Playback defaults to **1×**. Its speed changes viewing speed only, not firmware
+4. The new experiment starts playing automatically, restoring the original build
+   flow. Playback defaults to **20×**. Pause, step by 0.1 s, scrub the timeline,
+   or jump to the final result. Imported and history recordings still open paused.
+   Playback speed changes viewing speed only, not firmware
    timing or physics. **Total** is the duration of the recorded execution, known
    after it runs; it is not a preset countdown. Changing the setup, selecting
    **Custom arrangement**, or selecting another source clears the recording and

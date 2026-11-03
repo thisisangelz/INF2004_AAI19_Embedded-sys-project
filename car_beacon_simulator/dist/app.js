@@ -79,8 +79,8 @@ function filteredLogs(){if(!run)return[];return run.logs.filter(l=>l.t<=playTime
 function renderLogs(){if(!run)return;const logs=filteredLogs();if(logs.length===lastLogCount)return;lastLogCount=logs.length;const el=$('events'),nearEnd=el.scrollTop+el.clientHeight>=el.scrollHeight-35;el.innerHTML=logs.slice(-250).map(l=>`<div class="log-row ${l.source==='beacon'?'beacon':''} ${/FAIL|FAULT:|ERROR/.test(l.message)?'fault':''}" data-time="${l.t}"><span class="time">${clock(l.t)}</span><span class="source">${escape(l.source)}</span><span class="message">${escape(l.message.trim())}</span></div>`).join('')||'<div class="empty">No matching events at this time. Play or scrub forward.</div>';if(nearEnd)el.scrollTop=el.scrollHeight;}
 function render(){drawArena();drawChart();renderStats();renderLogs();}
 function seek(t){if(!run)return;playTime=Math.min(run.result.t,Math.max(0,t));let lo=0,hi=run.frames.length-1;while(lo<hi){const m=Math.ceil((lo+hi)/2);if(run.frames[m].t<=playTime)lo=m;else hi=m-1;}frame=run.frames[lo];if(playTime>=run.result.t){playing=false;frame=run.frames.at(-1);$('playBtn').textContent='▶';}render();}
-function loadRun(data){
-  run=data;playing=false;playTime=0;frame=run.frames[0];lastLogCount=-1;$('traceNotice').hidden=true;
+function loadRun(data,autoplay=false){
+  run=data;playing=autoplay;playTime=0;frame=run.frames[0];lastLogCount=-1;$('traceNotice').hidden=true;
   for(const k of keys)if(k in run.scenario)$(k).value=fmt(run.scenario[k]);
   $('moving').checked=run.metadata.moving_samples;
   if([...$('branch').options].some(o=>o.value===run.metadata.ref)){$('branch').value=run.metadata.ref;$('customRef').value='';}
@@ -90,8 +90,8 @@ function loadRun(data){
   for(const id of ['playBtn','stepBtn','endBtn','timeline','csvBtn','jsonBtn'])$(id).disabled=false;
   $('timeline').max=run.result.t;$('duration').textContent='Total '+clock(run.result.t);
   $('duration').title='Recorded duration of this execution, not a preset time limit.';
-  $('runStatus').textContent=`Recorded execution · ${clock(run.result.t)} total. Paused; press Play to view it. Playback does not run the firmware again.`;
-  $('playBtn').textContent='▶';$('outcome').classList.toggle('failed',!run.result.success);
+  $('runStatus').textContent=`${autoplay?'New experiment':'Recorded execution'} · Run ${run.id} · ${clock(run.result.t)} total. ${autoplay?'Playing from the start at the selected speed.':'Paused; press Play to view it.'}`;
+  $('playBtn').textContent=playing?'Ⅱ':'▶';$('outcome').classList.toggle('failed',!run.result.success);
   setText('outcomeIcon',run.result.success?'✓':'!');
   setText('outcomeTitle',run.result.success?'Payload confirmed by the firmware':'The firmware stopped without a confirmed payload');
   setText('outcomeDetail',run.result.success?`${fmt(run.result.t,1)} simulated seconds · ${fmt(run.result.path)} m travelled · both payload checks and final acknowledgement completed.`:run.result.failure_messages.join(' · ')||run.result.reason);
@@ -99,21 +99,7 @@ function loadRun(data){
   setText('beaconSourceLabel',`${run.metadata.beacon_ssid||'I AM PICO W'} · ${run.metadata.beacon_mode==='branch-firmware'?'branch firmware':'legacy simulated peer'}`);
   fitView();seek(0);
 }
-async function runExperiment(){
-  if(busy)return;showError('');for(const k of keys){if(!$(k).reportValidity())return;}
-  if(!previewReady()){showError('Finish entering all starting conditions before running.');return;}
-  const request={ref:$('customRef').value.trim()||$('branch').value,scenario:scenario(),moving:$('moving').checked};
-  resetPreview();setBusy(true);$('runBtn').textContent='Compiling & simulating…';$('duration').textContent='Computing…';
-  setText('arenaState','RUNNING FIRMWARE');setText('runStatus','Executing this setup from the start. Recording until the firmware ends its run or the simulator time limit is reached.');
-  setText('connection','Native engine running…');
-  try{
-    const data=await api('/api/run',request);loadRun(data);
-    setText('runStatus',`New experiment · Run ${data.id} · executed from your starting conditions. Recording paused at 0:00.0; press Play to view it.`);
-    setText('connection',`Native engine ready · ${data.metadata.commit.slice(0,7)}`);
-    await loadHistory().catch(e=>showError('Run recorded, but history could not refresh: '+e.message));
-  }catch(e){resetPreview();showError(e.message);setText('connection','Build / run failed · see setup panel');}
-  finally{setBusy(false);$('runBtn').innerHTML='<span>▶</span> Build & run experiment';}
-}
+async function runExperiment(){if(busy)return;showError('');for(const k of keys){if(!$(k).reportValidity())return;}busy=true;playing=false;$('runBtn').disabled=true;$('runBtn').textContent='Compiling & simulating…';setText('connection','Native engine running…');try{const d=await api('/api/run',{ref:$('customRef').value.trim()||$('branch').value,scenario:scenario(),moving:$('moving').checked});loadRun(d,true);await loadHistory();setText('connection',`Native engine ready · ${d.metadata.commit.slice(0,7)}`);}catch(e){showError(e.message);setText('connection','Build / run failed · see setup panel');}finally{busy=false;$('runBtn').disabled=false;$('runBtn').innerHTML='<span>▶</span> Build & run experiment';}}
 async function loadHistory(){history=await api('/api/runs');const cur=JSON.stringify(run?.scenario||scenario());$('history').innerHTML=history.length?`<table><thead><tr><th>BRANCH / COMMIT</th><th>OUTCOME</th><th>TIME</th><th>PATH</th><th>CLOSEST</th><th>SETUP</th><th></th></tr></thead><tbody>${history.map(r=>`<tr><td>${escape(r.metadata.ref)}<br><small>${escape(r.metadata.commit.slice(0,10))}</small></td><td class="${r.result.success?'pass':'fail'}">${r.result.success?'Confirmed':'Stopped'}</td><td>${fmt(r.result.t,1)} s</td><td>${fmt(r.result.path)} m</td><td>${fmt(r.result.closest)} m</td><td>${JSON.stringify(r.scenario)===cur&&r.metadata.moving_samples===!!$('moving').checked&&r.metadata.model_version===(run?.metadata.model_version||2)?'Same setup':'Different setup'}</td><td><button data-run="${escape(r.id)}">Inspect →</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty">Saved experiments will appear here.</div>';}
 function download(name,text,type='application/json'){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function validateTrace(data){
