@@ -47,6 +47,21 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
 6. Compare saved runs using **Run comparison**. Use **CSV** for frame data or
    **Full trace** for settings, source identity, statistics, result and all logs.
 
+## Replay a downloaded run
+
+Click **Full trace** after an experiment to download its JSON recording. Later,
+click **Load trace** beside it and select that file. It opens paused at the start;
+use **Play**, the timeline, speed selector, step button or jump-to-result button
+to inspect the original movement, signals and decision log. You can download the
+imported trace again without changing its contents.
+
+Replay uses the recorded frames and original outcome. It does not compile or run
+the firmware again, and it works even if the original branch has changed or is
+unavailable. Keep the JSON to reopen it after refreshing the page; imports are
+not added to server history. Locally saved runs can also be reopened from **Run comparison**.
+Use **Load setup** for starting conditions only; a setup JSON or CSV cannot replay
+an experiment. Invalid or incomplete trace files leave the current run intact.
+
 Pan by dragging empty space, zoom with the wheel, and click **Fit view** to include
 the whole route. World X points right, Y points up, and positive headings turn
 counterclockwise. The gyro heading is relative to the car's initial orientation;
@@ -147,6 +162,7 @@ behaviour. The chart shows the distinction.
 
 ```sh
 python3 -m unittest discover -s tests -v
+node --test tests/test_replay.js
 python3 simulator.py --headless --ref origin/main --scenario scenarios/straight.json
 python3 simulator.py --headless --ref origin/main --scenario scenarios/weak-gradient.json
 python3 simulator.py --headless --ref origin/Alvin --scenario scenarios/straight.json
