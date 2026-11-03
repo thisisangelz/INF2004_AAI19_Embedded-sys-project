@@ -31,6 +31,12 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
 
 ## Run an experiment
 
+The `codex/beacon-simulator` branch now requires a minimum **2 dB improvement**
+to confirm a direction. Select that branch in **Car + AP1 source branch** for
+this change; selecting `origin/main` still runs that branch's original 3 dB rule.
+The existing noise margin, two-batch confirmation, 3 dB decline/return checks,
+BLE proximity gate and payload completion checks remain in place.
+
 1. Select **origin/main**, another compatible branch/tag, or enter its Git ref.
 2. Choose a preset, type coordinates, or drag the car and AP1 in the arena. Drag
    the small green circle above the car around its centre to rotate its starting

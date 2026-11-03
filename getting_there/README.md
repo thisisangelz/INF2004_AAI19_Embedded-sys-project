@@ -43,11 +43,13 @@ STOP is armed. If both buttons are pressed at idle, replay takes precedence.
    from the current position. No initial four-probe pass or heading bisection
    is required, and the old 2400 ms probe limit does not end an improving run.
 3. Retain the strongest repeatable point and its accumulated powered time.
-   Direction improvement and decline use the margin
-   `max(3, previous_spread + current_spread + 1)` dB. Both new batches must
+   Direction improvement uses the margin
+   `max(2, previous_spread + current_spread + 1)` dB. Decline detection and
+   return checks retain `max(3, previous_spread + current_spread + 1)` dB.
+   Both new batches must
    support the change. Once a direction has improved, also retain a stronger
    two-batch point if it still confirms improvement over that direction's
-   original baseline, even when its gain over the previous best is under 3 dB.
+   original baseline, even when its gain over the previous best is under 2 dB.
    This prevents small successive increases from being lost before a return.
 4. Require three successive weak positions before reversing. At each position,
    both fresh batches must confirm decline against the retained best using the

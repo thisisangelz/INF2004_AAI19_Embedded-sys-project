@@ -262,12 +262,18 @@ static line_pair_t pair(int first, int second)
 }
 static void check_decisions(void)
 {
+    assert(line_compare(pair(-70,-70), pair(-68,-68)) == 1);
+    assert(line_compare(pair(-70,-70), pair(-69,-69)) == 0);
+    assert(line_compare(pair(-70,-70), pair(-68,-70)) == 0);
+    assert(line_compare(pair(-70,-70), pair(-72,-72)) == 0);
     assert(line_compare(pair(-70,-70), pair(-67,-67)) == 1);
     assert(line_compare(pair(-70,-70), pair(-73,-73)) == -1);
     assert(line_compare(pair(-70,-70), pair(-45,-70)) == 0);
     assert(line_compare(pair(-70,-70), pair(-75,-70)) == 0);
     assert(line_compare(pair(-70,-70), pair(-127,-60)) == 0);
     assert(line_return_consistent(pair(-60,-60),pair(-61,-60)));
+    assert(line_return_consistent(pair(-60,-60),pair(-62,-62)));
+    assert(!line_return_consistent(pair(-60,-60),pair(-63,-63)));
     assert(!line_return_consistent(pair(-60,-60),pair(-70,-60)));
     assert(!line_return_consistent(pair(-60,-60),pair(-65,-65)));
     line_pair_t noisy = pair(-65,-65); noisy.first.spread = 5;

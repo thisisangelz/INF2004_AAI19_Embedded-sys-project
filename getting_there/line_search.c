@@ -13,6 +13,14 @@ int line_progress_margin(wifi_sample_t previous, wifi_sample_t current)
     return margin > MIN_PROGRESS_DB ? margin : MIN_PROGRESS_DB;
 }
 
+// Lowering the improvement requirement must not change decline detection or
+// the tolerance used to verify a timed return to the retained best point.
+int line_stability_margin(wifi_sample_t previous, wifi_sample_t current)
+{
+    int margin = previous.spread + current.spread + 1;
+    return margin > MIN_STABILITY_DB ? margin : MIN_STABILITY_DB;
+}
+
 static bool valid_pair(line_pair_t pair)
 {
     return pair.first.code != RSSI_MISSING_CODE && pair.second.code != RSSI_MISSING_CODE;
@@ -41,9 +49,9 @@ int line_confirmed_gain(line_pair_t previous, line_pair_t current)
 int line_compare(line_pair_t previous, line_pair_t current)
 {
     if (!valid_pair(previous) || !valid_pair(current)) return 0;
-    int margin = line_progress_margin(line_reference(previous), line_reference(current));
-    if (line_confirmed_gain(previous, current) >= margin) return 1;
-    if (line_confirmed_gain(current, previous) >= margin) return -1;
+    wifi_sample_t before = line_reference(previous), after = line_reference(current);
+    if (line_confirmed_gain(previous, current) >= line_progress_margin(before, after)) return 1;
+    if (line_confirmed_gain(current, previous) >= line_stability_margin(before, after)) return -1;
     return 0;
 }
 
@@ -52,8 +60,8 @@ bool line_return_consistent(line_pair_t best, line_pair_t returned)
     if (!valid_pair(best) || !valid_pair(returned)) return false;
     int difference = (int)returned.first.code - (int)returned.second.code;
     if (difference < 0) difference = -difference;
-    if (difference >= line_progress_margin(returned.first, returned.second)) return false;
+    if (difference >= line_stability_margin(returned.first, returned.second)) return false;
     wifi_sample_t reference = line_reference(best);
-    return (int)returned.first.code - (int)reference.code < line_progress_margin(reference, returned.first) &&
-           (int)returned.second.code - (int)reference.code < line_progress_margin(reference, returned.second);
+    return (int)returned.first.code - (int)reference.code < line_stability_margin(reference, returned.first) &&
+           (int)returned.second.code - (int)reference.code < line_stability_margin(reference, returned.second);
 }

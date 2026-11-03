@@ -246,10 +246,11 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
         if (!record_point(heading, position, current)) return PAYLOAD_FATAL;
         int margin = line_progress_margin(line_reference(best), line_reference(current));
         int trend = line_compare(best, current);
-        report_printf("FOLLOW_POINT,powered_ms=%lu,best_ms=%lu,gain_db=%d,margin_db=%d,baseline_gain_db=%d,baseline_margin_db=%d,trend=%d\n",
+        report_printf("FOLLOW_POINT,powered_ms=%lu,best_ms=%lu,gain_db=%d,margin_db=%d,baseline_gain_db=%d,baseline_margin_db=%d,decline_margin_db=%d,trend=%d\n",
                       (unsigned long)position, (unsigned long)best_position,
                       line_confirmed_gain(best, current), margin, line_confirmed_gain(baseline, current),
-                      line_progress_margin(line_reference(baseline), line_reference(current)), trend);
+                      line_progress_margin(line_reference(baseline), line_reference(current)),
+                      line_stability_margin(line_reference(best), line_reference(current)), trend);
         // Once the direction is confirmed, a pair can remain a confirmed gain
         // over its baseline while beating the retained point by less than the
         // noise margin. Keep that stronger two-batch point for a partial return.

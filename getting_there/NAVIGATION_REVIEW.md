@@ -50,8 +50,9 @@ travels at 35% duty on the test floor. In an ideal path-loss model with exponent
 illustration, not a measured value for this room. Reflections and antenna
 orientation can overwhelm such a small change.
 
-Now a weak individual change can accumulate over 2250 ms, but the margin of
-at least 3 dB may still be too conservative at longer ranges. Do not increase
+Now a weak individual change can accumulate over 2250 ms. The minimum improvement
+margin is now 2 dB, while decline and return checks retain their 3 dB minimum.
+Even 2 dB may still be too conservative at longer ranges. Do not increase
 travel blindly: record stationary variation and actual distance first. No
 encoder or obstacle avoidance has been added, and reverse travel needs clear
 space too. Four rejected directions can mean noise, a local maximum, insufficient
