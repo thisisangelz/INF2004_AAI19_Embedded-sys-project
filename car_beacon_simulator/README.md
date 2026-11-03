@@ -40,7 +40,11 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
 3. Click **Build & run experiment**. Each run compiles a source snapshot, then
    simulates the complete execution quickly using a virtual clock.
 4. Play, pause, step by 0.1 s, scrub the timeline, or jump to the final result.
-   Playback speed changes viewing speed only, not firmware timing or physics.
+   Playback defaults to **1×**. Its speed changes viewing speed only, not firmware
+   timing or physics. **Total** is the duration of the recorded execution, known
+   after it runs; it is not a preset countdown. Changing the setup, selecting
+   **Custom arrangement**, or selecting another source clears the recording and
+   resets the elapsed time to zero. Until the next run, the duration says **Not run**.
 5. Inspect the car and beacon statistics and firmware's actual decision log.
    Click an event to seek to it. Wi-Fi/BLE graphs distinguish ideal signal from
    integer readings delivered to firmware.

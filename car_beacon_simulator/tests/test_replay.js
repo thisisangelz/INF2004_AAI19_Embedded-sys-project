@@ -7,7 +7,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const root=path.resolve(__dirname,'..');
 
-function harness(){
+function harness(fetchImplementation){
   const elements={},downloads=[],rect={left:0,top:0,width:700,height:400};
   const drawing=new Proxy({measureText:text=>({width:text.length*6}),createRadialGradient:()=>({addColorStop(){}})},
     {get:(target,key)=>key in target?target[key]:()=>{}});
@@ -27,7 +27,7 @@ function harness(){
   },createElement:element},devicePixelRatio:1,getComputedStyle:()=>({fontFamily:'sans-serif'}),
   ResizeObserver:class{observe(){}},performance:{now:()=>0},requestAnimationFrame(){},setTimeout(){},
   URL:{createObjectURL(blob){downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
-  fetch(){throw Error('Import and replay must not call the simulation server.');}});
+  fetch:fetchImplementation||(()=>{throw Error('Import and replay must not call the simulation server.');})});
   const evaluate=code=>vm.runInContext(code,context);
   evaluate(fs.readFileSync(path.join(root,'dist/app.js'),'utf8').replace(/init\(\);\s*$/,''));
   evaluate('resetPreview(true)');
@@ -125,4 +125,62 @@ test('accepts original traces from before branch beacon firmware was added',asyn
   for(const frame of trace.frames)delete frame.ble_threshold;
   await h.fileInput(JSON.stringify(trace));assert.equal(h.elements.error.hidden,true);
   assert.match(h.elements.provenance.textContent,/legacy run/);
+});
+
+test('selecting custom arrangement clears the previous 1:17.6 recording and starts at zero',async()=>{
+  const h=harness(),trace=fixture();trace.result.t=77.67;trace.frames.at(-1).t=77.67;trace.logs.at(-1).t=77.67;
+  await h.fileInput(JSON.stringify(trace));h.elements.endBtn.onclick();
+  assert.equal(h.elements.duration.textContent,'Total 1:17.6');
+  h.elements.preset.value='custom';h.elements.preset.onchange();
+  assert.equal(h.evaluate('run'),null);assert.equal(h.evaluate('playTime'),0);
+  assert.equal(h.elements.clock.textContent,'0:00.0');assert.equal(h.elements.duration.textContent,'Not run');
+  assert.equal(h.elements.timeline.value,0);assert.equal(h.elements.timeline.disabled,true);
+  assert.equal(h.elements.playBtn.disabled,true);assert.equal(h.elements.outcome.hidden,true);
+  assert.equal(h.elements.jsonBtn.disabled,true);assert.match(h.elements.runStatus.textContent,/not run yet/);
+});
+
+test('typing a new starting condition or changing source invalidates the old result immediately',async()=>{
+  const h=harness();await h.fileInput(JSON.stringify(fixture()));h.elements.endBtn.onclick();
+  h.elements.x.value='-2.64';h.elements.x.listeners.input();
+  assert.equal(h.evaluate('run'),null);assert.equal(h.evaluate('frame.x'),-2.64);
+  assert.equal(h.elements.clock.textContent,'0:00.0');assert.equal(h.elements.duration.textContent,'Not run');
+  await h.fileInput(JSON.stringify(fixture()));h.elements.branch.value='origin/main';h.elements.branch.onchange();
+  assert.equal(h.evaluate('run'),null);assert.equal(h.elements.duration.textContent,'Not run');
+  await h.fileInput(JSON.stringify(fixture()));h.elements.customRef.value='origin/Alvin';h.elements.customRef.oninput();
+  assert.equal(h.evaluate('run'),null);assert.equal(h.elements.duration.textContent,'Not run');
+  h.elements.exponent.value='';h.elements.exponent.listeners.input();
+  assert.equal(h.elements.clock.textContent,'0:00.0');assert.match(h.elements.runStatus.textContent,/Finish entering/);
+});
+
+test('a new build clears old duration, locks its starting conditions and loads only the new execution',async()=>{
+  let resolveRun;const requests=[];
+  const h=harness((url,options)=>{
+    requests.push({url,body:options?.body&&JSON.parse(options.body)});
+    if(url==='/api/run')return new Promise(resolve=>{resolveRun=resolve;});
+    if(url==='/api/runs')return Promise.resolve({ok:true,json:async()=>[]});
+    throw Error('Unexpected request '+url);
+  });
+  await h.fileInput(JSON.stringify(fixture()));h.elements.endBtn.onclick();
+  h.elements.x.value='-2.64';h.elements.x.listeners.input();
+  h.elements.heading.value='314.79';h.elements.heading.listeners.input();
+  h.elements.customRef.value='origin/main';h.elements.customRef.oninput();
+  const pending=h.evaluate('runExperiment()');
+  assert.equal(requests.length,1);assert.equal(requests[0].url,'/api/run');
+  assert.equal(requests[0].body.scenario.x,-2.64);assert.equal(requests[0].body.scenario.heading,314.79);
+  assert.equal(h.evaluate('run'),null);assert.equal(h.elements.clock.textContent,'0:00.0');
+  assert.equal(h.elements.duration.textContent,'Computing…');
+  for(const key of ['x','heading','preset','branch','loadTraceBtn','runBtn'])assert.equal(h.elements[key].disabled,true,key);
+  const response=fixture();response.id='fresh-execution';response.metadata.ref='origin/main';
+  response.scenario=requests[0].body.scenario;response.result.t=10.25;response.frames.at(-1).t=10.25;response.logs.at(-1).t=10.25;
+  resolveRun({ok:true,json:async()=>response});await pending;
+  assert.equal(h.evaluate('run.id'),'fresh-execution');assert.equal(h.evaluate('playTime'),0);
+  assert.equal(h.elements.duration.textContent,'Total 0:10.2');
+  assert.equal(h.elements.heading.value,'314.79');assert.equal(h.elements.x.disabled,false);
+  assert.equal(h.elements.runBtn.disabled,false);assert.equal(requests.filter(r=>r.url==='/api/run').length,1);
+});
+
+test('playback defaults to real time instead of silently skipping ahead at 20 times speed',()=>{
+  const html=fs.readFileSync(path.join(root,'dist/index.html'),'utf8');
+  const options=html.match(/<select id="playSpeed"[^>]*>(.*?)<\/select>/s)[1];
+  assert.match(options,/<option value="1" selected>/);assert.doesNotMatch(options,/<option value="20" selected>/);
 });
