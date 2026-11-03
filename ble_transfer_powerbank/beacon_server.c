@@ -7,6 +7,7 @@
 #include "file_transfer.h"
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
+#include "powerbank_load.h"
 #include "transfer_protocol.h"
 
 #ifndef BEACON_ID
@@ -283,7 +284,6 @@ static int att_write_callback(hci_con_handle_t con_handle,
         beacon_status = BEACON_STATUS_COMPLETE;
         printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
                BEACON_ID);
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
         send_simple(MSG_COMPLETE_ACK, BEACON_ID);
         break;
 
@@ -325,7 +325,6 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             connection_handle =
                 hci_subevent_le_connection_complete_get_connection_handle(packet);
             beacon_status = BEACON_STATUS_CONNECTED;
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
             printf("BLE robot connected\n");
         }
         break;
@@ -358,18 +357,43 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
 int main(void)
 {
     stdio_init_all();
+    // Start the additional load before the startup delay and before BTstack
+    // can write flash. Core 0 continues to handle all Wi-Fi and BLE work.
+    if (!powerbank_load_start()) {
+        printf("ERROR: core 1 flash safety setup failed\n");
+        return 1;
+    }
     sleep_ms(2000);
 
-    printf("\nAP%d Wi-Fi + BLE transfer beacon\n", BEACON_ID);
+    printf("\nAP%d Wi-Fi + BLE transfer beacon | power-bank test v2\n", BEACON_ID);
+    printf("AP%d POWER | core 1 continuous arithmetic: ON (scratch RAM)\n",
+           BEACON_ID);
 
     if (cyw43_arch_init()) {
         printf("ERROR: failed to initialise CYW43\n");
         return 1;
     }
 
+    // Keep a small continuous load while testing on a power bank. BLE events
+    // must leave the LED on; transfer status is reported over USB serial.
+    // This cannot guarantee that a power bank's minimum load is met.
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+
     cyw43_arch_enable_ap_mode(
         WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK);
     printf("Wi-Fi AP started: %s\n", WIFI_SSID);
+
+    // AP setup restores the SDK's default power management, so override it
+    // afterwards. This may not increase current in AP mode on every firmware.
+    int power_save_result = cyw43_wifi_pm(
+        &cyw43_state, cyw43_pm_value(CYW43_NO_POWERSAVE_MODE, 10, 0, 0, 0));
+    if (power_save_result != 0) {
+        printf("AP%d POWER | onboard LED: ON | WARNING: could not disable Wi-Fi power saving (%d)\n",
+               BEACON_ID, power_save_result);
+    } else {
+        printf("AP%d POWER | onboard LED: ON | Wi-Fi power saving: disabled\n",
+               BEACON_ID);
+    }
 
     l2cap_init();
     sm_init();
@@ -386,8 +410,9 @@ int main(void)
         uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
         if ((int32_t)(now_ms - next_status_ms) >= 0) {
             bool connected = connection_handle != HCI_CON_HANDLE_INVALID;
-            printf("AP%d STATUS | Wi-Fi AP: ON (%s) | BLE: %s | Advertising: %s | Connection: %s | Notifications: %s\n",
-                   BEACON_ID, WIFI_SSID, beacon_status_name(beacon_status),
+            printf("AP%d STATUS | Uptime: %lus | Wi-Fi AP: ON (%s) | BLE: %s | Advertising: %s | Connection: %s | Notifications: %s\n",
+                   BEACON_ID, (unsigned long)(now_ms / 1000),
+                   WIFI_SSID, beacon_status_name(beacon_status),
                    connected ? "standby" : "ON",
                    connected ? "connected" : "none",
                    notifications_enabled ? "enabled" : "not enabled");

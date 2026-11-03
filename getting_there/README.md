@@ -22,7 +22,7 @@ polarity are the same as the `first-beacon` movement firmware. Check that both
 wheels drive forwards with positive commands before a floor test.
 
 Power the robot from its battery and switch on AP1. AP1 must run the existing
-Wi-Fi and BLE beacon firmware from `picow_access_point`, with Wi-Fi SSID
+Wi-Fi and BLE beacon firmware from `picow_access_point_powerbank`, with Wi-Fi SSID
 `I AM PICO W`, BLE service `0xFF20`, protocol version 1 and beacon ID 1.
 AP2 and AP3 are ignored. Before GP20, GP21 prints the previous saved run over
 USB serial without starting the robot. Press and release GP20 to replace that

@@ -2,3 +2,8 @@
 !**/build/
 !**/build/*.uf2
 **/build-v2/
+
+# Local copies of superseded firmware and build products.
+.local-archive/
+__pycache__/
+*.py[cod]

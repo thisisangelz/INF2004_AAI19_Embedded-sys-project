@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include "../motion.c"
-#include "../../pico_rssi_tracker/imu_mpu9250.c"
+#include "../imu_mpu9250.c"
 
 static uint64_t clock_us, press_at_us;
 static bool gp21, write_failure, read_failure;

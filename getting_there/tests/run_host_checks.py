@@ -19,7 +19,7 @@ event_header = (btstack / 'btstack_event.h').read_text()
 extended_events = 'gatt_event_query_complete_get_service_id' in event_header
 common = [args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-ffunction-sections',
           '-fdata-sections', '-I', str(tests / 'stubs'),
-          '-I', str(repo / 'pico_rssi_tracker')]
+          '-I', str(tests.parent)]
 for name in ['navigation', 'payload_client', 'report', 'motion', 'flash']:
     executable = output / f'test_{name}.exe'
     command = common + [str(tests / f'test_{name}.c'), str(tests.parent / 'faults.c')]

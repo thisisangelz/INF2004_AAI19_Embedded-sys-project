@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 set(PICO_BOARD pico_w CACHE STRING "Board type")
-include(../pico_rssi_tracker/pico_sdk_import.cmake)
+include(../pico_sdk_import.cmake)
 project(getting_there C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -12,11 +12,10 @@ if (NOT PICO_BOARD STREQUAL "pico_w")
 endif()
 add_executable(getting_there
     getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c
-    ../pico_rssi_tracker/imu_mpu9250.c
+    imu_mpu9250.c
 )
 target_include_directories(getting_there PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
-    ${CMAKE_CURRENT_LIST_DIR}/../pico_rssi_tracker
     ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer
 )
 target_compile_options(getting_there PRIVATE -Wall -Wextra)
