@@ -14,6 +14,8 @@ add_executable(getting_there
     getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c
     imu_mpu9250.c
 )
+# Keep the known working v16 UF2 filename available when testing this branch.
+set_target_properties(getting_there PROPERTIES OUTPUT_NAME getting_there_v17_experimental)
 target_include_directories(getting_there PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer

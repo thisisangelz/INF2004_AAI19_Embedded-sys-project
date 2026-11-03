@@ -21,5 +21,8 @@ payload_result_t payload_client_attempt(void);
 // Retry the same qualified AP without moving or repeating the RSSI gate.
 // Valid only immediately after PAYLOAD_RETRY, with motors still stopped.
 payload_result_t payload_client_retry(void);
+// Latched after a full filtered average within 6 dB of qualification. This only
+// shortens movement; it does not qualify proximity or start a transfer.
+bool payload_client_nearby(void);
 const uint8_t *payload_client_data(uint16_t *length);
 #endif

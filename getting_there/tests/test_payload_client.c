@@ -129,7 +129,7 @@ static void reset(void)
     start_scan_calls=0; mtu_auto_enabled=-1;
     auto_connect=connect_pending=auto_setup=reached_hello=false; discovery_delay_ms=0;
     log_length=0; log_text[0]=0;
-    flag_assign(F_RECONNECT_REQUESTED,false);
+    flag_assign(F_RECONNECT_REQUESTED | F_NEARBY,false);
     result_put(ST_RESULT_SHIFT,PAYLOAD_NOT_CLOSE);
     for (int f=0;f<FAULT_COUNT;++f) fault_clear((fault_t)f);
     flag_assign(F_STARTUP_FAILED, false);
@@ -328,6 +328,21 @@ int main(void)
 
     reset(); assert(payload_client_retry()==PAYLOAD_FATAL && !connect_calls && !start_scan_calls);
     const int entry_rssi = AP1_CLOSE_RSSI_DBM;
+    // A full filtered -64 dBm window only requests shorter movement. It never
+    // lowers the -58 dBm connection gate, and the hint persists through dips.
+    reset(); flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
+    for (int i=0;i<11;++i) advertisement(entry_rssi-6,1);
+    assert(!payload_client_nearby() && !counters.close_count && !connect_calls);
+    advertisement(entry_rssi-6,1);
+    assert(payload_client_nearby() && !counters.close_count && !connect_calls && current_state()==BLE_SCANNING);
+    for (int i=0;i<20;++i) advertisement(-80,1);
+    assert(payload_client_nearby() && !counters.close_count && !connect_calls);
+    reset(); flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
+    for (int i=0;i<20;++i) advertisement(entry_rssi-7,1);
+    assert(!payload_client_nearby() && !counters.close_count && !connect_calls);
+    reset(); flag_assign(F_NEARBY,true); payload_client_init();
+    assert(!payload_client_nearby());
+    reset();
     // The v11 run qualified too early at -66 dBm. Those readings must now fail.
     flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
     for (int i=0;i<20;++i) advertisement(-66,1);

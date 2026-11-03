@@ -10,29 +10,27 @@ The older tracker and wheel tests are available through Git history.
 [Development history](docs/history.md) lists the earlier versions with links to
 their exact source snapshots and explains how to replace completed branches with tags.
 
-The current robot programme continues along its initial heading in 250 ms forward
-steps, including when AP1 RSSI changes are inconclusive. A median reference from
-three positions reduces the effect of an isolated strong point. After three weak
-positions, it rechecks while stopped, then allows up to two 100 ms forward probes.
-Recovery resumes the same heading. Persistent decline returns only to the retained
-best point, then checks only the two perpendicular directions.
-An inconsistent return or two unsuccessful side checks stops the run. See [the robot instructions](getting_there/README.md)
-for limits, sampling settings and the hardware test procedure. Flash
-`getting_there/build/getting_there.uf2` and confirm `line-search v16 dip-probes ble-minus58`.
-Flat readings no longer end the initial forward trial or an improving line.
-The 60-second combined powered travel budget, reserved return travel, 15-minute
-run limit, GP21 STOP and fault checks still apply. BLE must still pass the
--58 dBm proximity check before the handshake and verified payload transfer.
-This is a stronger trial requirement after v11 completed too early at -66 dBm. The
-12-reading filter and three consecutive qualifying averages are retained.
-Once proximity passes, failed transfers retry the same BLE address while stopped.
-Verified payload completion and final acknowledgement trigger three short beeps.
-The default firmware stops for Wi-Fi samples; moving acquisition requires
-explicit enablement and timing qualification.
+This branch, `experiment/coarse-fine-navigation`, contains experimental v17.
+It starts with 500 ms forward movements and allows 750 ms after confirmed
+improvement. It retains decline evidence across one inconclusive reading,
+reassesses after at most 2 seconds without a confirmed strong region, and uses
+125 ms movements to refine the turning point after backtracking.
 
+BLE qualification remains **-58 dBm**, with the 12-reading filter and three
+consecutive confirmations. A separate -64 dBm hint only shortens forward steps
+to 250 ms; it does not permit a handshake.
+
+See the [v17 instructions](getting_there/EXPERIMENTAL_V17.md) for settings,
+limits and tests. Flash
+[`getting_there_v17_experimental.uf2`](getting_there/build/getting_there_v17_experimental.uf2)
+and confirm `line-search v17 coarse-fine ble-minus58`.
+
+The working v16 code is preserved on `main` at
+[`d35c860`](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/tree/d35c86069a749db46ebfdbfe956ebbf2a87617d4).
+Its [`getting_there.uf2`](getting_there/build/getting_there.uf2) is retained unchanged.
 The [v16 hardware run](docs/runs/2026-11-03-v16-backtrack.md) records successful
-backtracking, a perpendicular approach and verified payload completion with no
-reported faults. Its full saved log and firmware checksum are retained there.
+backtracking and payload transfer. V17 has host tests and a firmware build;
+it still needs its own hardware run.
 
 ## Project structure
 
@@ -93,7 +91,7 @@ Flash these UF2 files (paths for the root build):
 | AP1 | `build/picow_access_point_powerbank/picow_access_point_powerbank.uf2` |
 | AP2 | `build/picow_access_point2_powerbank/picow_access_point2_powerbank.uf2` |
 | AP3 | `build/picow_access_point3_powerbank/picow_access_point3_powerbank.uf2` |
-| Robot | `build/getting_there/getting_there.uf2` |
+| Robot (experimental v17) | `build/getting_there/getting_there_v17_experimental.uf2` |
 
 The firmware has been compile-tested. The BLE range threshold, radio coexistence
 and full transfer sequence still require a four-board hardware test.

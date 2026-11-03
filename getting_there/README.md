@@ -1,4 +1,11 @@
-# AP1 approach and payload transfer
+# Working v16 firmware reference
+
+This branch builds **experimental v17**. Read the
+[v17 instructions](EXPERIMENTAL_V17.md) and flash
+[`getting_there_v17_experimental.uf2`](build/getting_there_v17_experimental.uf2)
+to test the new navigation. The existing `getting_there.uf2` remains the working
+v16 binary. The sections below describe v16 and its recorded development;
+shared wiring, controls and logging still apply to v17.
 
 This AP1 programme developed from `Alvin_2` at `2012e7b` through the archived
 `line-search` branch. Flash `getting_there/build/getting_there.uf2` onto the robot.

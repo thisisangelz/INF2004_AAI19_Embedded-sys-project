@@ -35,7 +35,7 @@ static volatile uint32_t phase_started_ms;
 //   bits 0-4   BLE state, 23 states
 //   bits 5-6   result of the last attempt, 4 values
 //   bits 7-8   result to report once cleanup finishes, 4 values
-//   bits 9-19  one bit per flag below
+//   bits 9-20  one bit per flag below
 #define BLE_STATE_LAST BLE_CLOSING
 #define ST_STATE_SHIFT 0u
 #define ST_STATE_BITS 5u
@@ -53,6 +53,7 @@ static volatile uint32_t phase_started_ms;
 #define F_CHARACTERISTIC_FOUND (1u << 17)
 #define F_STARTUP_FAILED (1u << 18)
 #define F_RECONNECT_REQUESTED (1u << 19)
+#define F_NEARBY (1u << 20)
 _Static_assert(ST_STATE_BITS == BITS_NEEDED(BLE_STATE_LAST), "BLE state field is not minimal");
 _Static_assert(ST_RESULT_BITS == BITS_NEEDED(PAYLOAD_FATAL), "result field is not minimal");
 _Static_assert(ST_CLOSING_SHIFT == ST_RESULT_SHIFT + ST_RESULT_BITS, "result fields overlap");
@@ -503,6 +504,7 @@ static void advertisement_received(uint8_t *packet)
     if (counters.sample_count < RSSI_SAMPLE_COUNT) ++counters.sample_count;
     if (counters.sample_count < RSSI_SAMPLE_COUNT) return;
     int average = filtered_rssi();
+    if (average >= CLOSE_RSSI_DBM - 6) flag_assign(F_NEARBY, true);
     counters.close_count = average >= CLOSE_RSSI_DBM ? counters.close_count + 1 : 0;
     report_defer_printf("AP1 BLE: filtered %d dBm, need >= %d, close %d/%d\n",
                   average, CLOSE_RSSI_DBM, counters.close_count, REQUIRED_CLOSE_AVERAGES);
@@ -661,7 +663,7 @@ static void initialise_client_callback(void *context)
 
 void payload_client_init(void)
 {
-    flag_assign(F_CLOSE_CONFIRMED | F_RECONNECT_REQUESTED, false);
+    flag_assign(F_CLOSE_CONFIRMED | F_RECONNECT_REQUESTED | F_NEARBY, false);
     flag_assign(F_BLUETOOTH_READY, false);
     flag_assign(F_STARTUP_FAILED, false);
     // Keep stack setup/power-on in the same async context as HCI processing.
@@ -717,6 +719,7 @@ static payload_result_t run_attempt(bool reconnect)
 
 payload_result_t payload_client_attempt(void) { return run_attempt(false); }
 payload_result_t payload_client_retry(void) { return run_attempt(true); }
+bool payload_client_nearby(void) { return flag(F_NEARBY); }
 
 const uint8_t *payload_client_data(uint16_t *length)
 {
