@@ -184,3 +184,22 @@ test('playback defaults to real time instead of silently skipping ahead at 20 ti
   const options=html.match(/<select id="playSpeed"[^>]*>(.*?)<\/select>/s)[1];
   assert.match(options,/<option value="1" selected>/);assert.doesNotMatch(options,/<option value="20" selected>/);
 });
+
+test('every build click requests a separate fresh experiment even when its duration is unchanged',async()=>{
+  let builds=0;
+  const h=harness(async(url,options)=>{
+    if(url==='/api/runs')return {ok:true,json:async()=>[]};
+    assert.equal(url,'/api/run');assert.equal(options.method,'POST');assert.equal(options.cache,'no-store');
+    const request=JSON.parse(options.body),response=fixture();
+    response.id='fresh-run-'+(++builds);response.scenario=request.scenario;
+    return {ok:true,json:async()=>response};
+  });
+  h.elements.customRef.value='origin/main';
+  await h.evaluate('runExperiment()');assert.equal(h.evaluate('run.id'),'fresh-run-1');
+  h.elements.endBtn.onclick();assert.equal(h.evaluate('playTime'),2);
+  await h.evaluate('runExperiment()');assert.equal(builds,2);assert.equal(h.evaluate('run.id'),'fresh-run-2');
+  assert.equal(h.evaluate('playTime'),0);assert.equal(h.evaluate('frame.t'),0);
+  assert.equal(h.evaluate('frame.path'),0);assert.equal(h.evaluate('frame.faults'),0);
+  assert.match(h.elements.runStatus.textContent,/New experiment.*fresh-run-2/);
+  assert.equal(h.elements.duration.textContent,'Total 0:02.0');
+});

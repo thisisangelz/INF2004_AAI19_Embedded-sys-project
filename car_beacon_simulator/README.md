@@ -38,7 +38,10 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
    decimal places; dragging uses that same precision. After inspecting a run,
    **Edit start** returns to its original setup so you can change the next run.
 3. Click **Build & run experiment**. Each run compiles a source snapshot, then
-   simulates the complete execution quickly using a virtual clock.
+   starts a fresh firmware process and simulates the complete execution quickly
+   using a virtual clock. Every click creates a new run ID, displayed below the
+   playback controls. Identical inputs can produce the same duration and outcome
+   because the model is deterministic; they are still separate executions.
 4. Play, pause, step by 0.1 s, scrub the timeline, or jump to the final result.
    Playback defaults to **1×**. Its speed changes viewing speed only, not firmware
    timing or physics. **Total** is the duration of the recorded execution, known

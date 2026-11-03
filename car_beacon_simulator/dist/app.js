@@ -12,7 +12,7 @@ function scenario(){const s={horizon:1000,corrupt_reply:0};for(const k of keys)s
 function previewReady(){const s=scenario();return keys.every(k=>$(k).value!==''&&Number.isFinite(s[k]))&&s.speed>0&&s.wheelbase>0&&s.exponent>0&&s.ble_radius>0;}
 function setBusy(value){busy=value;for(const id of [...keys,'preset','branch','customRef','moving','runBtn','fetchBtn','importFile','loadTraceBtn'])$(id).disabled=value;}
 function showError(message){$('error').hidden=!message;$('error').textContent=message||'';}
-async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json','X-Simulator':'1'},body:JSON.stringify(body)}:{});const d=await r.json();if(!r.ok)throw Error(d.error||`Request failed (${r.status})`);return d;}
+async function api(path,body){const r=await fetch(path,{cache:'no-store',...(body?{method:'POST',headers:{'Content-Type':'application/json','X-Simulator':'1'},body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok)throw Error(d.error||`Request failed (${r.status})`);return d;}
 function populateRefs(refs){const old=$('branch').value;$('branch').replaceChildren();for(const r of refs){const o=document.createElement('option');o.value=r.name;o.textContent=`${r.name} ${r.supported?'':'· needs adapter'}`;o.disabled=!r.supported;$('branch').append(o);}const o=document.createElement('option');o.value='working-tree';o.textContent='Current working tree · saved edits';$('branch').append(o);if(old&&[...$('branch').options].some(o=>o.value===old))$('branch').value=old;else $('branch').value='origin/main';branchNote();}
 function branchNote(){const custom=$('customRef').value.trim(),current=config?.refs.find(r=>r.name===$('branch').value);$('branchNote').textContent=custom?`Next run: ${custom} · both car and AP1` : current?`${current.commit} · both car and AP1 from this branch`:'Snapshots saved car and AP1 source files.';const details=$('sourceDetails');details.replaceChildren();if(!custom&&current?.supported){const car=document.createElement('div'),beacon=document.createElement('div');car.textContent='Car: '+current.car_source;beacon.textContent='AP1: '+current.beacon_source;details.append(car,beacon);}else details.textContent='Source paths are resolved and recorded when you build.';}
 
@@ -89,6 +89,7 @@ async function runExperiment(){
   setText('connection','Native engine running…');
   try{
     const data=await api('/api/run',request);loadRun(data,true);
+    setText('runStatus',`New experiment · Run ${data.id} · executed from the starting conditions. Playback starts at 0:00.0.`);
     setText('connection',`Native engine ready · ${data.metadata.commit.slice(0,7)}`);
     await loadHistory().catch(e=>showError('Run recorded, but history could not refresh: '+e.message));
   }catch(e){resetPreview();showError(e.message);setText('connection','Build / run failed · see setup panel');}
