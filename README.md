@@ -10,15 +10,29 @@ The older tracker and wheel tests are available through Git history.
 [Development history](docs/history.md) lists the earlier versions with links to
 their exact source snapshots and explains how to replace completed branches with tags.
 
-The current robot programme follows the first direction with confirmed AP1 RSSI
-improvement in 250 ms forward steps. Reversal requires three successive weak
-positions, with two fresh batches at each. On confirmed decline it returns only to
-the retained best point, then checks only the two perpendicular directions.
+The current robot programme continues along its initial heading in 250 ms forward
+steps, including when AP1 RSSI changes are inconclusive. A median reference from
+three positions reduces the effect of an isolated strong point. After three weak
+positions, it rechecks while stopped, then allows up to two 100 ms forward probes.
+Recovery resumes the same heading. Persistent decline returns only to the retained
+best point, then checks only the two perpendicular directions.
 An inconsistent return or two unsuccessful side checks stops the run. See [the robot instructions](getting_there/README.md)
 for limits, sampling settings and the hardware test procedure. Flash
-`getting_there/build/getting_there.uf2` and confirm `line-search v7 two-directions`.
+`getting_there/build/getting_there.uf2` and confirm `line-search v16 dip-probes ble-minus58`.
+Flat readings no longer end the initial forward trial or an improving line.
+The 60-second combined powered travel budget, reserved return travel, 15-minute
+run limit, GP21 STOP and fault checks still apply. BLE must still pass the
+-58 dBm proximity check before the handshake and verified payload transfer.
+This is a stronger trial requirement after v11 completed too early at -66 dBm. The
+12-reading filter and three consecutive qualifying averages are retained.
+Once proximity passes, failed transfers retry the same BLE address while stopped.
+Verified payload completion and final acknowledgement trigger three short beeps.
 The default firmware stops for Wi-Fi samples; moving acquisition requires
 explicit enablement and timing qualification.
+
+The [v16 hardware run](docs/runs/2026-11-03-v16-backtrack.md) records successful
+backtracking, a perpendicular approach and verified payload completion with no
+reported faults. Its full saved log and firmware checksum are retained there.
 
 ## Project structure
 

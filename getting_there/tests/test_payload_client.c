@@ -16,9 +16,17 @@ static uint16_t write_length;
 static uint8_t write_status;
 static uint8_t connect_status;
 static int power_error, power_calls;
+static int start_scan_calls, mtu_auto_enabled;
+static bool auto_connect, connect_pending, auto_setup, reached_hello;
+static uint32_t discovery_delay_ms;
+static bd_addr_t last_connect_address;
+static bd_addr_type_t last_connect_type;
+static char log_text[32768];
+static size_t log_length;
 static bool defer_context_callback;
 static btstack_context_callback_registration_t *queued_context_callback;
 const hci_cmd_t hci_le_set_scan_enable = {0x200c, "11"};
+static void advance_peer(void);
 
 static void scan_ack(void)
 {
@@ -31,9 +39,17 @@ void sleep_ms(uint32_t ms)
 {
     sim_time += (uint64_t)ms * 1000;
     if (auto_scan_ack && scan_ack_pending) scan_ack();
+    advance_peer();
 }
 void report_printf(const char *format, ...) { (void)format; }
-void report_defer_printf(const char *format, ...) { (void)format; }
+void report_defer_printf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int count=vsnprintf(log_text+log_length,sizeof(log_text)-log_length,format,args);
+    va_end(args);
+    if (count>0 && (size_t)count<sizeof(log_text)-log_length) log_length+=(size_t)count;
+}
 void report_flush_usb(void) { }
 void hci_dump_log(int level, const char *format, ...) { (void)level; (void)format; }
 bool motion_stop_requested(void) { return stopped; }
@@ -44,6 +60,7 @@ void sm_set_io_capabilities(io_capability_t value) { (void)value; }
 void att_server_init(const uint8_t *db, att_read_callback_t read, att_write_callback_t write)
 { (void)db; (void)read; (void)write; }
 void gatt_client_init(void) { }
+void gatt_client_mtu_enable_auto_negotiation(uint8_t enabled) { mtu_auto_enabled=enabled; }
 void hci_add_event_handler(btstack_packet_callback_registration_t *registration) { (void)registration; }
 int hci_power_control(HCI_POWER_MODE mode) { (void)mode; ++power_calls; return power_error; }
 void btstack_run_loop_execute_on_main_thread(btstack_context_callback_registration_t *registration)
@@ -53,11 +70,19 @@ void btstack_run_loop_execute_on_main_thread(btstack_context_callback_registrati
 }
 void gap_set_scan_parameters(uint8_t type, uint16_t interval, uint16_t window)
 { (void)type; (void)interval; (void)window; }
-void gap_start_scan(void) { scan_ack_pending = true; }
+void gap_start_scan(void) { ++start_scan_calls; scan_ack_pending = true; }
 void gap_stop_scan(void) { ++stop_scan_calls; scan_ack_pending = true; }
 uint8_t gap_connect(const bd_addr_t address, bd_addr_type_t type)
-{ (void)address; (void)type; ++connect_calls; return connect_status; }
-uint8_t gap_connect_cancel(void) { ++cancel_calls; return 0; }
+{
+    memcpy(last_connect_address,address,sizeof(last_connect_address)); last_connect_type=type;
+    ++connect_calls; connect_pending=auto_connect && !connect_status; return connect_status;
+}
+uint8_t gap_connect_cancel(void)
+{
+    ++cancel_calls; connect_pending=false;
+    connection_complete(0x02,HCI_CON_HANDLE_INVALID);
+    return 0;
+}
 uint8_t gap_disconnect(hci_con_handle_t handle)
 {
     ++disconnect_calls;
@@ -101,6 +126,12 @@ static void reset(void)
     stop_scan_calls = connect_calls = cancel_calls = disconnect_calls = write_calls = 0;
     write_status = connect_status = 0;
     power_error = power_calls = 0; defer_context_callback = false; queued_context_callback = NULL;
+    start_scan_calls=0; mtu_auto_enabled=-1;
+    auto_connect=connect_pending=auto_setup=reached_hello=false; discovery_delay_ms=0;
+    log_length=0; log_text[0]=0;
+    flag_assign(F_RECONNECT_REQUESTED,false);
+    result_put(ST_RESULT_SHIFT,PAYLOAD_NOT_CLOSE);
+    for (int f=0;f<FAULT_COUNT;++f) fault_clear((fault_t)f);
     flag_assign(F_STARTUP_FAILED, false);
     flag_assign(F_ATTEMPT_RUNNING, false); flag_assign(F_ABORT_REQUESTED, false); flag_assign(F_BLUETOOTH_READY, true);
     set_state(BLE_IDLE); phase_started_ms = 0;
@@ -135,6 +166,38 @@ static void query_complete(uint8_t status)
 #endif
     gatt_handler(HCI_EVENT_PACKET, 0, packet, sizeof(packet));
 }
+static void discovery_result(uint8_t event, hci_con_handle_t handle)
+{
+    // Deserialisation is stubbed, but real accessors still read the connection
+    // handle and dispatch the event through the production GATT state machine.
+    uint8_t packet[32]={0}; packet[0]=event; packet[1]=30;
+    transfer_write_u16(packet+2,handle);
+    gatt_handler(HCI_EVENT_PACKET,0,packet,sizeof(packet));
+}
+static void advance_peer(void)
+{
+    if (connect_pending) {
+        connect_pending=false;
+        connection_complete(0,42);
+    }
+    if (!auto_setup) return;
+    switch (current_state()) {
+    case BLE_DISCOVER_SERVICE:
+        if (now_ms()-phase_started_ms<discovery_delay_ms) return;
+        discovery_result(GATT_EVENT_SERVICE_QUERY_RESULT,connection_handle);
+        query_complete(0); break;
+    case BLE_DISCOVER_CHARACTERISTIC:
+        discovery_result(GATT_EVENT_CHARACTERISTIC_QUERY_RESULT,connection_handle);
+        query_complete(0); break;
+    case BLE_ENABLE_NOTIFICATIONS:
+        query_complete(0); break;
+    case BLE_WRITE_HELLO:
+        reached_hello=true;
+        stopped=true; // End the delayed-setup test at an observable protocol step.
+        break;
+    default: break;
+    }
+}
 static void advertisement(int rssi, uint8_t id)
 {
     uint8_t packet[18] = {GAP_EVENT_ADVERTISING_REPORT, 16, 0, 0, 1, 2, 3, 4, 5, 6,
@@ -155,7 +218,17 @@ static void successful_exchange(bool early_notifications)
     uint16_t received_length = 0, announced_length = 0, peer_offset = 0;
     uint32_t announced_crc = 0;
     uint8_t peer_sequence = 0;
-    start_connected(BLE_ENABLE_NOTIFICATIONS);
+    start_connected(BLE_CONNECTING);
+    connection_handle=HCI_CON_HANDLE_INVALID;
+    connection_complete(0,42);
+    discovery_result(GATT_EVENT_SERVICE_QUERY_RESULT,41);
+    assert(!flag(F_SERVICE_FOUND));
+    discovery_result(GATT_EVENT_SERVICE_QUERY_RESULT,42); query_complete(0);
+    assert(current_state()==BLE_DISCOVER_CHARACTERISTIC);
+    discovery_result(GATT_EVENT_CHARACTERISTIC_QUERY_RESULT,41);
+    assert(!flag(F_CHARACTERISTIC_FOUND));
+    discovery_result(GATT_EVENT_CHARACTERISTIC_QUERY_RESULT,42); query_complete(0);
+    assert(current_state()==BLE_ENABLE_NOTIFICATIONS);
     query_complete(0);
     for (int iterations = 0; flag(F_ATTEMPT_RUNNING); ++iterations) {
         assert(iterations < 30);
@@ -220,6 +293,7 @@ int main(void)
     assert(!payload_client_ready() && !payload_client_start_failed() && power_calls==0 && queued_context_callback);
     queued_context_callback->callback(queued_context_callback->context);
     assert(power_calls==1 && !payload_client_start_failed());
+    assert(mtu_auto_enabled==0);
     uint8_t working[] = {BTSTACK_EVENT_STATE,1,HCI_STATE_WORKING};
     hci_handler(HCI_EVENT_PACKET,0,working,sizeof(working));
     assert(payload_client_ready());
@@ -237,6 +311,57 @@ int main(void)
     scan_ack(); assert(current_state() == BLE_CONNECTING && connect_calls == 1);
     connection_complete(0x3e, HCI_CON_HANDLE_INVALID);
     assert(!flag(F_ATTEMPT_RUNNING) && result_get(ST_RESULT_SHIFT) == PAYLOAD_RETRY && !cancel_calls);
+
+    // Reconnect to this exact qualified address with no new advertisements.
+    // A discovery timeout must retain a useful fault instead of returning 0x000.
+    bd_addr_t qualified_address; memcpy(qualified_address,beacon_address,sizeof(qualified_address));
+    auto_connect=true;
+    assert(payload_client_retry()==PAYLOAD_RETRY && connect_calls==2 && start_scan_calls==1);
+    assert(memcmp(last_connect_address,qualified_address,sizeof(qualified_address))==0);
+    assert(last_connect_type==beacon_address_type && disconnect_calls==1 && fault_test(FAULT_PAYLOAD));
+    assert(strstr(log_text,"phase=service discovery") && strstr(log_text,"phase_limit_ms=15000"));
+    // A service response after six seconds used to exceed the five-second
+    // application deadline. The new bounded setup window reaches HELLO.
+    auto_setup=true; discovery_delay_ms=6000;
+    assert(payload_client_retry()==PAYLOAD_FATAL && reached_hello && stopped);
+    assert(connect_calls==3 && start_scan_calls==1 && !flag(F_PAYLOAD_VERIFIED));
+
+    reset(); assert(payload_client_retry()==PAYLOAD_FATAL && !connect_calls && !start_scan_calls);
+    const int entry_rssi = AP1_CLOSE_RSSI_DBM;
+    // The v11 run qualified too early at -66 dBm. Those readings must now fail.
+    flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
+    for (int i=0;i<20;++i) advertisement(-66,1);
+    assert(counters.sample_count==12 && counters.close_count==0 && current_state()==BLE_SCANNING && !connect_calls);
+    // Readings just below the new threshold and one isolated hit must not connect.
+    for (int i=0;i<20;++i) advertisement(entry_rssi-1,1);
+    assert(counters.sample_count==12 && counters.close_count==0 && !connect_calls);
+    advertisement(entry_rssi,1);
+    assert(current_state()==BLE_SCANNING && !connect_calls);
+    for (int i=0;i<20 && current_state()==BLE_SCANNING;++i) advertisement(entry_rssi,1);
+    assert(current_state()==BLE_STOPPING_FOR_CONNECT && counters.close_count==3);
+    scan_ack(); assert(connect_calls==1);
+
+    // Keep the full 12-reading filter and require all three confirmations.
+    reset(); flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
+    for (int i=0;i<11;++i) advertisement(entry_rssi,1);
+    assert(counters.sample_count==11 && counters.close_count==0 && current_state()==BLE_SCANNING);
+    advertisement(entry_rssi,1);
+    assert(counters.sample_count==12 && counters.close_count==1 && current_state()==BLE_SCANNING);
+    advertisement(entry_rssi,1);
+    assert(counters.close_count==2 && current_state()==BLE_SCANNING && !connect_calls);
+    advertisement(entry_rssi,1);
+    assert(counters.close_count==3 && current_state()==BLE_STOPPING_FOR_CONNECT && !connect_calls);
+    scan_ack(); assert(current_state()==BLE_CONNECTING && connect_calls==1);
+
+    // Two qualifying averages followed by a weaker average reset the sequence.
+    reset(); flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
+    for (int i=0;i<6;++i) advertisement(entry_rssi+1,1);
+    for (int i=0;i<6;++i) advertisement(entry_rssi-1,1);
+    assert(filtered_rssi()==entry_rssi && counters.close_count==1);
+    advertisement(entry_rssi-1,1);
+    assert(filtered_rssi()==entry_rssi && counters.close_count==2);
+    advertisement(entry_rssi-1,1);
+    assert(filtered_rssi()==entry_rssi-1 && counters.close_count==0 && current_state()==BLE_SCANNING && !connect_calls);
 
     reset(); flag_assign(F_ATTEMPT_RUNNING, true); start_attempt_callback(NULL); scan_ack();
     for (int i = 0; i < 20; ++i) advertisement(-40, 2);
@@ -324,6 +449,6 @@ int main(void)
     fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_TRANSLATION_LIMIT));
     fault_clear(FAULT_TRANSLATION_LIMIT); assert(!fault_mask());
 
-    puts("BLE signed RSSI, proximity gate, payload CRC, early notifications, cleanup and faults: passed");
+    printf("BLE %d dBm gate, rejected v11 early-arrival readings, 12-reading filter, three consecutive confirmations, signed RSSI, payload CRC, early notifications, cleanup and faults: passed\n", AP1_CLOSE_RSSI_DBM);
     return 0;
 }

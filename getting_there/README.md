@@ -1,8 +1,8 @@
 # AP1 approach and payload transfer
 
-The `line-search` branch runs this AP1 programme, based on `Alvin_2` at
-`2012e7b`. Flash `getting_there/build/getting_there.uf2` onto the robot.
-It approaches AP1, receives and verifies AP1's reply payload over BLE, then plays a one-second completion tone.
+This AP1 programme developed from `Alvin_2` at `2012e7b` through the archived
+`line-search` branch. Flash `getting_there/build/getting_there.uf2` onto the robot.
+It approaches AP1, receives and verifies AP1's reply payload over BLE, then plays three short completion beeps.
 
 ## Hardware and starting a run
 
@@ -39,29 +39,45 @@ STOP is armed. If both buttons are pressed at idle, replay takes precedence.
 2. Try the current forward heading first. Take two fresh stationary baseline
    batches after turning. Move in blocks of at most 250 ms at 35% base duty
    with gyro correction. After each block, stop, check BLE and take two fresh
-   Wi-Fi batches. As soon as improvement is confirmed, continue on that heading
-   from the current position. No initial four-probe pass or heading bisection
-   is required, and the old 2400 ms probe limit does not end an improving run.
+   Wi-Fi batches. Continue on that heading through inconclusive readings,
+   subject to the run and travel limits. The initial heading does not require
+   confirmed improvement within 2400 ms. No initial four-probe pass or heading
+   bisection is required.
 3. Retain the strongest repeatable point and its accumulated powered time.
-   Direction improvement and decline use the margin
-   `max(3, previous_spread + current_spread + 1)` dB. Both new batches must
+   Direction improvement uses the margin
+   `max(3, largest_individual_batch_spread + 1)` dB across the four batches
+   being compared. Both new batches must
    support the change. Once a direction has improved, also retain a stronger
    two-batch point if it still confirms improvement over that direction's
    original baseline, even when its gain over the previous best is under 3 dB.
    This prevents small successive increases from being lost before a return.
-4. Require three successive weak positions before reversing. At each position,
-   both fresh batches must confirm decline against the retained best using the
-   noise margin. Counted positions must be at least 250 ms of powered travel
-   apart, including when a moving scan or recovered IMU error ends a block early.
-   A new best or a point without confirmed decline resets the sequence. Keep the
-   original best throughout the sequence. A pending sequence can extend past a
-   trial deadline, but cannot bypass the run or return budgets.
-   After the third position, reverse only the powered time beyond that best.
-   For example, best 3010 ms and weak positions at 3260, 3510 and 3760 ms request
-   a 750 ms reverse. Stop there and measure twice. Returned batches must agree
-   and must not be clearly weaker than the recorded best. This checks RSSI
-   consistency; timed travel does not establish exact position.
-5. After a consistent return, check only the two perpendicular headings:
+4. Use a separate reference for decline: the median of three positions, ranked
+   by each position's weaker batch. Keep both batches from the selected position.
+   The reference starts at the direction's baseline until three positions are
+   available. It can strengthen but never weaken. Freeze it and its three-position
+   history during a suspected dip, so weakening readings cannot lower the reference.
+   Require three successive weak positions, each at least 250 ms of powered travel
+   apart. Both batches must be weaker than both reference batches by **more than**
+   `max(3, largest_individual_batch_spread + 1)` dB. Equality does not count as
+   decline. A point without confirmed decline clears the consecutive count;
+   an inconclusive point leaves the reference frozen until recovery is confirmed.
+5. After the third weak position, stop and recheck BLE, then collect two new Wi-Fi
+   batches. If they recover within the consistency tolerance, continue forwards.
+   Otherwise allow at most two additional **100 ms forward probes**, with a stopped
+   BLE check and two fresh Wi-Fi batches after each. Recovery ends probing and
+   resumes normal 250 ms blocks on the same heading. A missing signal, STOP, fault
+   or exhausted budget prevents further probing. A pending dip can extend a side
+   trial, but never bypasses run or return budgets.
+6. If both probes fail to recover, reverse only the accumulated powered time
+   beyond the retained best point, including the probes. For example, best 2500 ms,
+   third weak position 3500 ms and two 100 ms probes request a 1200 ms reverse.
+   Stop there and measure twice. The return and dip-recovery checks both require
+   batch agreement and no loss beyond the consistency tolerance. This tolerance
+   is `max(3, reference_spread + current_batch_spread + 1)` dB; reference spread
+   includes its two-batch disagreement. Batch agreement uses the two current
+   spreads in the same formula. Equality at the tolerance is accepted. These are
+   RSSI checks; timed travel does not establish exact position.
+7. After a consistent return, check only the two perpendicular headings:
    90 degrees clockwise, then 90 degrees anticlockwise from the previous travel
    heading. Take new same-heading baselines. Follow the first direction that
    improves immediately; test the other side only if the first fails. A side
@@ -69,35 +85,42 @@ STOP is armed. If both buttons are pressed at idle, replay takes precedence.
    best point and rechecks RSSI before the other side is tested. Both side
    trials therefore start near the same retained point. Positive headings turn
    left with the current motor wiring.
-6. Stop with `NO_DIRECTION` if neither side improves or a return check is
-   inconsistent. No four-direction recovery pass is available. The initial
-   forward direction can also stop without a turn if its trial ends with no
-   confirmed improvement or decline. Perpendicular checks are allowed after a
+8. Stop with `NO_DIRECTION` if neither side improves or a return check is
+   inconsistent. No four-direction recovery pass is available. Inconclusive
+   initial forward readings continue within the run and travel limits.
+   Perpendicular checks are allowed after a
    consistent decline return even if that initial direction never improved.
-7. BLE may complete the run at any travel checkpoint, including a return or a
+9. BLE may complete the run at any travel checkpoint, including a probe, return or a
    side trial. Remain stopped during transfer and allow three stationary attempts
-   after proximity passes. Verify reply length and CRC-32 and require the final
-   `COMPLETE_ACK`. Only then play the one-second tone.
+   after proximity passes. Retries reconnect to the same qualified BLE address
+   without repeating the RSSI check or moving again. Verify reply length and
+   CRC-32 and require the final `COMPLETE_ACK`. Only then play three 200 ms beeps
+   at 2000 Hz, separated by 150 ms gaps. GP21 can interrupt the beeps.
 
-Initial forward and perpendicular trials allow 2400 ms of powered travel to
-establish their first improvement. An initial forward trial that remains flat
-stops at its current position. An unsuccessful side trial returns to its
-recorded starting best and rechecks before testing the opposite side. Such a
-return is part of an unsuccessful side check; an improving forward line keeps
-its strongest point and uses the three-position decline rule.
+Perpendicular trials allow 2400 ms of powered travel to establish their first
+improvement. An unsuccessful side trial returns to its recorded starting best
+and rechecks before testing the opposite side. The initial forward heading has
+no separate trial deadline. It continues towards a BLE checkpoint, confirmed
+decline, STOP, fault or the existing run/travel limits.
 
-A confirmed direction continues through six-second profile intervals. A flat
-signal lasting six powered seconds after its last retained best stops the run
-in place. If both batches have weakened but the loss is still below the margin,
-continue sampling for a sustained confirmed decline, subject to run budgets.
-Ending a profile interval does not trigger a return or another heading search.
+Both the initial heading and a confirmed direction continue through six-second
+profile intervals, even if the signal stays flat or weakens by less than the
+decline margin. Ending a profile interval only clears the bounded recording
+buffer; it does not stop, return or trigger another heading search.
 
 Each batch contains five fresh scans, requires at least three valid target
 readings, trims the lowest and highest quarter, and averages the remainder.
 The two confirmation batches do not share scans. Comparing pairs uses the
-strongest old batch and weakest new batch; spread includes disagreement
-between the batches. This is a conservative heuristic, not a confidence
-interval. One isolated strong or weak batch cannot establish a peak or decline.
+strongest old batch and weakest new batch. That comparison already accounts
+for disagreement between batches, so the progress margin uses only the largest
+individual retained spread, plus 1 dB for rounding, with a 3 dB minimum. This
+is a heuristic, not a confidence interval. One isolated strong or weak batch
+cannot establish a peak or decline. The additional three-position median reduces
+the effect of a whole position reading unusually strongly. Each normal movement
+adds at most one position to this history, after any dip checks; stationary
+rechecks are not additional positions. The best return point remains independent
+of this reference. Approximate return checks and optional moving-sample hints
+retain their previous tolerances.
 
 ## Moving samples and recorded profiles
 
@@ -111,8 +134,8 @@ rest of the run. The robot continues with stationary sampling.
 
 When enabled and qualified, the cooperative motion loop services Wi-Fi at
 5 ms intervals while maintaining gyro steering. A filtered moving decline may
-request an earlier stop; reversal still requires the three stationary position
-checks described above.
+request an earlier stop; reversal still requires the stationary position checks,
+recheck and bounded probes described above. Dip probes use stationary sampling.
 A pending scan finishes with the motors stopped before BLE or flash work starts.
 A scan failure or timeout prevents further BLE, checkpointing and movement until
 main shuts the radio down. A normal pause can finish a scan while stopped;
@@ -120,7 +143,8 @@ that observation is logged but excluded from the moving window.
 
 The bounded RAM buffers hold 64 raw scan records and 32 line points.
 The line buffer is reset for each direction and six-second profile interval;
-the retained best point and its powered coordinate survive interval resets. Buffer exhaustion stops the run.
+the retained best point, its powered coordinate and the decline reference survive
+interval resets. Each new heading starts its own reference. Buffer exhaustion stops the run.
 Callbacks only capture the strongest matching target result for each scan;
 formatting, USB output and flash saving happen while stopped. Raw records use
 callback receipt time, which is not a hardware radio-measurement timestamp.
@@ -131,6 +155,7 @@ RSSI_RAW,scan=...,t_ms=...,powered_ms=...,heading=...,dbm=...,stopped=...
 RSSI_SAMPLE,scan=...,valid=...,dbm=...,spread=...,duration_ms=...,moving=...,fallback=...
 LINE_POINT,line=...,point=...,t_ms=...,powered_ms=...,heading=...,scan=...,dbm1=...,dbm2=...
 FOLLOW_POINT,powered_ms=...,best_ms=...,gain_db=...,margin_db=...,baseline_gain_db=...,baseline_margin_db=...,trend=...
+DIP_CHECK,stage=...,probe=...,powered_ms=...,reference_dbm1=...,reference_dbm2=...,dbm1=...,dbm2=...,recovered=...
 ```
 
 `powered_ms` is the estimated position along the current direction, based
@@ -147,9 +172,16 @@ identify new best points, confirmed declines, partial returns and interval
 changes. `DIRECTION SEARCH` identifies the two perpendicular trials.
 `SIDE TRIAL` and `SIDE RETURN` identify an unsuccessful side check and its
 return to the shared starting point.
+`DIP` messages identify reference updates, freezing, probes and recovery.
+`DIP_CHECK` records the stopped recheck (`probe=0`) or probe number 1/2, its
+actual powered position, frozen reference and both new batch averages. These
+checks have their own saved records and do not consume extra line-profile slots.
 Sampling pauses do not add powered travel.
 
-The BLE close-range check retains the requested threshold of **-50 dBm**.
+The BLE close-range check uses **-58 dBm**, a stronger trial requirement after
+the v11 run qualified too early at -66 dBm. Change `AP1_CLOSE_RSSI_DBM`
+in `payload_client.h` or override it at compile time after measuring the mounted
+boards at the desired stopping distance.
 It uses 12 fresh target advertisements, trims the lowest and highest quarter,
 and requires three consecutive qualifying averages. Samples are cleared for
 each check, so readings from different positions are not mixed. Wi-Fi and
@@ -181,7 +213,9 @@ six-second profile interval bounds the stored trace, while an improving
 heading can continue through further intervals. Before every forward block,
 reserve enough powered time to return to the retained best. Each translation
 block reserves another 25 ms for loop/I2C overrun; an unexpected overrun ends
-the run. Reserve one block and its possible return at a time, rather than
+the run. The two dip probes therefore request 200 ms in total and allow at most
+250 ms of measured powered travel including these two overrun allowances.
+Reserve one block and its possible return at a time, rather than
 requiring the budget for both side trials in advance. Turns
 retain separate timeouts. Exhausted budgets stop the motors.
 
@@ -222,15 +256,17 @@ its cause was wiring, supply noise, a controller state or a scheduling delay.
 These changes handle bounded transient failures; they do not establish that
 physical wiring or power faults have been repaired. Test the assembled robot.
 
-BLE connection and transfer phases retain five-second timeouts and bounded
-cleanup. IMU I2C transactions retain their 5000 microsecond timeout. These bounds
+BLE connection, service/characteristic discovery and notification setup have
+15-second phase timeouts. Other transfer phases retain five-second timeouts,
+each complete attempt remains bounded to 30 seconds before cleanup, and cleanup
+remains bounded to three seconds. IMU I2C transactions retain their 5000 microsecond timeout. These bounds
 are not a measured 20 ms hardware STOP guarantee. Measure the assembled robot's
 STOP latency and stopping distance, particularly before enabling moving Wi-Fi.
 
 The movement is timed, not measured in centimetres. Reversing for the same
 duration only approximates the original position. RSSI varies with orientation
 and reflections, so this programme does not guarantee the shortest route or
-obstacle avoidance. The -50 dBm threshold is a configurable starting value;
+obstacle avoidance. The -58 dBm threshold is a configurable starting value;
 it does not establish a particular physical distance. Test the assembled robot
 on a clear floor with GP21 available to stop it.
 
@@ -248,7 +284,7 @@ on a clear floor with GP21 available to stop it.
 6. GP20 replaces the previous run; save the serial text first if you need it.
    After a run ends, GP21 also replays that run; reset is required to run again.
 
-The banner is `line-search v7 two-directions`. The last 512 KiB of the Pico W's
+The banner is `line-search v16 dip-probes ble-minus58`. The last 512 KiB of the Pico W's
 2 MiB flash is reserved for a versioned, CRC-protected page journal. The linker
 limits firmware to the first 1528 KiB. The next 8 KiB holds BTstack storage,
 and the final 512 KiB holds the log. SDK flash operations retain the full 2 MiB
@@ -287,7 +323,7 @@ AP1 close-range check passed; motors stopped for payload transfer
 AP1 reply payload length and CRC verified
 AP1 PAYLOAD COMPLETE: verified reply and final acknowledgement
 AP1 payload: Reply file from beacon AP1
-COMPLETION TONE: GP22, 2000 Hz for 1000 ms
+COMPLETION BEEPS: GP22, 3 beeps at 2000 Hz, 200 ms on / 150 ms gap
 RESULT: PAYLOAD CONFIRMED
 ```
 
@@ -320,14 +356,21 @@ wraparound, partial and uncertain returns, timing budgets, delayed/stale scans,
 moving hints and stationary fallback, BSSID, STOP and storage faults. Existing
 payload CRC/final acknowledgement, notification ordering, report persistence,
 power-cut recovery, boot/replay and bounded IMU failure tests remain in place.
+Dip checks cover an isolated strong position, a slowly weakening signal, frozen
+references, recovery during the recheck or either probe, and persistent decline.
+They also check BLE completion, STOP, missing Wi-Fi, faults and budget exhaustion
+during the new stages. The v14 regression replays its 145 raw Wi-Fi observations
+and 13 forward durations up to the original reversal. It verifies that the new
+policy reaches another forward checkpoint. Subsequent recovery and sustained
+decline traces are explicitly synthetic; they do not predict the real signal
+beyond the point where that recorded run reversed.
 A separate test runs the actual flash adapter with SDK-style bounds checks,
 covering all 128 erase sectors, first/last pages and protected firmware/Bluetooth
 regions.
 An ideal path-loss model includes antenna orientation bias. It checks arrival
-when the initial heading improves, and a bounded stop when a side or rear
-target supplies no useful initial gradient. Removing the broad search means
-those placements may stop without reaching AP1. The model assumes ideal wheel
-movement and does not establish hardware navigation reliability.
+for a forward target and for side targets reached after a confirmed decline
+and perpendicular search, plus a bounded stop for a rear target. These results
+assume ideal wheel movement and do not establish hardware navigation reliability.
 
 ```powershell
 python getting_there/tests/run_host_checks.py --cc gcc --sdk 'C:/pico-sdk/2.3.0'
@@ -344,7 +387,7 @@ records and navigation scratch data use bounded, fixed-size arrays.
 |---|---|---:|---|
 | BLE state machine | 23 states | 5 | `payload_client.c` status word |
 | Attempt / closing result | 4 values | 2 + 2 | `payload_client.c` status word |
-| BLE flags (ready, running, abort, close, scan, verified, listening, service, characteristic) | on/off | 1 each | `payload_client.c` status word |
+| BLE flags (ready, running, abort, close, scan, verified, listening, service, characteristic, startup failure, reconnect) | on/off | 1 each | `payload_client.c` status word |
 | Fault conditions (including translation, report and profile limits) | on/off | 15 meaningful bits in a `uint16_t` | `faults.c` |
 | RSSI sample / Wi-Fi result | -126..-1 dBm; code 127 missing | 7 | `packed_bits.h` (`rssi_encode`) |
 | 12 BLE RSSI samples | | 84 (11 bytes) | `bitarray_*` |
@@ -377,10 +420,10 @@ fields are fixed by the beacon firmware.
 
 ## Hardware comparison before changing settings
 
-1. Confirm the `line-search v7 two-directions` banner and keep GP21 available.
+1. Confirm the `line-search v16 dip-probes ble-minus58` banner and keep GP21 available.
 2. Lift the wheels and check motor polarity, gyro heading, turns and STOP.
    Measure STOP latency during driving, turning, delayed scans and an IMU fault.
-3. On the test floor, measure forward and reverse travel for 250, 750 and 2400 ms
+3. On the test floor, measure forward and reverse travel for 100, 250, 750 and 2400 ms
    at the configured duty. Record return error; equal times do not imply equal
    distances. Keep the entire outward and reverse path clear.
 4. Record stationary RSSI and scan durations. Start with the default stationary
@@ -404,7 +447,7 @@ firmware after `GP20 START: preparing persistent log; motors remain stopped`,
 before gyro calibration or navigation. The earlier storage mock did not exercise
 this hardware-adapter check.
 
-Flash the rebuilt v7 UF2, reset, then press and release GP20. The log should show
+Flash the rebuilt v9 UF2, reset, then press and release GP20. The log should show
 `Preparing persistent log: erasing 128 sectors`, sector progress, `GP20 released`,
 and then gyro calibration and radio startup. Keep the robot stationary during
 calibration. `No saved run found` before the first successful run is normal.
@@ -484,3 +527,123 @@ Host tests exercise both unsuccessful sides, inconsistent initial and side
 returns, flat side trials returning to their common start, following the first
 improving side, and the absence of a further search. IMU recovery, sustained
 RSSI decline, transfer verification and run budgets retain their checks.
+
+## Forward continuation and Wi-Fi margin in v8
+
+The 3 November v7 run stopped after 2405 ms of powered forward travel because
+every comparison was inconclusive. Its initial -69/-73 dBm pair contributed
+uncertainty repeatedly, producing progress margins of 10 to 18 dB. V8 accepts
+the later -63/-62 dBm pair: its conservative gain is 6 dB and the revised margin
+is 4 dB. The best point is retained at 2264 powered ms.
+
+The initial heading now continues through inconclusive readings. A direction
+that has improved also continues through a flat signal after six powered
+seconds. Side trials still have a 2400 ms deadline before their first gain.
+Three successive confirmed weak positions still trigger a return and the two
+perpendicular checks. No travel or time budget has been increased: each move
+still reserves possible return travel within the 60000 ms combined budget,
+and the 15-minute run limit, GP21 STOP and fault checks remain active.
+
+Host checks replay all 115 raw Wi-Fi readings and ten measured powered
+durations from that v7 run, then simulate BLE completion at the next step.
+They also check flat travel and a plateau beyond both former stopping points,
+travel reservation exhaustion, the wall-clock limit with realistic radio
+delays, and STOP/IMU failure after prolonged forward travel. Synthetic BLE
+completion is a control-flow check, not evidence of physical arrival.
+
+V8 retained the -50 dBm BLE threshold. That change cannot guarantee arrival or a
+handshake if that threshold is not reached. Measure actual step distance and
+BLE at the intended arrival point before the next supervised floor run.
+
+## Calibrated BLE entry, stationary retries and completion beeps in v9
+
+The saved v8 run connected on forward step 18, then timed out in service
+discovery. Its next two attempts restarted the -50 dBm proximity check; readings
+of roughly -61 to -56 dBm prevented reconnection even though the robot had not
+moved. No verified payload was received, so the success sound did not run.
+
+The user reported two extra forward steps after reaching AP1 and authorised
+calibration. Taking step 16 as that stopping point, its filtered BLE readings
+were consistently -63 dBm. Step 15 had only one qualifying average at -63 dBm.
+The v9 -63 dBm entry threshold retained the 12-packet trimmed average and three
+consecutive qualifying averages. Replaying the logged filtered values qualifies
+step 16 first. This is one-run calibration, not a measured distance guarantee;
+raw BLE advertisements were not recorded, so the filter cannot be fully replayed.
+
+After qualification the same BLE address is retained for up to three stationary
+connection/transfer attempts. A retry never repeats proximity scanning. Setup
+has a longer bounded phase window, and automatic MTU negotiation is disabled
+because all protocol values already fit the default 20-byte value capacity.
+These changes remove an unnecessary setup exchange and allow delayed service
+responses; the log does not establish the original radio-side timeout cause.
+GATT results and timeouts now identify the phase and status, and failed payload
+attempts retain `FAULT_PAYLOAD` until verified success. Exhaustion also sets that
+fault. The robot remains stopped on failure and does not play success beeps.
+
+Host checks cover the calibrated gate, a discovery timeout followed by direct
+reconnection to the same address without advertisements, a delayed discovery
+response, full discovery/notification setup and payload exchange, CRC and final
+acknowledgement failures, stopping at step 16 through a retry, and three success
+beeps interrupted by GP21. The UF2 still needs a physical transfer test. AP1's
+simultaneous serial log will be needed if service discovery continues to fail.
+
+## BLE threshold revision in v11
+
+The v10 run received AP1 advertisements but never confirmed the -63 dBm gate.
+Step 14 recorded twenty filtered readings at -66 dBm; step 17 reached -63 dBm
+only once, then reset its confirmation count. The user reported contact before
+pressing GP21. V11 uses -66 dBm and retains the 12-reading trimmed filter and
+three consecutive qualifying averages. Connection still waits for scanning to
+stop, and success still requires the verified payload and final acknowledgement.
+Host checks cover the new threshold, all three confirmations and resetting the
+count when a filtered reading falls below the threshold.
+
+## Stronger BLE requirement in v12
+
+The v11 run completed the handshake, verified the 26-byte reply and received
+the final acknowledgement after one 252 ms forward step. Three filtered
+readings at -66 dBm qualified, but the user reported that the robot was still
+too far away. V12 requires -55 dBm, which is 11 dB stronger, with the same
+12-reading filter and three consecutive confirmations. The earlier -66 dBm
+readings now fail the host test. This setting needs a physical stopping-distance
+check: previous runs produced different BLE readings near contact, and the log
+does not establish which signal level corresponds to the desired distance.
+
+V13 uses the user's selected -60 dBm threshold. The 12-reading filter and three
+consecutive confirmations remain in place.
+
+V14 changes the threshold to the user's selected -57 dBm, retaining the same
+12-reading filter and three consecutive confirmations.
+
+V15 uses the user's selected -58 dBm threshold with the same filter and
+confirmations. The Wi-Fi navigation and three-position reversal rule are unchanged.
+
+## Wi-Fi dip handling in v16
+
+V16 keeps BLE at -58 dBm. It separates the best return point from a median
+reference over three positions, freezes that reference during a suspected dip,
+and adds a stopped recheck followed by at most two 100 ms forward probes before
+returning. A loss exactly at the decline margin no longer counts as a weak point.
+
+The recorded v14 run retained -50/-50 dBm at 2517 powered ms, then measured
+-55/-55, -57/-57 and -59/-59 dBm. V14 reversed immediately after those three
+positions. With the same recorded input, v16 retains a median reference of
+-52/-52 dBm and reaches another forward checkpoint before a third qualifying
+decline. The log does not tell us whether the signal would recover beyond that
+point. Host tests therefore use separate, explicitly synthetic continuations
+to check recovery during probing and a bounded return when recovery fails.
+
+The earlier successful v13 run started with -58/-60 dBm baseline batches and
+qualified for BLE at -60 dBm. V14 started at -72/-73 dBm and required -57 dBm
+for BLE. Those runs did not present the same inputs or proximity requirement
+to the navigation code. Neither log establishes physical distance from RSSI.
+
+## Recorded v16 hardware result
+
+The [run supplied on 3 November 2026](../docs/runs/2026-11-03-v16-backtrack.md)
+completed dip checks, a 9032 ms measured backtrack and a clockwise perpendicular
+approach. Three -57 dBm BLE averages passed the unchanged -58 dBm requirement;
+the reply CRC and final acknowledgement were verified. The run ended with
+`PAYLOAD CONFIRMED` and fault mask `0x000`. The linked record contains the full
+saved log and the UF2 checksum. This is one successful hardware run, not a
+repeatability result or a measurement of physical return accuracy.

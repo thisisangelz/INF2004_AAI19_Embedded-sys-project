@@ -23,7 +23,9 @@
 #define BUZZER_PIN 22
 #endif
 #define BUZZER_HZ 2000
-#define COMPLETION_TONE_MS 1000
+#define COMPLETION_BEEPS 3u
+#define COMPLETION_BEEP_MS 200u
+#define COMPLETION_GAP_MS 150u
 
 static uint32_t run_started_ms, translation_ms;
 static uint16_t buzzer_wrap;
@@ -72,17 +74,20 @@ static payload_result_t check_payload(void)
     for (int attempt = 0; attempt < MAX_PAYLOAD_ATTEMPTS; ++attempt) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
         if (!save_checkpoint()) return PAYLOAD_FATAL;
-        payload_result_t result = payload_client_attempt();
+        payload_result_t result = was_close ? payload_client_retry() : payload_client_attempt();
         // A fatal cleanup failure may leave the radio active. Persist its tail
         // only after main shuts the radio down.
         if (result != PAYLOAD_FATAL && !save_checkpoint()) return PAYLOAD_FATAL;
         if (result == PAYLOAD_COMPLETE || result == PAYLOAD_FATAL) return result;
         if (result == PAYLOAD_NOT_CLOSE && !was_close) return result;
         was_close = true;
-        report_printf("AP1 was close but transfer was not confirmed; retry %d/%d without moving\n",
-                      attempt + 1, MAX_PAYLOAD_ATTEMPTS);
-        if (!motion_pause_ms(200)) return PAYLOAD_FATAL;
+        if (attempt + 1 < MAX_PAYLOAD_ATTEMPTS) {
+            report_printf("AP1 transfer not confirmed; stationary connection attempt %d/%d, proximity retained\n",
+                          attempt + 2, MAX_PAYLOAD_ATTEMPTS);
+            if (!motion_pause_ms(200)) return PAYLOAD_FATAL;
+        }
     }
+    fault_raise(FAULT_PAYLOAD);
     report_printf("FAILED: payload could not be confirmed after three stationary attempts\n");
     return PAYLOAD_FATAL;
 }
@@ -201,7 +206,7 @@ static bool record_point(float heading, uint32_t powered, line_pair_t readings)
     return save_checkpoint();
 }
 
-typedef enum { FOLLOW_NO_GAIN, FOLLOW_DECLINE, FOLLOW_STALLED } follow_end_t;
+typedef enum { FOLLOW_NO_GAIN, FOLLOW_DECLINE } follow_end_t;
 typedef struct {
     float heading;
     bool progress, consistent;
@@ -210,6 +215,54 @@ typedef struct {
     line_pair_t baseline;
 } follow_result_t;
 
+static bool log_dip_reading(const char *stage, unsigned probe, uint32_t position,
+                            line_pair_t reference, line_pair_t current, bool recovered)
+{
+    report_printf("DIP_CHECK,stage=%s,probe=%u,powered_ms=%lu,reference_dbm1=%d,reference_dbm2=%d,dbm1=%d,dbm2=%d,recovered=%u\n",
+                  stage, probe, (unsigned long)position,
+                  rssi_decode(reference.first.code), rssi_decode(reference.second.code),
+                  rssi_decode(current.first.code), rssi_decode(current.second.code), recovered);
+    return save_checkpoint();
+}
+
+static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_position,
+                                             line_pair_t reference, uint32_t *position,
+                                             line_pair_t *current, bool *recovered)
+{
+    *recovered = false;
+    motion_stop();
+    report_printf("DIP: three weak positions; stationary BLE check and two fresh Wi-Fi batches before any extra movement\n");
+    payload_result_t result = check_payload();
+    if (result != PAYLOAD_NOT_CLOSE) return result;
+    result = measure_pair(current);
+    if (result != PAYLOAD_NOT_CLOSE) return result;
+    *recovered = line_return_consistent(reference, *current);
+    if (!log_dip_reading("recheck", 0, *position, reference, *current, *recovered)) return PAYLOAD_FATAL;
+    if (*recovered) return PAYLOAD_NOT_CLOSE;
+
+    for (unsigned probe = 1; probe <= LINE_DIP_MAX_PROBES; ++probe) {
+        report_printf("DIP: forward probe %u/%u, at most %u ms; frozen reference retained\n",
+                      probe, LINE_DIP_MAX_PROBES, LINE_DIP_PROBE_MS);
+        uint32_t actual;
+        result = translate_block(true, LINE_DIP_PROBE_MS, heading, *position,
+            translation_cost(*position + LINE_DIP_PROBE_MS + BLOCK_RESERVE_MS - best_position),
+            false, &actual);
+        *position += actual;
+        if (result != PAYLOAD_NOT_CLOSE) return result;
+        wifi_sampler_set_position(heading, *position, true);
+        result = measure_pair(current);
+        if (result != PAYLOAD_NOT_CLOSE) return result;
+        *recovered = line_return_consistent(reference, *current);
+        if (!log_dip_reading("probe", probe, *position, reference, *current, *recovered)) return PAYLOAD_FATAL;
+        if (*recovered) return PAYLOAD_NOT_CLOSE;
+    }
+    report_printf("DIP: no recovery after %u probes; returning to retained best point\n", LINE_DIP_MAX_PROBES);
+    return PAYLOAD_NOT_CLOSE;
+}
+
+// A zero trial_ms keeps the initial heading through inconclusive readings.
+// Side probes retain a finite trial until they establish progress. Every mode
+// still reserves return travel and checks the run, STOP, radio and fault limits.
 static payload_result_t follow_direction(float heading, uint32_t trial_ms, follow_result_t *followed)
 {
     *followed = (follow_result_t){.heading = line_normalise_heading(heading)};
@@ -226,8 +279,14 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     uint32_t position = 0, best_position = 0, segment_start = 0;
     uint32_t last_decline_position = 0;
     unsigned decline_positions = 0;
-    report_printf("FOLLOW: heading %d, blocks at most %u ms; continue on confirmed improvement\n",
-                  (int)heading, LINE_FORWARD_BLOCK_MS);
+    line_pair_t recent[LINE_REFERENCE_POSITIONS] = {best};
+    unsigned recent_count = 1, recent_next = 1;
+    line_pair_t decline_reference = best;
+    bool dip_active = false;
+    report_printf("FOLLOW: heading %d, blocks at most %u ms; %s\n",
+                  (int)heading, LINE_FORWARD_BLOCK_MS,
+                  trial_ms ? "side trial until confirmed improvement" :
+                  "continue through inconclusive readings within run and travel limits");
     while (run_can_continue()) {
         uint32_t block = LINE_FORWARD_BLOCK_MS;
         if (!followed->progress && position < trial_ms && block > trial_ms - position)
@@ -244,19 +303,64 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
         result = measure_pair(&current);
         if (result != PAYLOAD_NOT_CLOSE) return result;
         if (!record_point(heading, position, current)) return PAYLOAD_FATAL;
-        int margin = line_progress_margin(line_reference(best), line_reference(current));
+        int margin = line_pair_margin(best, current);
         int trend = line_compare(best, current);
         report_printf("FOLLOW_POINT,powered_ms=%lu,best_ms=%lu,gain_db=%d,margin_db=%d,baseline_gain_db=%d,baseline_margin_db=%d,trend=%d\n",
                       (unsigned long)position, (unsigned long)best_position,
                       line_confirmed_gain(best, current), margin, line_confirmed_gain(baseline, current),
-                      line_progress_margin(line_reference(baseline), line_reference(current)), trend);
-        // Once the direction is confirmed, a pair can remain a confirmed gain
-        // over its baseline while beating the retained point by less than the
-        // noise margin. Keep that stronger two-batch point for a partial return.
+                      line_pair_margin(baseline, current), trend);
+        if (line_reference_declined(decline_reference, current)) {
+            if (!dip_active) {
+                dip_active = true;
+                report_printf("DIP: freezing three-position reference at %d/%d dBm; best return point %lu powered ms\n",
+                              rssi_decode(decline_reference.first.code), rssi_decode(decline_reference.second.code),
+                              (unsigned long)best_position);
+            }
+            if (!decline_positions || position - last_decline_position >= LINE_FORWARD_BLOCK_MS) {
+                ++decline_positions;
+                last_decline_position = position;
+            }
+            report_printf("FOLLOW: decline position %u/%u at %lu powered ms; two fresh batches below frozen reference\n",
+                          decline_positions, LINE_DECLINE_POSITIONS, (unsigned long)position);
+            if (decline_positions >= LINE_DECLINE_POSITIONS) {
+                bool recovered;
+                result = recheck_and_probe_dip(heading, best_position, decline_reference,
+                                               &position, &current, &recovered);
+                followed->position = position;
+                if (result != PAYLOAD_NOT_CLOSE) return result;
+                if (!recovered) {
+                    followed->end = FOLLOW_DECLINE;
+                    report_printf("FOLLOW: decline persisted after recheck and probes; return only %lu powered ms to best point %lu\n",
+                                  (unsigned long)(position - best_position), (unsigned long)best_position);
+                    result = return_along_line(position, best_position, heading);
+                    if (result != PAYLOAD_NOT_CLOSE) return result;
+                    line_pair_t returned;
+                    result = measure_pair(&returned);
+                    if (result != PAYLOAD_NOT_CLOSE) return result;
+                    followed->consistent = line_return_consistent(best, returned);
+                    report_printf("RETURN: RSSI %s; timed position remains approximate\n",
+                                  followed->consistent ? "consistent with best point" : "inconsistent with best point, stopping");
+                    return PAYLOAD_NOT_CLOSE;
+                }
+                report_printf("DIP: recovery confirmed; continuing the same heading\n");
+                dip_active = false;
+                decline_positions = 0;
+            }
+        } else if (dip_active) {
+            bool recovered = line_return_consistent(decline_reference, current);
+            if (decline_positions)
+                report_printf("FOLLOW: decline sequence cleared at %lu powered ms; %s\n",
+                              (unsigned long)position, recovered ? "signal recovered" : "inconclusive, reference still frozen");
+            decline_positions = 0;
+            if (recovered) dip_active = false;
+        }
+        // Keep the actual best return point separate from the median reference.
+        // A recheck or probe can also discover a new best at the updated position.
+        trend = line_compare(best, current);
         bool stronger = trend > 0 || (followed->progress &&
             line_compare(baseline, current) > 0 && line_confirmed_gain(best, current) > 0);
         if (stronger) {
-            if (decline_positions) report_printf("FOLLOW: decline sequence cleared by a new best point\n");
+            dip_active = false;
             decline_positions = 0;
             if (!followed->progress)
                 report_printf("FOLLOW: first confirmed improvement; continuing without other direction probes\n");
@@ -264,47 +368,25 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
             best_position = position;
             followed->progress = true;
             report_printf("FOLLOW: new confirmed best at %lu powered ms\n", (unsigned long)best_position);
-        } else if (trend < 0) {
-            if (!decline_positions || position - last_decline_position >= LINE_FORWARD_BLOCK_MS) {
-                ++decline_positions;
-                last_decline_position = position;
-            }
-            report_printf("FOLLOW: decline position %u/%u at %lu powered ms; two fresh batches below best\n",
-                          decline_positions, LINE_DECLINE_POSITIONS, (unsigned long)position);
-            if (decline_positions >= LINE_DECLINE_POSITIONS) {
-                followed->end = FOLLOW_DECLINE;
-                report_printf("FOLLOW: decline confirmed across %u positions; return only %lu powered ms to best point %lu\n",
-                              LINE_DECLINE_POSITIONS,
-                              (unsigned long)(position - best_position), (unsigned long)best_position);
-                result = return_along_line(position, best_position, heading);
-                if (result != PAYLOAD_NOT_CLOSE) return result;
-                line_pair_t returned;
-                result = measure_pair(&returned);
-                if (result != PAYLOAD_NOT_CLOSE) return result;
-                followed->consistent = line_return_consistent(best, returned);
-                report_printf("RETURN: RSSI %s; timed position remains approximate\n",
-                              followed->consistent ? "consistent with best point" : "inconsistent with best point, stopping");
-                return PAYLOAD_NOT_CLOSE;
-            }
-        } else {
-            if (decline_positions)
-                report_printf("FOLLOW: decline sequence cleared at %lu powered ms; continuing forward\n",
-                              (unsigned long)position);
-            decline_positions = 0;
         }
-        if (!followed->progress && position >= trial_ms && !decline_positions) {
+        if (!dip_active) {
+            recent[recent_next] = current;
+            recent_next = (recent_next + 1u) % LINE_REFERENCE_POSITIONS;
+            if (recent_count < LINE_REFERENCE_POSITIONS) ++recent_count;
+            if (recent_count == LINE_REFERENCE_POSITIONS) {
+                line_pair_t candidate = line_median_reference(recent);
+                // Never let the reference follow a gradual deterioration down.
+                if (line_confirmed_gain(decline_reference, candidate) > 0) {
+                    decline_reference = candidate;
+                    report_printf("DIP: three-position reference strengthened to %d/%d dBm\n",
+                                  rssi_decode(candidate.first.code), rssi_decode(candidate.second.code));
+                }
+            }
+        }
+        if (trial_ms && !followed->progress && position >= trial_ms && !decline_positions) {
             followed->end = FOLLOW_NO_GAIN;
             report_printf("FOLLOW: no confirmed improvement after %lu powered ms; trial ended at current position\n",
                           (unsigned long)position);
-            return PAYLOAD_NOT_CLOSE;
-        }
-        // If both batches are weaker but the drop is still below the margin,
-        // keep sampling for a confirmed decline instead of abandoning the line
-        // just before its return decision becomes clear.
-        if (followed->progress && position - best_position >= LINE_SWEEP_MS &&
-            line_confirmed_gain(current, best) <= 0) {
-            followed->end = FOLLOW_STALLED;
-            report_printf("FOLLOW: six powered seconds without a new confirmed best; stopping here, no automatic reverse\n");
             return PAYLOAD_NOT_CLOSE;
         }
         if (position - segment_start >= LINE_SWEEP_MS) {
@@ -366,7 +448,7 @@ static bool approach_beacon(void)
     if (result == PAYLOAD_FATAL || !motion_learn_direction()) return false;
     follow_result_t followed;
     report_printf("APPROACH: follow current heading; after a confirmed decline return to best and check only perpendicular directions\n");
-    result = follow_direction(motion_heading(), LINE_DIRECTION_TEST_MS, &followed);
+    result = follow_direction(motion_heading(), 0, &followed);
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
     while (run_can_continue()) {
@@ -403,11 +485,18 @@ static void completion_sound(void)
         report_printf("Completion tone cancelled by GP21\n");
         return;
     }
-    report_printf("COMPLETION TONE: GP%d, 2000 Hz for 1000 ms\n", BUZZER_PIN);
-    pwm_set_gpio_level(BUZZER_PIN, buzzer_wrap / 2);
-    bool finished = motion_pause_ms(COMPLETION_TONE_MS);
+    report_printf("COMPLETION BEEPS: GP%d, %u beeps at 2000 Hz, %u ms on / %u ms gap\n",
+                  BUZZER_PIN, COMPLETION_BEEPS, COMPLETION_BEEP_MS, COMPLETION_GAP_MS);
+    for (unsigned i = 0; i < COMPLETION_BEEPS; ++i) {
+        if (motion_stop_requested()) break;
+        pwm_set_gpio_level(BUZZER_PIN, buzzer_wrap / 2);
+        bool finished = motion_pause_ms(COMPLETION_BEEP_MS);
+        pwm_set_gpio_level(BUZZER_PIN, 0);
+        if (!finished) break;
+        if (i + 1 < COMPLETION_BEEPS && !motion_pause_ms(COMPLETION_GAP_MS)) break;
+    }
     pwm_set_gpio_level(BUZZER_PIN, 0);
-    report_printf("Completion tone %s; motors stopped\n", finished ? "finished" : "stopped by GP21");
+    report_printf("Completion beeps %s; motors stopped\n", motion_stop_requested() ? "stopped by GP21" : "finished");
 }
 
 static void report_faults(void)
@@ -440,10 +529,10 @@ int main(void)
     bool ready = motion_init();
     buzzer_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v7 two-directions | AP1 only\n");
+    report_printf("Getting there | line-search v16 dip-probes ble-minus58 | AP1 only\n");
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
-    report_printf("Move using Wi-Fi direction; receive payload only after BLE averages >= -50 dBm\n");
+    report_printf("Move using Wi-Fi direction; receive payload only after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);
     // GP21 is not armed as STOP here. Boot/replay must not erase the old run,
     // start movement, initialise the radio, or prevent the later GP20 start.
     bool last_replay = false;

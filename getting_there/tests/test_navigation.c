@@ -7,6 +7,7 @@
 #define main firmware_main
 #include "../getting_there.c"
 #undef main
+#include "fixtures/v14_wifi_dip.h"
 
 static uint64_t sim_time, scan_finish_us;
 static bool stopped, motors_on, wifi_missing, fail_drive, fail_turn, stop_during_pause;
@@ -15,8 +16,9 @@ static bool irregular_scans, stop_on_reverse, raw_script_mode;
 static const uint32_t *powered_script;
 static unsigned powered_script_length;
 static int wifi_calls, forwards_count, backwards_count, ble_calls, sign_checks;
-static int tone_starts, tone_stops, retry_mode, complete_after_step, fail_at_ble_call;
-static unsigned scan_delay_ms, stop_at_scan, checkpoint_calls;
+static int tone_starts, tone_stops, retry_mode, complete_after_step, fail_at_ble_call, retry_calls;
+static int complete_at_ble_call;
+static unsigned scan_delay_ms, ble_delay_ms, stop_at_scan, stop_at_step, fail_at_step, checkpoint_calls;
 static float current_heading;
 static const int *script;
 static size_t script_length;
@@ -140,6 +142,11 @@ bool motion_drive_start(bool forwards, uint32_t ms, float heading)
 }
 bool motion_drive_update(void)
 {
+    if (stop_at_step && (unsigned)forwards_count >= stop_at_step) stopped = true;
+    if (fail_at_step && (unsigned)forwards_count >= fail_at_step) {
+        fail_drive = true;
+        fault_raise(FAULT_IMU);
+    }
     if (stop_on_reverse && !mock_forwards) stopped = true;
     if (fail_drive || stopped) { motors_on = false; return false; }
     uint32_t delta = mock_duration - mock_elapsed;
@@ -175,13 +182,23 @@ const uint8_t *payload_client_data(uint16_t *length) { *length = 0; return NULL;
 payload_result_t payload_client_attempt(void)
 {
     assert(!motors_on && !scan_active);
+    sleep_ms(ble_delay_ms);
     ++ble_calls;
     if (fail_at_ble_call == ble_calls) return PAYLOAD_FATAL;
-    if (complete_first || (complete_after_step > 0 && forwards_count >= complete_after_step) ||
+    if (complete_first || complete_at_ble_call == ble_calls ||
+        (complete_after_step > 0 && forwards_count >= complete_after_step) ||
         (model && hypot(robot_x - beacon_x, robot_y - beacon_y) < 0.25)) return PAYLOAD_COMPLETE;
     if (retry_mode == 1) return PAYLOAD_RETRY;
     if (retry_mode == 2) return ble_calls == 1 ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE;
+    if (retry_mode == 3) return ble_calls == 1 ? PAYLOAD_RETRY : PAYLOAD_COMPLETE;
+    if (retry_mode == 4 && forwards_count>=16) return retry_calls ? PAYLOAD_COMPLETE : PAYLOAD_RETRY;
     return PAYLOAD_NOT_CLOSE;
+}
+payload_result_t payload_client_retry(void)
+{
+    assert(!motors_on && !scan_active && ble_calls>0);
+    ++retry_calls;
+    return payload_client_attempt();
 }
 int cyw43_arch_init(void)
 {
@@ -245,11 +262,12 @@ static void reset(void)
     irregular_scans = stop_on_reverse = raw_script_mode = false;
     powered_script = NULL; powered_script_length = 0;
     wifi_calls = forwards_count = backwards_count = ble_calls = sign_checks = 0;
-    tone_starts = tone_stops = retry_mode = complete_after_step = fail_at_ble_call = 0;
+    tone_starts = tone_stops = retry_mode = complete_after_step = fail_at_ble_call = retry_calls = 0;
+    complete_at_ble_call = 0;
     script = NULL; script_length = 0; default_rssi = -70;
     current_heading = 0; robot_x = robot_y = beacon_x = beacon_y = 0;
     log_length = 0; log_text[0] = 0; move_count = 0;
-    stop_at_scan = checkpoint_calls = mock_duration = mock_elapsed = 0;
+    ble_delay_ms = stop_at_scan = stop_at_step = fail_at_step = checkpoint_calls = mock_duration = mock_elapsed = 0;
     scan_delay_ms = 200; // Ordinary control tests deliberately use stationary fallback.
     mock_pending = false;
     run_started_ms = now_ms(); translation_ms = profile_id = 0; wifi_quiescent = true;
@@ -272,6 +290,19 @@ static void check_decisions(void)
     assert(!line_return_consistent(pair(-60,-60),pair(-65,-65)));
     line_pair_t noisy = pair(-65,-65); noisy.first.spread = 5;
     assert(line_compare(pair(-70,-70), noisy) == 0);
+    // Recorded start and point 9: a repeatable 6 dB gain must exceed the margin.
+    line_pair_t baseline = pair(-69,-73), improved = pair(-63,-62);
+    baseline.first.spread=1; baseline.second.spread=3;
+    improved.first.spread=improved.second.spread=2;
+    assert(line_pair_margin(baseline,improved)==4);
+    assert(line_confirmed_gain(baseline,improved)==6 && line_compare(baseline,improved)==1);
+    assert(line_compare(improved,baseline)==-1);
+    // Batch disagreement still prevents a single strong batch establishing gain.
+    assert(line_compare(baseline,pair(-50,-70))==0);
+    assert(line_compare(baseline,pair(-66,-65))==0);
+    assert(line_compare(baseline,pair(-65,-65))==1);
+    // Return tolerance is independent of the less restrictive progress margin.
+    assert(line_return_consistent(baseline,baseline));
     uint8_t raw[] = {70,70,10,70,70};
     assert(wifi_filter(raw,5).code == 70);
     raw[2] = 126; assert(wifi_filter(raw,5).code == 70);
@@ -279,51 +310,92 @@ static void check_decisions(void)
     assert(wifi_filter(missing,5).code == 127);
     assert(line_normalise_heading(-45) == 315 && line_normalise_heading(405) == 45);
 }
+static void check_return_tolerance(void)
+{
+    // Recorded v9 return: -62/-62 with spread 1, then -65/-65 with spreads 4/0.
+    // The second returned batch is exactly at its 3 dB tolerance.
+    line_pair_t baseline = pair(-62,-62), returned = pair(-65,-65);
+    baseline.first.spread = baseline.second.spread = 1;
+    returned.first.spread = 4;
+    assert(line_return_consistent(baseline,returned));
+    returned.first.code = returned.second.code = rssi_encode(-66);
+    assert(!line_return_consistent(baseline,returned));
+    // Swapping the batches must apply the same boundary to the first batch.
+    returned.first.spread = 0; returned.second.spread = 4;
+    assert(!line_return_consistent(baseline,returned));
+    returned.first.code = returned.second.code = rssi_encode(-65);
+    assert(line_return_consistent(baseline,returned));
+
+    // Equality also applies when measured spreads raise the tolerance to 5 dB.
+    baseline.first.spread = baseline.second.spread = 2;
+    returned = pair(-67,-67);
+    returned.first.spread = returned.second.spread = 2;
+    assert(line_return_consistent(baseline,returned));
+    returned.first.code = returned.second.code = rssi_encode(-68);
+    assert(!line_return_consistent(baseline,returned));
+
+    // The two returned batches may differ by the tolerance, but not exceed it.
+    assert(line_return_consistent(pair(-70,-70),pair(-60,-63)));
+    assert(!line_return_consistent(pair(-70,-70),pair(-60,-64)));
+    assert(!line_return_consistent(pair(-127,-62),pair(-65,-65)));
+    assert(!line_return_consistent(pair(-62,-62),pair(-65,-127)));
+}
 static void check_profiles(void)
 {
     follow_result_t followed;
-    static const int curve[] = {-70,-70,-65,-65,-60,-60,-66,-66,-67,-67,-68,-68,-60,-60,-40,-40};
+    static const int curve[] = {
+        -70,-70, -65,-65, -60,-60, -60,-60,
+        -66,-66, -67,-67, -68,-68, // Three weak positions after a sustained peak.
+        -68,-68, -68,-68, -69,-69, // Stationary recheck and two short probes.
+        -60,-60                    // Return to the actual best, not the median.
+    };
     reset(); script=curve; script_length=sizeof(curve)/sizeof(*curve); irregular_scans=true;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
     assert(followed.progress && followed.consistent && followed.end==FOLLOW_DECLINE);
-    assert(forwards_count==5 && backwards_count==1 && moves[5].ms==750);
-    assert(translation_ms==2000 && profile_count==6 && line_profile[2].powered_ms==500);
-    assert(wifi_calls==70 && line_profile[1].wall_ms>line_profile[1].powered_ms);
-    // Stops at the first local peak; a later stronger peak is not evidence of arrival.
-    assert(strstr(log_text,"return only 750 powered ms to best point 500"));
-    static const int spike[] = {-70,-70,-45,-70,-66,-66,-72,-72,-73,-73,-74,-74,-66,-66};
+    assert(forwards_count==8 && backwards_count==2 && moves[8].ms==750 && moves[9].ms==450);
+    assert(moves[6].ms==100 && moves[7].ms==100);
+    assert(translation_ms==2900 && profile_count==7 && line_profile[2].powered_ms==500);
+    assert(wifi_calls==110 && line_profile[1].wall_ms>line_profile[1].powered_ms);
+    assert(strstr(log_text,"return only 1200 powered ms to best point 500"));
+    static const int spike[] = {-70,-70,-45,-70,-66,-66,-66,-66,-72,-72,-73,-73,-74,-74,
+                               -75,-75,-75,-75,-76,-76,-66,-66};
     reset(); script=spike; script_length=sizeof(spike)/sizeof(*spike);
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE && followed.progress && followed.consistent);
-    assert(translation_ms==2000 && backwards_count==1 && moves[5].ms==750);
+    assert(translation_ms==2900 && backwards_count==2 && moves[8].ms==750);
     // A stronger two-batch point can remain confirmed against the original
     // baseline even when its increase over the previous best is only 1 dB.
-    static const int incremental[] = {-70,-70,-65,-65,-64,-64,-68,-68,-69,-69,-70,-70,-64,-64};
+    static const int incremental[] = {-70,-70,-65,-65,-64,-64,-64,-64,-68,-68,-69,-69,-70,-70,
+                                     -70,-70,-71,-71,-72,-72,-64,-64};
     reset(); script=incremental; script_length=sizeof(incremental)/sizeof(*incremental);
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE && followed.consistent);
-    assert(moves[5].ms==750 && strstr(log_text,"to best point 500"));
-    // A flat initial direction ends its test without an automatic return.
+    assert(moves[8].ms==750 && moves[9].ms==450 && strstr(log_text,"to best point 500"));
+    // A flat side direction still has a bounded trial; its caller returns it.
     reset(); assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
     assert(!followed.progress && followed.end==FOLLOW_NO_GAIN && !backwards_count);
     assert(forwards_count==10 && translation_ms==2400 && moves[9].ms==150);
     assert(strstr(log_text,"trial ended at current position"));
-    // After progress, a sustained plateau ends in place, with no timed reversal.
+    // After progress, a plateau continues beyond six powered seconds to BLE.
     static const int plateau[] = {-70,-70,-65,-65};
     reset(); script=plateau; script_length=sizeof(plateau)/sizeof(*plateau); default_rssi=-65;
-    assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
-    assert(followed.progress && followed.end==FOLLOW_STALLED && !backwards_count);
-    assert(translation_ms==6250 && strstr(log_text,"six-second profile interval complete"));
+    complete_after_step=30;
+    assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_COMPLETE);
+    assert(followed.progress && !backwards_count);
+    assert(translation_ms==7500 && strstr(log_text,"six-second profile interval complete"));
     // A weak decline below the margin should keep being sampled until it is
     // confirmed, rather than changing direction because a profile timer ended.
-    int gradual[60];
-    for (unsigned i=0;i<60;++i) gradual[i]=-66;
+    int gradual[66];
+    for (unsigned i=0;i<66;++i) gradual[i]=-66;
     gradual[0]=gradual[1]=-70; gradual[2]=gradual[3]=-65;
-    gradual[52]=gradual[53]=-69; gradual[54]=gradual[55]=-70;
-    gradual[56]=gradual[57]=-71; gradual[58]=gradual[59]=-65;
+    gradual[52]=gradual[53]=-70; gradual[54]=gradual[55]=-71;
+    gradual[56]=gradual[57]=-72; gradual[58]=gradual[59]=-72;
+    gradual[60]=gradual[61]=-73; gradual[62]=gradual[63]=-74;
+    gradual[64]=gradual[65]=-65;
     reset(); script=gradual; script_length=sizeof(gradual)/sizeof(*gradual);
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
-    assert(followed.end==FOLLOW_DECLINE && followed.consistent && forwards_count==28);
-    assert(translation_ms==13750 && strstr(log_text,"return only 6750 powered ms to best point 250"));
-    static const int bad_return[] = {-70,-70,-65,-65,-72,-72,-73,-73,-74,-74,-80,-80};
+    assert(followed.end==FOLLOW_DECLINE && followed.consistent && forwards_count==30);
+    assert(translation_ms==14150 && strstr(log_text,"return only 6950 powered ms to best point 250"));
+    static const int bad_return[] = {-70,-70,-65,-65,-65,-65,-72,-72,-73,-73,-74,-74,
+                                    -75,-75,-76,-76,-77,-77,-80,-80};
     reset(); script=bad_return; script_length=sizeof(bad_return)/sizeof(*bad_return);
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE && !followed.consistent);
     reset(); translation_ms=LINE_TRANSLATION_MS-500;
@@ -347,17 +419,21 @@ static void check_follow_first(void)
 
     // Only the two perpendicular headings are available. Try the other side
     // after a consistent failed first trial, and follow its confirmed gain.
-    static const int failed_side[] = {-70,-70,-74,-74,-75,-75,-76,-76,-70,-70, -70,-70,-65,-65,-71,-71,-72,-72,-73,-73,-65,-65};
+    static const int failed_side[] = {
+        -70,-70,-74,-74,-75,-75,-76,-76,-76,-76,-77,-77,-78,-78,-70,-70,
+        -70,-70,-65,-65,-65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65
+    };
     reset(); script=failed_side; script_length=sizeof(failed_side)/sizeof(*failed_side);
     follow_result_t followed; bool found=false;
     assert(check_perpendiculars(0,&followed,&found)==PAYLOAD_NOT_CLOSE && found);
     assert(followed.heading==90 && followed.progress && followed.consistent);
-    assert(forwards_count==7 && backwards_count==2 && current_heading==90);
+    assert(forwards_count==12 && backwards_count==4 && current_heading==90);
     for (unsigned i=0;i<move_count;++i) assert(moves[i].heading==270 || moves[i].heading==90);
-    static const int side[] = {-70,-70,-65,-65,-71,-71,-72,-72,-73,-73,-65,-65};
+    static const int side[] = {-70,-70,-65,-65,-65,-65,-71,-71,-72,-72,-73,-73,
+                              -73,-73,-74,-74,-75,-75,-65,-65};
     reset(); script=side; script_length=sizeof(side)/sizeof(*side);
     assert(check_perpendiculars(0,&followed,&found)==PAYLOAD_NOT_CLOSE && found);
-    assert(followed.heading==270 && current_heading==270 && forwards_count==4 && backwards_count==1);
+    assert(followed.heading==270 && current_heading==270 && forwards_count==7 && backwards_count==2);
     reset(); stop_at_scan=11;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_FATAL && stopped && forwards_count==1 && !backwards_count);
 }
@@ -367,29 +443,30 @@ static void check_two_direction_policy(void)
     // An improving forward line ends on sustained decline. Both sides then
     // decline without improving: stop after these two checks, with no recovery pass.
     static const int no_side[] = {
-        -70, -70,-70,-65,-65,-71,-71,-72,-72,-73,-73,-65,-65,
-        -65,-65,-71,-71,-72,-72,-73,-73,-65,-65,
-        -65,-65,-71,-71,-72,-72,-73,-73,-65,-65
+        -70, -70,-70,-65,-65,-65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65,
+        -65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65,
+        -65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65
     };
     reset(); script=no_side; script_length=sizeof(no_side)/sizeof(*no_side);
     assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
-    assert(forwards_count==10 && backwards_count==3 && translation_ms==4750);
+    assert(forwards_count==17 && backwards_count==6 && translation_ms==6450);
     assert(strstr(log_text,"neither perpendicular direction confirmed improvement"));
     assert(!strstr(log_text,"FALLBACK:") && !strstr(log_text,"four fallback"));
     for (unsigned i=0;i<move_count;++i)
         assert(moves[i].heading==0 || moves[i].heading==270 || moves[i].heading==90);
     // A failed return check cannot trigger another heading search.
     int inconsistent[sizeof(no_side)/sizeof(*no_side)];
-    memcpy(inconsistent,no_side,sizeof(no_side)); inconsistent[11]=inconsistent[12]=-90;
+    memcpy(inconsistent,no_side,sizeof(no_side)); inconsistent[19]=inconsistent[20]=-90;
     reset(); script=inconsistent; script_length=sizeof(inconsistent)/sizeof(*inconsistent);
-    assert(!approach_beacon() && forwards_count==4 && backwards_count==1);
+    assert(!approach_beacon() && forwards_count==7 && backwards_count==2);
     assert(!strstr(log_text,"DIRECTION SEARCH") && strstr(log_text,"return RSSI inconsistent"));
     // Even if the initial direction never improved, a consistent decline return
     // can check the two perpendicular headings, without a four-heading search.
-    static const int rejected_forward[] = {-70,-70,-70,-74,-74,-75,-75,-76,-76,-70,-70};
+    static const int rejected_forward[] = {-70,-70,-70,-74,-74,-75,-75,-76,-76,
+                                          -76,-76,-77,-77,-78,-78,-70,-70};
     reset(); script=rejected_forward; script_length=sizeof(rejected_forward)/sizeof(*rejected_forward);
-    complete_after_step=4;
-    assert(approach_beacon() && forwards_count==4 && backwards_count==1 && current_heading==270);
+    complete_after_step=6;
+    assert(approach_beacon() && forwards_count==6 && backwards_count==2 && current_heading==270);
     // Flat side trials must return to the same starting best point before
     // testing the opposite side. This differs from ending an improving line.
     reset(); follow_result_t followed; bool found;
@@ -427,25 +504,29 @@ static void check_recorded_run(void)
         -62,-62,-64,-65,-65,
     };
     static const uint32_t durations[] = {251,250,251,250,250,251,251,250,251,251,250,254,250};
-    int raw[175];
+    int raw[215];
     memcpy(raw,prefix,sizeof(prefix));
     for (unsigned i=145;i<155;++i) raw[i]=-56; // The signal recovers after one weak patch.
     reset(); script=raw; script_length=155; raw_script_mode=true;
     powered_script=durations; powered_script_length=sizeof(durations)/sizeof(*durations);
     complete_after_step=15;
     assert(approach_beacon() && forwards_count==15 && !backwards_count);
-    assert(strstr(log_text,"decline position 1/3") && strstr(log_text,"decline sequence cleared"));
+    assert(strstr(log_text,"new confirmed best at 3010 powered ms"));
     assert(!strstr(log_text,"DIRECTION SEARCH"));
-    // If the next two positions stay weak, return only the excess over 3010 ms.
-    for (unsigned i=145;i<165;++i) raw[i]=-65;
-    for (unsigned i=165;i<175;++i) raw[i]=-57; // A consistent return recheck.
-    reset(); script=raw; script_length=175; raw_script_mode=true;
+    // Synthetic sustained decline, recheck and two probes still return only
+    // the excess over the recorded best, including both short probe movements.
+    for (unsigned i=145;i<175;++i) raw[i]=-68;
+    for (unsigned i=175;i<185;++i) raw[i]=-69;
+    for (unsigned i=185;i<205;++i) raw[i]=-70;
+    for (unsigned i=205;i<215;++i) raw[i]=-57;
+    reset(); script=raw; script_length=215; raw_script_mode=true;
     powered_script=durations; powered_script_length=sizeof(durations)/sizeof(*durations);
-    complete_after_step=16;
-    assert(approach_beacon() && forwards_count==16 && backwards_count==1);
-    assert(!moves[15].forwards && moves[15].ms==750 && moves[15].heading==0);
-    assert(moves[16].forwards && moves[16].heading==270);
-    assert(strstr(log_text,"across 3 positions; return only 750 powered ms to best point 3010"));
+    complete_after_step=19;
+    assert(approach_beacon() && forwards_count==19 && backwards_count==2);
+    assert(!moves[18].forwards && moves[18].ms==750 && moves[18].heading==0);
+    assert(!moves[19].forwards && moves[19].ms==450);
+    assert(moves[20].forwards && moves[20].heading==270);
+    assert(strstr(log_text,"return only 1200 powered ms to best point 3010"));
     assert(!strstr(log_text,"FALLBACK:") && strstr(log_text,"perpendicular directions"));
 }
 
@@ -459,26 +540,245 @@ static void check_decline_positions(void)
     assert(strstr(log_text,"decline position 2/3") && !strstr(log_text,"decline position 3/3"));
     // Brief IMU/moving-scan stops cannot count nearby observations as separate
     // 250 ms positions, even when every pair is below the best.
-    int short_steps[20];
-    for (unsigned i=0;i<20;++i) short_steps[i]=-72;
+    int short_steps[26];
+    for (unsigned i=0;i<26;++i) short_steps[i]=-75;
     short_steps[0]=short_steps[1]=-70; short_steps[2]=short_steps[3]=-65;
-    short_steps[18]=short_steps[19]=-65;
+    short_steps[24]=short_steps[25]=-65;
     static const uint32_t hundred_ms[] = {100,100,100,100,100,100,100,100};
-    reset(); script=short_steps; script_length=20;
+    reset(); script=short_steps; script_length=26;
     powered_script=hundred_ms; powered_script_length=8;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE && followed.consistent);
-    assert(forwards_count==8 && backwards_count==1 && moves[8].ms==700);
+    assert(forwards_count==10 && backwards_count==2 && moves[10].ms==750 && moves[11].ms==150);
+    assert(strstr(log_text,"1/3 at 200") && strstr(log_text,"2/3 at 500") && strstr(log_text,"3/3 at 800"));
     // A first decline at the trial limit must still get two more positions.
-    int boundary[28];
-    for (unsigned i=0;i<28;++i) boundary[i]=-70;
+    int boundary[34];
+    for (unsigned i=0;i<34;++i) boundary[i]=-70;
     boundary[20]=boundary[21]=-75; boundary[22]=boundary[23]=-76; boundary[24]=boundary[25]=-77;
-    reset(); script=boundary; script_length=28;
+    boundary[26]=boundary[27]=-77; boundary[28]=boundary[29]=-78; boundary[30]=boundary[31]=-79;
+    reset(); script=boundary; script_length=34;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
-    assert(followed.end==FOLLOW_DECLINE && !followed.progress && forwards_count==12 && translation_ms==5800);
+    assert(followed.end==FOLLOW_DECLINE && !followed.progress && forwards_count==14 && translation_ms==6200);
     // No return time is spent if the next confirming position cannot be reserved.
     reset(); script=patch; script_length=sizeof(patch)/sizeof(*patch); translation_ms=LINE_TRANSLATION_MS-800;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_FATAL && !backwards_count);
     assert(fault_test(FAULT_TRANSLATION_LIMIT));
+}
+
+static void check_dip_reference(void)
+{
+    line_pair_t samples[] = {pair(-70,-71),pair(-45,-45),pair(-66,-67)};
+    samples[2].first.spread=2;
+    line_pair_t median=line_median_reference(samples);
+    assert(median.first.code==66 && median.second.code==67 && median.first.spread==2);
+    samples[0]=pair(-127,-70);
+    assert(line_reference(line_median_reference(samples)).code==RSSI_MISSING_CODE);
+    assert(!line_reference_declined(pair(-60,-60),pair(-63,-63)));
+    assert(line_reference_declined(pair(-60,-60),pair(-64,-64)));
+    assert(!line_reference_declined(pair(-60,-60),pair(-70,-60)));
+    assert(!line_reference_declined(pair(-127,-60),pair(-70,-70)));
+
+    // An isolated strong POSITION (both batches) remains the best return point,
+    // but must not become the decline reference and force a reverse.
+    static const int peak[] = {-70,-70,-65,-65,-65,-65,-45,-45,
+                              -65,-65,-65,-65,-65,-65,-65,-65};
+    follow_result_t followed;
+    reset(); script=peak; script_length=sizeof(peak)/sizeof(*peak); complete_after_step=8;
+    assert(follow_direction(0,0,&followed)==PAYLOAD_COMPLETE && !backwards_count);
+    assert(strstr(log_text,"new confirmed best at 750 powered ms"));
+    assert(!strstr(log_text,"decline position") && !strstr(log_text,"forward probe"));
+
+    // A gradual decline must not pull the three-position reference down with it.
+    static const int drift[] = {-70,-70,-60,-60,-60,-60,-61,-61,-62,-62,-63,-63,
+        -64,-64,-65,-65,-66,-66,-67,-67,-68,-68,-69,-69,-60,-60};
+    reset(); script=drift; script_length=sizeof(drift)/sizeof(*drift);
+    assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE && followed.consistent);
+    assert(forwards_count==10 && backwards_count==3 && followed.end==FOLLOW_DECLINE);
+    assert(strstr(log_text,"reference at -60/-60") && strstr(log_text,"1/3 at 1500"));
+    assert(strstr(log_text,"return only 1950 powered ms to best point 250"));
+}
+
+static void check_dip_recovery(void)
+{
+    // Recover at the stationary recheck, first probe, or second probe. A new
+    // normal 250 ms block must then be possible on the same heading.
+    for (unsigned probes=0;probes<=LINE_DIP_MAX_PROBES;++probes) {
+        int readings[] = {-70,-70,-60,-60,-60,-60,-65,-65,-66,-66,-67,-67,
+                          -68,-68,-69,-69,-70,-70};
+        unsigned recovery=12+2*probes;
+        readings[recovery]=readings[recovery+1]=-63; // Exactly the tolerance.
+        reset(); script=readings; script_length=recovery+2; complete_after_step=6+(int)probes;
+        follow_result_t followed;
+        assert(follow_direction(0,0,&followed)==PAYLOAD_COMPLETE);
+        assert(!backwards_count && forwards_count==6+(int)probes && !motors_on);
+        assert(strstr(log_text,"DIP: recovery confirmed; continuing the same heading"));
+        assert(moves[5+probes].forwards && moves[5+probes].ms==250 && moves[5+probes].heading==0);
+        for (unsigned i=0;i<probes;++i) assert(moves[5+i].ms==100);
+        assert(wifi_calls==(int)(recovery+2)*5);
+        assert(ble_calls==7+(int)probes); // Five normal blocks, recheck, probes, next block.
+    }
+    // Uncertain batch disagreement clears the consecutive count but must leave
+    // the reference frozen. Repeated intermediate values cannot erase the peak.
+    static const int uncertain[] = {-70,-70,-60,-60,-60,-60,-65,-65,-60,-70,
+        -66,-66,-67,-67,-68,-68,-69,-69,-70,-70,-71,-71,-60,-60};
+    reset(); script=uncertain; script_length=sizeof(uncertain)/sizeof(*uncertain);
+    follow_result_t followed;
+    assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE && followed.consistent);
+    assert(forwards_count==9 && strstr(log_text,"inconclusive, reference still frozen"));
+    assert(strstr(log_text,"3/3 at 1750") && strstr(log_text,"reference_dbm1=-60,reference_dbm2=-60"));
+}
+
+static void check_v14_dip(void)
+{
+    int raw[195];
+    memcpy(raw,v14_wifi_raw,sizeof(v14_wifi_raw));
+    // Actual evidence ends at 3273 ms, where v14 reversed. The new median
+    // reference must let the robot reach one more forward checkpoint first.
+    reset(); script=raw; script_length=145; raw_script_mode=true;
+    powered_script=v14_forward_ms; powered_script_length=13; complete_after_step=14;
+    scan_delay_ms=720; ble_delay_ms=5000;
+    assert(approach_beacon() && forwards_count==14 && !backwards_count && wifi_calls==145);
+    assert(strstr(log_text,"reference at -52/-52") && strstr(log_text,"2/3 at 3273"));
+    assert(!strstr(log_text,"3/3 at 3273"));
+
+    // Synthetic continuation: one more weak position, a weak stopped recheck,
+    // then recovery at the second probe. BLE success is also synthetic.
+    for (unsigned i=145;i<175;++i) raw[i]=-60;
+    for (unsigned i=175;i<185;++i) raw[i]=-50;
+    reset(); script=raw; script_length=185; raw_script_mode=true;
+    powered_script=v14_forward_ms; powered_script_length=13; complete_after_step=17;
+    scan_delay_ms=720; ble_delay_ms=5000;
+    assert(approach_beacon() && forwards_count==17 && !backwards_count && wifi_calls==185);
+    assert(moves[14].ms==100 && moves[15].ms==100 && moves[16].ms==250);
+    assert(strstr(log_text,"stage=probe,probe=2,powered_ms=3723") && !strstr(log_text,"DIRECTION SEARCH"));
+
+    // Alternative synthetic continuation: no recovery. Return only to the
+    // actual recorded best at 2517 ms, including the 200 ms spent probing.
+    for (unsigned i=175;i<185;++i) raw[i]=-61;
+    for (unsigned i=185;i<195;++i) raw[i]=-50;
+    reset(); script=raw; script_length=195; raw_script_mode=true;
+    powered_script=v14_forward_ms; powered_script_length=13; complete_after_step=17;
+    assert(approach_beacon() && forwards_count==17 && backwards_count==2);
+    assert(!moves[16].forwards && moves[16].ms==750);
+    assert(!moves[17].forwards && moves[17].ms==456);
+    assert(moves[18].forwards && moves[18].heading==270);
+    assert(strstr(log_text,"return only 1206 powered ms to best point 2517"));
+}
+
+static void check_dip_safety(void)
+{
+    uint32_t position;
+    line_pair_t current;
+    bool recovered;
+    // BLE success or failure at the stopped recheck and after either probe
+    // prevents all subsequent scans and movements.
+    for (int call=1;call<=3;++call) {
+        reset(); complete_at_ble_call=call; position=1500;
+        assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_COMPLETE);
+        assert(forwards_count==call-1 && !backwards_count && !motors_on);
+        assert(position==1500u+100u*(unsigned)(call-1) && wifi_calls==(call-1)*10);
+        reset(); fail_at_ble_call=call; position=1500;
+        assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+        assert(forwards_count==call-1 && !backwards_count && !motors_on);
+    }
+    for (unsigned probe=1;probe<=2;++probe) {
+        reset(); stop_at_step=probe; position=1500;
+        assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+        assert(stopped && !motors_on && forwards_count==(int)probe && ble_calls==(int)probe);
+        reset(); fail_at_step=probe; position=1500;
+        assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+        assert(fault_test(FAULT_IMU) && !motors_on && forwards_count==(int)probe && ble_calls==(int)probe);
+    }
+    // Missing Wi-Fi or STOP at any new scan stage must not start a later probe.
+    for (unsigned stage=0;stage<=2;++stage) {
+        int missing[10];
+        for (unsigned i=0;i<10;++i) missing[i]=i<stage*2 ? -70 : -127;
+        reset(); script=missing; script_length=10; default_rssi=-127; position=1500;
+        assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+        assert(forwards_count==(int)stage && !backwards_count && !motors_on);
+        reset(); stop_at_scan=1+10*stage; position=1500;
+        assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+        assert(stopped && forwards_count==(int)stage && !motors_on);
+    }
+    reset(); fail_scan=true; position=1500;
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+    assert(fault_test(FAULT_WIFI_SCAN) && !forwards_count);
+    reset(); storage_failed=true; position=1500;
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+    assert(fault_test(FAULT_REPORT) && !forwards_count && !ble_calls);
+    // Before each probe, reserve the entire possible return, including overrun.
+    for (unsigned probes=0;probes<=1;++probes) {
+        reset(); translation_ms=LINE_TRANSLATION_MS-(probes ? 1399u : 1299u); position=1500;
+        assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+        assert(fault_test(FAULT_TRANSLATION_LIMIT) && forwards_count==(int)probes && !backwards_count);
+    }
+    reset(); sim_time=(uint64_t)(MAX_RUN_MS-1000u)*1000; position=1500;
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_FATAL);
+    assert(fault_test(FAULT_RUN_LIMIT) && !forwards_count && !motors_on);
+    // Shortened powered blocks do not permit additional probes beyond two.
+    static const uint32_t short_probes[]={40,50};
+    reset(); powered_script=short_probes; powered_script_length=2; position=1500;
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_NOT_CLOSE);
+    assert(!recovered && forwards_count==2 && position==1590 && translation_ms==90);
+}
+
+static void check_forward_continuation(void)
+{
+    // A valid but flat initial signal must pass both former stopping points.
+    reset(); complete_after_step=30;
+    assert(approach_beacon() && forwards_count==30 && !backwards_count);
+    assert(translation_ms==7500 && !fault_mask() && !motors_on);
+    assert(ble_calls==31 && strstr(log_text,"six-second profile interval complete"));
+    assert(!strstr(log_text,"first confirmed improvement") && !strstr(log_text,"DIRECTION SEARCH"));
+    for (unsigned i=0;i<move_count;++i) assert(moves[i].forwards && moves[i].ms==250);
+
+    // Replay all 115 raw Wi-Fi readings and ten powered durations from the
+    // user's 3 November v7 run. BLE completion on step 11 is synthetic: it
+    // proves we reach the next checkpoint, not that hardware will connect there.
+    static const int raw[] = {
+        -73,-74,-69,-71,-70,-66,-69,-69,-71,-70,
+        -70,-74,-73,-71,-74,-69,-74,-71,-76,-74,
+        -68,-127,-72,-127,-78,-67,-65,-67,-69,-67,
+        -127,-65,-67,-71,-65,-72,-73,-72,-72,-70,
+        -72,-68,-71,-71,-72,-67,-68,-68,-66,-67,
+        -71,-61,-68,-67,-70,-69,-71,-73,-69,-73,
+        -71,-71,-70,-70,-127,-69,-73,-68,-71,-66,
+        -127,-71,-63,-63,-68,-61,-67,-69,-65,-66,
+        -60,-61,-62,-64,-63,-70,-73,-72,-70,-66,
+        -72,-127,-71,-73,-72,-62,-62,-64,-66,-63,
+        -61,-63,-66,-61,-61,-64,-66,-68,-65,-65,
+        -64,-65,-67,-67,-67,
+    };
+    static const uint32_t durations[] = {252,252,251,251,252,252,251,251,252,141};
+    reset(); script=raw; script_length=sizeof(raw)/sizeof(*raw); raw_script_mode=true;
+    powered_script=durations; powered_script_length=sizeof(durations)/sizeof(*durations);
+    scan_delay_ms=720; ble_delay_ms=5000; complete_after_step=11;
+    assert(approach_beacon() && forwards_count==11 && !backwards_count && !fault_mask());
+    assert(wifi_calls==115 && ble_calls==12 && translation_ms==2655);
+    assert(strstr(log_text,"powered_ms=2264,best_ms=0,gain_db=6,margin_db=4"));
+    assert(strstr(log_text,"new confirmed best at 2264 powered ms"));
+    assert(!strstr(log_text,"trial ended") && !strstr(log_text,"DIRECTION SEARCH"));
+
+    // With no BLE success, continuation still reserves the entire possible
+    // return. It must stop before combined outward/return travel exceeds 60 s.
+    reset(); assert(!approach_beacon() && fault_test(FAULT_TRANSLATION_LIMIT));
+    assert(forwards_count>30 && !backwards_count && !motors_on);
+    assert(translation_ms+translation_cost(translation_ms)<=LINE_TRANSLATION_MS);
+    assert(!fault_test(FAULT_NO_DIRECTION) && !fault_test(FAULT_PROFILE));
+
+    // Realistic stationary scan/BLE delays reach the wall limit first.
+    reset(); scan_delay_ms=720; ble_delay_ms=5000;
+    assert(!approach_beacon() && fault_test(FAULT_RUN_LIMIT) && !motors_on);
+    assert(translation_ms>6000 && translation_ms<LINE_TRANSLATION_MS && !backwards_count);
+    assert(!fault_test(FAULT_PROFILE));
+
+    // STOP and an IMU fault after prolonged inconclusive travel prevent any
+    // later movement or BLE attempt, just as they do during the first step.
+    reset(); stop_at_step=31;
+    assert(!approach_beacon() && stopped && !motors_on && forwards_count==31);
+    assert(translation_ms==7500 && ble_calls==31 && !backwards_count);
+    reset(); fail_at_step=31;
+    assert(!approach_beacon() && fault_test(FAULT_IMU) && !motors_on && forwards_count==31);
+    assert(translation_ms==7500 && ble_calls==31 && !backwards_count);
 }
 
 static void check_radio_and_limits(void)
@@ -514,7 +814,15 @@ static void check_radio_and_limits(void)
     reset(); wifi_missing = true; assert(!approach_beacon() && wifi_calls == 15 && !forwards_count);
     reset(); fail_scan = true; assert(!approach_beacon() && fault_test(FAULT_WIFI_SCAN));
     reset(); retry_mode = 1; assert(!approach_beacon() && ble_calls == 3 && !forwards_count);
+    assert(retry_calls==2 && fault_test(FAULT_PAYLOAD));
     reset(); retry_mode = 2; assert(!approach_beacon() && ble_calls == 3 && !forwards_count);
+    assert(retry_calls==2 && fault_test(FAULT_PAYLOAD));
+    reset(); retry_mode = 3; assert(approach_beacon() && ble_calls==2 && retry_calls==1 && !forwards_count);
+    // Arrival after step 16, then one failed transfer: stationary retry must
+    // complete without issuing steps 17 or 18. RSSI here is synthetic and flat.
+    reset(); retry_mode = 4;
+    assert(approach_beacon() && forwards_count==16 && retry_calls==1 && ble_calls==18);
+    assert(!backwards_count && !motors_on);
     reset(); stopped = true; assert(!approach_beacon() && !forwards_count && !ble_calls);
     reset(); storage_failed = true; assert(!approach_beacon() && fault_test(FAULT_REPORT));
     reset(); stop_at_scan = 6; assert(!approach_beacon() && !forwards_count);
@@ -563,25 +871,29 @@ static void check_startup(void)
     assert(!forwards_count && !sign_checks && fault_test(FAULT_WIFI_LOST));
     reset(); stop_at_scan=1; run_startup_test();
     assert(!forwards_count && !sign_checks);
+    reset(); retry_mode=1; run_startup_test();
+    assert(fault_test(FAULT_PAYLOAD) && !tone_starts && !forwards_count);
+    reset(); retry_mode=3; run_startup_test();
+    assert(tone_starts==3 && !forwards_count && strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
 }
 int main(void)
 {
-    check_decisions(); check_profiles(); check_follow_first(); check_two_direction_policy(); check_recorded_run(); check_decline_positions(); check_radio_and_limits(); check_startup();
+    check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_two_direction_policy(); check_recorded_run(); check_decline_positions();
+    check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
+    check_forward_continuation(); check_radio_and_limits(); check_startup();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     buzzer_init(); tone_stops=0;
     uint64_t before=sim_time; completion_sound();
-    assert(tone_starts==1 && tone_stops==1 && sim_time-before==1000000);
+    assert(tone_starts==3 && tone_stops==4 && sim_time-before==900000);
     reset(); stopped=true; completion_sound(); assert(!tone_starts);
-    reset(); stop_during_pause=true; completion_sound(); assert(tone_starts==1 && tone_stops==1);
-    reset(); assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
-    assert(translation_ms==2400 && forwards_count==10 && !backwards_count);
+    reset(); stop_during_pause=true; completion_sound(); assert(tone_starts==1 && tone_stops==2);
     reset(); fail_drive=true; assert(!approach_beacon() && forwards_count==1 && !backwards_count);
     reset(); fail_turn=true; assert(!approach_beacon() && !forwards_count);
     const double targets[4][2]={{2,0},{0,2},{-2,0},{0,-2}};
     for (unsigned i=0;i<4;++i) {
         reset(); model=true; beacon_x=targets[i][0]; beacon_y=targets[i][1];
         bool arrived=approach_beacon();
-        if (!arrived && i==0) {
+        if (!arrived && i!=2) {
             fprintf(stderr,"Model target %u failed at (%.2f, %.2f), translation %u ms, faults %x\n",
                     i,robot_x,robot_y,translation_ms,fault_mask());
             for (char *row=strtok(log_text,"\n");row;row=strtok(NULL,"\n"))
@@ -589,12 +901,13 @@ int main(void)
                     !strncmp(row,"DIRECTION",9) || !strncmp(row,"FALLBACK",8) || !strncmp(row,"FAILED",6))
                     fprintf(stderr,"%s\n",row);
         }
-        if (i==0) assert(arrived && hypot(robot_x-beacon_x,robot_y-beacon_y)<0.25);
+        if (i!=2) assert(arrived && hypot(robot_x-beacon_x,robot_y-beacon_y)<0.25);
         else {
-            // With no broad search, a side/behind target that supplies no clear
-            // initial gradient must produce a bounded stop, not an extra scan.
+            // Continuing the initial line allows a side target to establish a
+            // decline and then be reached by a perpendicular. A rear target
+            // still has no improving perpendicular in this ideal model.
             assert(!arrived && fault_test(FAULT_NO_DIRECTION));
-            assert(!strstr(log_text,"DIRECTION SEARCH"));
+            assert(strstr(log_text,"neither perpendicular direction confirmed improvement"));
         }
         assert(translation_ms<=LINE_TRANSLATION_MS);
     }
@@ -605,6 +918,6 @@ int main(void)
         if (fail) assert(!ble_calls && !forwards_count && fault_test(FAULT_REPORT));
         else assert(strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
     }
-    puts("Navigation: first improving direction, retained peaks, partial returns, two perpendicular directions only, recorded v5 weak patch, three spatial decline positions, budgets, radio fallback, BSSID, STOP, startup, forward arrival and bounded off-axis stops passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded 100 ms probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, perpendicular search, travel/run limits, radio fallback, BSSID, STOP, startup and arrival checks passed");
     return 0;
 }
