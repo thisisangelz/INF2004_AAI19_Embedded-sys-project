@@ -1,30 +1,89 @@
 {
-  "pico_sdk": "2.3.0",
-  "targets": [
+  "pico_sdk": "2.3.1",
+  "pico_toolchain_dir": "15_2_Rel1",
+  "picotool": "2.3.1",
+  "build_groups": [
     {
-      "name": "root-four-board",
+      "name": "root-firmware",
       "source": ".",
-      "description": "pico_rssi_tracker plus AP1, AP2 and AP3"
+      "description": "Root project; configured once for tracker, three access points, and TCS34725 diagnostic",
+      "targets": [
+        {
+          "name": "pico_rssi_tracker",
+          "artifacts": [
+            "pico_rssi_tracker/pico_rssi_tracker.elf",
+            "pico_rssi_tracker/pico_rssi_tracker.uf2"
+          ]
+        },
+        {
+          "name": "picow_access_point",
+          "artifacts": [
+            "picow_access_point/picow_access_point.elf",
+            "picow_access_point/picow_access_point.uf2"
+          ]
+        },
+        {
+          "name": "picow_access_point2",
+          "artifacts": [
+            "picow_access_point2/picow_access_point2.elf",
+            "picow_access_point2/picow_access_point2.uf2"
+          ]
+        },
+        {
+          "name": "picow_access_point3",
+          "artifacts": [
+            "picow_access_point3/picow_access_point3.elf",
+            "picow_access_point3/picow_access_point3.uf2"
+          ]
+        },
+        {
+          "name": "tcs34725_diag",
+          "artifacts": [
+            "tcs34725_diag/tcs34725_diag.elf",
+            "tcs34725_diag/tcs34725_diag.uf2"
+          ]
+        }
+      ]
     },
     {
       "name": "getting-there",
       "source": "getting_there",
-      "description": "AP1 navigation and verified payload firmware"
+      "targets": [
+        {
+          "name": "getting_there",
+          "artifacts": ["getting_there.elf", "getting_there.uf2"]
+        }
+      ]
     },
     {
       "name": "rssi-environment",
       "source": "rssi_env_test",
-      "description": "RSSI environment diagnostic firmware"
+      "targets": [
+        {
+          "name": "rssi_env_test",
+          "artifacts": ["rssi_env_test.elf", "rssi_env_test.uf2"]
+        }
+      ]
     },
     {
       "name": "wheel-rssi",
       "source": "wheel_rssi_test",
-      "description": "wheel and Wi-Fi RSSI diagnostic firmware"
+      "targets": [
+        {
+          "name": "wheel_rssi_test",
+          "artifacts": ["wheel_rssi_test.elf", "wheel_rssi_test.uf2"]
+        }
+      ]
     },
     {
       "name": "wheel-turn",
       "source": "wheel_turn_check",
-      "description": "single-turn diagnostic firmware"
+      "targets": [
+        {
+          "name": "wheel_turn_check",
+          "artifacts": ["wheel_turn_check.elf", "wheel_turn_check.uf2"]
+        }
+      ]
     }
   ]
 }

@@ -102,17 +102,19 @@ static void reset(void)
 }
 static void notification(const uint8_t *value, uint16_t length)
 {
-    uint8_t packet[28] = {GATT_EVENT_NOTIFICATION, (uint8_t)(length + 6)};
+    // BTstack 1.8.2 (Pico SDK 2.3.1) adds service_id and connection_id.
+    uint8_t packet[32] = {GATT_EVENT_NOTIFICATION, (uint8_t)(length + 10)};
     transfer_write_u16(packet + 2, connection_handle);
-    transfer_write_u16(packet + 4, characteristic.value_handle);
-    transfer_write_u16(packet + 6, length);
-    memcpy(packet + 8, value, length);
-    gatt_handler(HCI_EVENT_PACKET, 0, packet, 8 + length);
+    transfer_write_u16(packet + 8, characteristic.value_handle);
+    transfer_write_u16(packet + 10, length);
+    memcpy(packet + 12, value, length);
+    gatt_handler(HCI_EVENT_PACKET, 0, packet, 12 + length);
 }
 static void query_complete(uint8_t status)
 {
-    uint8_t packet[] = {GATT_EVENT_QUERY_COMPLETE, 3, (uint8_t)connection_handle,
-                        (uint8_t)(connection_handle >> 8), status};
+    // Layout: handle, service_id, connection_id, ATT status.
+    uint8_t packet[] = {GATT_EVENT_QUERY_COMPLETE, 7, (uint8_t)connection_handle,
+                        (uint8_t)(connection_handle >> 8), 0, 0, 0, 0, status};
     gatt_handler(HCI_EVENT_PACKET, 0, packet, sizeof(packet));
 }
 static void advertisement(int rssi, uint8_t id)
@@ -188,7 +190,9 @@ static void successful_exchange(bool early_notifications)
         query_complete(0);
         if (!early_notifications && length) notification(response, length);
     }
-    assert(result_get(ST_RESULT_SHIFT) == PAYLOAD_COMPLETE && flag(F_PAYLOAD_VERIFIED) && disconnect_calls == 1);
+    assert(result_get(ST_RESULT_SHIFT) == PAYLOAD_COMPLETE);
+    assert(flag(F_PAYLOAD_VERIFIED));
+    assert(disconnect_calls == 1);
     uint16_t length;
     const uint8_t *data = payload_client_data(&length);
     assert(length == sizeof(peer_reply) - 1 && memcmp(data, peer_reply, length) == 0);

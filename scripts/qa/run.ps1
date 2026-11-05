@@ -5,13 +5,13 @@ param(
     [string[]]$RemainingArgs
 )
 
-$candidates = @()
+$candidates = @($env:QA_PYTHON)
 foreach ($name in @('python3', 'python')) {
     $command = Get-Command $name -ErrorAction SilentlyContinue
     if ($command) { $candidates += $command.Source }
 }
-$installRoot = if ($env:PICO_INSTALL_ROOT) { $env:PICO_INSTALL_ROOT } else { 'C:\Program Files\Raspberry Pi\Pico SDK v1.5.1' }
-$candidates += Join-Path $installRoot 'python\python.exe'
+$legacyInstallRoot = if ($env:PICO_INSTALL_ROOT) { $env:PICO_INSTALL_ROOT } else { 'C:\Program Files\Raspberry Pi\Pico SDK v1.5.1' }
+$candidates += Join-Path $legacyInstallRoot 'python\python.exe'
 
 $runner = Join-Path $PSScriptRoot 'run.py'
 foreach ($candidate in $candidates | Select-Object -Unique) {
@@ -26,6 +26,6 @@ foreach ($candidate in $candidates | Select-Object -Unique) {
     }
 }
 
-Write-Error 'No working Python 3 interpreter found. Install Python 3 or set PICO_INSTALL_ROOT to the Pico SDK installer directory.'
+Write-Error 'No working Python 3 interpreter found. Install Python 3 or set QA_PYTHON to python.exe.'
 exit 2
 

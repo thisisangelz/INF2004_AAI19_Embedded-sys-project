@@ -1,26 +1,31 @@
-# Build and debug (Windows, Pico SDK 1.5.1)
+# Build and debug (Windows, Pico SDK 2.3.1)
 
-Inventory: SDK, ARM GCC 10.3.1, Ninja, CMake 3.25, picotool and OpenOCD live under
-`C:\Program Files\Raspberry Pi\Pico SDK v1.5.1\`. Host gcc: WinLibs (winget). No Pico VS Code extension.
-`scripts/qa/targets.json` names SDK 2.3.0; the local SDK is 1.5.1 (see open items).
+The reproducible firmware baseline is Pico SDK 2.3.1 with Arm GNU Toolchain
+15.2.Rel1. The Raspberry Pi Pico VS Code extension installs these under
+`%USERPROFILE%\.pico-sdk\`. Native host tests require a separate native GCC or
+Clang; MSYS2 UCRT64 GCC is the preferred Windows installation.
 
 ```powershell
 . .\scripts\dev\env.ps1                       # PATH + PICO_SDK_PATH, installs nothing
 .\scripts\dev\build.ps1 getting_there         # primary rover; also: rssi_env_test, wheel_rssi_test, wheel_turn_check, .
-.\scripts\dev\host_tests.ps1                  # existing host tests
-python scripts/qa/run.py quick                # shared QA gate (owned by Codex)
+.\scripts\dev\host_tests.ps1                  # compatibility wrapper for quick QA
+.\scripts\qa\run.ps1 quick                    # shared local/CI QA gate
 ```
 
-Builds go to `C:\tmp_pico\<target>` (deep paths such as the Claude scratchpad break the compiler check) and
-refresh `compile_commands.json` (gitignored) for clangd. The scripts never flash. Manual flash: hold BOOTSEL,
-copy the `.uf2` from the build dir. Debug: `openocd` + `picotool` from the env script need a debug probe (none assumed).
-Serial: USB CDC (`pico_enable_stdio_usb`).
+Development builds default to `artifacts/dev-build/<target>` and QA builds to
+`artifacts/qa/build/`. Both are gitignored. The scripts never flash. Debugging
+and physical validation require separately approved hardware procedures.
+
+On Windows, native host executables default to
+`%TEMP%\inf2004-firmware-qa-host` because Application Control can block newly
+linked unsigned executables inside a OneDrive workspace. Override this with
+`QA_HOST_BUILD_DIR` or `--host-build-dir`. Reports and coverage output remain
+under `artifacts/qa/`.
 
 ## Open items
-- Root `CMakeLists.txt` omits `getting_there`, `rssi_env_test`, `wheel_*`; propose adding them.
-- Windows Application Control blocks running the unsigned host test `.exe` here (WinError 4551): host tests compile but cannot execute on this PC until the policy allows it or they run in CI/another machine.
-- `.vscode/settings.json` has a teammate's absolute paths; left unchanged.
-- SDK 1.5.1 vs 2.3.0 mismatch with QA config.
+- Install native GCC (prefer MSYS2 UCRT64) or set `QA_HOST_CC`/`--cc` to a
+  native compiler. The ARM cross-compiler is intentionally rejected for host tests.
+- Cppcheck, Clang-Tidy and Gcovr are advisory until their baselines are accepted.
 
 ## Proposed incremental architecture (no rewrite)
 1. Split `getting_there.c` into wifi_rssi, buzzer, app. 2. Keep `motion.c` the sole motor-PWM writer; separate IMU/turn logic from actuation.

@@ -5,7 +5,7 @@
       "name": "pico-w-qa",
       "displayName": "Pico W QA build",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/artifacts/qa/build/root",
+      "binaryDir": "${sourceDir}/artifacts/qa/build/root-firmware",
       "cacheVariables": {
         "PICO_BOARD": "pico_w",
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",

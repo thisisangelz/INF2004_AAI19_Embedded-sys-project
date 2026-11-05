@@ -9,7 +9,14 @@ permissions:
   contents: read
 
 env:
-  PICO_SDK_VERSION: 2.3.0
+  PICO_SDK_VERSION: 2.3.1
+  ARM_GNU_VERSION: 15.2.rel1
+  QA_HOST_CC: gcc
+  QA_CMAKE: cmake
+  QA_NINJA: ninja
+  QA_CPPCHECK: cppcheck
+  QA_CLANG_TIDY: clang-tidy
+  QA_GCOVR: gcovr
 
 jobs:
   software-qa:
@@ -22,13 +29,28 @@ jobs:
       - name: Install pinned-platform QA tools
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y cmake ninja-build gcc g++ gcc-arm-none-eabi libnewlib-arm-none-eabi cppcheck clang-tidy python3-pip git
+          sudo apt-get install --no-install-recommends -y cmake ninja-build gcc g++ cppcheck clang-tidy python3-pip git curl xz-utils
           python3 -m pip install --break-system-packages gcovr==8.3
+
+      - name: Fetch pinned ARM GNU Toolchain
+        run: |
+          archive="arm-gnu-toolchain-${ARM_GNU_VERSION}-x86_64-arm-none-eabi.tar.xz"
+          base="https://armkeil.blob.core.windows.net/developer/files/downloads/gnu/${ARM_GNU_VERSION}/binrel"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$archive.sha256asc" "$base/$archive.sha256asc"
+          expected="$(grep -Eo '[0-9a-fA-F]{64}' "$RUNNER_TEMP/$archive.sha256asc" | head -n 1)"
+          test -n "$expected"
+          echo "$expected  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xJf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          toolchain="$RUNNER_TEMP/arm-gnu-toolchain-${ARM_GNU_VERSION}-x86_64-arm-none-eabi"
+          echo "PICO_TOOLCHAIN_PATH=$toolchain" >> "$GITHUB_ENV"
+          echo "$toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Fetch Pico SDK
         run: |
           git clone --branch "${PICO_SDK_VERSION}" --depth 1 --recurse-submodules --shallow-submodules https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
           echo "PICO_SDK_PATH=$RUNNER_TEMP/pico-sdk" >> "$GITHUB_ENV"
+          echo "PICOTOOL_FETCH_FROM_GIT_PATH=$RUNNER_TEMP/picotool-cache" >> "$GITHUB_ENV"
 
       - name: Record tool versions
         run: |

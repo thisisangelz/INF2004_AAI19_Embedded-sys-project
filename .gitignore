@@ -7,3 +7,5 @@ compile_commands.json
 *.gcda
 *.gcno
 *.gcov
+__pycache__/
+*.pyc

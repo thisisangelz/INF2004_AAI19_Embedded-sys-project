@@ -1,5 +1,8 @@
-# Runs the existing getting_there host tests (getting_there/tests/run_host_checks.py).
-. "$PSScriptRoot\env.ps1"
-$repo = Resolve-Path "$PSScriptRoot\..\.."
-python "$repo\getting_there\tests\run_host_checks.py" --cc gcc --sdk $env:PICO_SDK_PATH --output-dir (Join-Path $env:PICO_BUILD_ROOT 'host')
+# Compatibility wrapper for the shared local/CI quick QA entry point.
+param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$RemainingArgs
+)
+
+& "$PSScriptRoot\..\qa\run.ps1" quick @RemainingArgs
 exit $LASTEXITCODE

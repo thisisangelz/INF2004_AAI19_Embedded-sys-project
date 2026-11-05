@@ -240,9 +240,9 @@ Wi-Fi SSID.
 
 ## Build and flash
 
-The repository root has a `CMakeLists.txt` that builds all four firmwares at
-once. Pico SDK 2.3.0 and the Windows Pico SDK 1.5.1 installer were both used to
-verify the builds.
+The repository root has a `CMakeLists.txt` that builds the tracker, all three
+access points, and the TCS34725 diagnostic. The reproducible QA baseline uses
+Pico SDK 2.3.1 and Arm GNU Toolchain 15.2.Rel1.
 
 ### From VS Code (Raspberry Pi Pico extension)
 
@@ -254,8 +254,9 @@ verify the builds.
 
 ### From a terminal
 
-With the 1.5.1 installer, use its "Pico - Developer Command Prompt" so
-`PICO_SDK_PATH`, CMake, Ninja and the ARM compiler are on the path.
+Run `. .\scripts\dev\env.ps1` in PowerShell to discover the pinned Pico SDK,
+CMake, Ninja and ARM compiler. Override discovery with `PICO_SDK_PATH` and
+`PICO_TOOLCHAIN_PATH` when required.
 
 ```bash
 cmake -G Ninja -S . -B build
