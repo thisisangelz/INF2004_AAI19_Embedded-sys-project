@@ -37,9 +37,12 @@ between two rings are expected to fall between their values.
 - `C` is overall brightness; `G/R` and `B/R` are colour ratios x1000. The pink
   rings should all have similar colour but lower `C` and lower `G/R` as they
   darken. Ratios change less than `C` when the height or lighting changes.
-- The neighbour check prints `separate` when no reading of the lighter surface
+- The neighbour check prints `separate` when no reading of the lighter ring
   overlapped the darker one, and `OVERLAP` otherwise. Two neighbouring rings
   only need to separate on one of the two values.
+- The floor and the other surface have no expected order, so they are compared
+  with every mat surface in both directions and marked `distinguishable` or
+  `CONFUSABLE`. A gap of only a few percent of `C` is too small to rely on.
 - `SATURATED` means a reading hit the sensor's maximum. Rebuild with a lower
   gain (`-DTCS_GAIN=0`) and repeat.
 - Compare `OTHER` with the ring chosen as the arrival target. If it looks
