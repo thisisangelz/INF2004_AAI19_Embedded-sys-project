@@ -7,9 +7,19 @@ set(CMAKE_CXX_STANDARD 17)
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     pico_sdk_init()
 endif()
-add_executable(tcs34725_calib tcs34725_calib.c)
-target_compile_options(tcs34725_calib PRIVATE -Wall -Wextra)
-target_link_libraries(tcs34725_calib pico_stdlib hardware_i2c hardware_pwm hardware_clocks)
-pico_enable_stdio_usb(tcs34725_calib 1)
-pico_enable_stdio_uart(tcs34725_calib 0)
-pico_add_extra_outputs(tcs34725_calib)
+
+# Rings inside the white edge. tcs34725_calib: pink mat (AP1), 5 rings.
+# tcs34725_calib6: blue and purple mats, 6 rings (seven bands counting the
+# white edge). Same source; only the list of surfaces to capture differs.
+function(tcs34725_calib_target target rings)
+    add_executable(${target} tcs34725_calib.c)
+    target_compile_options(${target} PRIVATE -Wall -Wextra)
+    target_compile_definitions(${target} PRIVATE MAT_RINGS=${rings})
+    target_link_libraries(${target} pico_stdlib hardware_i2c hardware_pwm hardware_clocks)
+    pico_enable_stdio_usb(${target} 1)
+    pico_enable_stdio_uart(${target} 0)
+    pico_add_extra_outputs(${target})
+endfunction()
+
+tcs34725_calib_target(tcs34725_calib 5)
+tcs34725_calib_target(tcs34725_calib6 6)

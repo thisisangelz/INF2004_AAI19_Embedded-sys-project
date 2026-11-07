@@ -66,6 +66,13 @@ typedef struct {
     bool saturated;
 } stats_t;
 
+/* Coloured rings inside the white edge: 5 for the pink AP1 mat
+ * (tcs34725_calib), 6 for the blue and purple mats (tcs34725_calib6, built
+ * with MAT_RINGS=6; seven bands counting the white edge). */
+#ifndef MAT_RINGS
+#define MAT_RINGS 5
+#endif
+
 /* Lightest to darkest; the beacon box sits on the darkest centre. */
 static const char *const LABELS[] = {
     "FLOOR",
@@ -74,13 +81,21 @@ static const char *const LABELS[] = {
     "RING 2",
     "RING 3",
     "RING 4",
+#if MAT_RINGS == 5
     "RING 5 (darkest, beside beacon box)",
+#elif MAT_RINGS == 6
+    "RING 5",
+    "RING 6 (darkest, beside beacon box)",
+#else
+#error "MAT_RINGS must be 5 or 6"
+#endif
     "OTHER (shadow / chair leg / tape)",
 };
 #define LABEL_COUNT    (int)(sizeof(LABELS) / sizeof(LABELS[0]))
-#define FIRST_MAT      1   /* WHITE EDGE */
-#define LAST_MAT       6   /* RING 5 */
-#define OTHER_LABEL    7
+#define FIRST_MAT      1                 /* WHITE EDGE */
+#define LAST_MAT       (1 + MAT_RINGS)   /* darkest ring */
+#define OTHER_LABEL    (LAST_MAT + 1)
+_Static_assert(LABEL_COUNT == MAT_RINGS + 3, "floor, white edge, rings and other");
 
 static stats_t results[LABEL_COUNT];
 static uint32_t i2c_errors;
@@ -277,8 +292,8 @@ static void distinguish(int x, int y)
 
 static void print_summary(void)
 {
-    printf("\n========== CALIBRATION SUMMARY (gain setting %d, %d ms) ==========\n",
-           TCS_GAIN, INTEGRATION_MS);
+    printf("\n========== CALIBRATION SUMMARY (%d-ring mat, gain setting %d, %d ms) ==========\n",
+           MAT_RINGS, TCS_GAIN, INTEGRATION_MS);
     printf("CSV,label,n,c_mean,c_min,c_max,r_mean,g_mean,b_mean,"
            "gr_mean,gr_min,gr_max,br_mean,br_min,br_max,saturated\n");
     for (int i = 0; i < LABEL_COUNT; ++i) {
@@ -318,7 +333,7 @@ int main(void)
     gpio_pull_up(TCS_SDA_PIN);
     gpio_pull_up(TCS_SCL_PIN);
 
-    printf("\n===== TCS34725 colour-mat calibration =====\n");
+    printf("\n===== TCS34725 colour-mat calibration (%d-ring mat) =====\n", MAT_RINGS);
     printf("GP20: capture current surface | GP21: go back one surface\n");
     while (!tcs_start()) sleep_ms(1000);
 
