@@ -4,6 +4,40 @@ This AP1 programme developed from `Alvin_2` at `2012e7b` through the archived
 `line-search` branch. Flash `getting_there/build/getting_there.uf2` onto the robot.
 It approaches AP1, receives and verifies AP1's reply payload over BLE, then plays three short completion beeps.
 
+## Colour scan test (branch feature/colour-guided-approach)
+
+Test firmware: `build/getting_there_colour_scan.uf2` (CMake target
+`colour_scan`). Banner line `TEST BUILD: colour scan on the spot after
+calibration; no radio, no approach`. It checks whether turning on the spot can
+tell the robot which way the mat centre is, before any steering uses it.
+
+Because the colour sensor sits ahead of the wheels, turning on the spot swings
+it across neighbouring rings. After GP20, gyro calibration and the 15-degree
+direction check, the robot turns through a full circle in 30-degree steps,
+stops at each and keeps the median of three colour readings. It does this
+twice, returning to the starting heading after each round. No Wi-Fi or BLE is
+used and the robot does not drive.
+
+Procedure: place the robot on the mat side-on across a ring (and in later tries
+facing away from the centre, or on the white edge), press GP20, keep clear
+while it turns, then read the log with GP21 as usual. Each step logs:
+
+```text
+COLOUR_SCAN,round=1,angle=90,heading=90,zone=RING3,depth=4,c=3770,r=1573,g=993,b=1025,gr=631
+COLOUR_SCAN_RESULT,round=1,valid=1,darkest_angle=90,vector_angle=84,depth_range=2
+```
+
+`angle` is relative to the starting heading, in the log's heading convention.
+`depth` is 0 floor, 1 white edge, 2-6 rings 1-5. `vector_angle` is the
+depth-weighted direction estimate and `depth_range` how many rings the sweep
+spanned; 0 means the turn could not tell directions apart. Compare
+`vector_angle` with the real direction to the centre, and the two rounds with
+each other. The result ends `RESULT: COLOUR SCAN COMPLETE` with the rising
+completion beeps, or `COLOUR SCAN FAILED` with the falling ones.
+
+A host check simulates a 35 cm mat with five equal rings and a sensor 6-10 cm
+ahead of the wheels: the estimate points within 30 degrees of the centre when
+placed side-on, facing away, diagonally or on the white edge next to the floor.
 ## Buzzer sounds (branch feature/buzzer-status-cues)
 
 Firmware: `build/getting_there_colour_ring4_cues.uf2`, banner ending

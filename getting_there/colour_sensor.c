@@ -1,4 +1,5 @@
 #include "colour_sensor.h"
+#include <math.h>
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
@@ -179,4 +180,58 @@ bool colour_arrival_check(void)
                   colour_zone_name(zones[0]), colour_zone_name(zones[1]), colour_zone_name(zones[2]),
                   last.c, last.r, last.g, last.b, colour_gr_x1000(&last), seen_before, arrived);
     return arrived;
+}
+
+bool colour_sensor_read(colour_reading_t *reading)
+{
+    return available && read_fresh(reading);
+}
+
+int colour_zone_depth(colour_zone_t zone)
+{
+    switch (zone) {
+    case COLOUR_FLOOR: return 0;
+    case COLOUR_WHITE: return 1;
+    case COLOUR_RING1: return 2;
+    case COLOUR_RING2: return 3;
+    case COLOUR_RING3: return 4;
+    case COLOUR_RING4: return 5;
+    case COLOUR_RING5: return 6;
+    default: return -1;
+    }
+}
+
+colour_scan_result_t colour_scan_estimate(const int *angles, const colour_reading_t *readings,
+                                          unsigned count)
+{
+    colour_scan_result_t result = {.valid = false};
+    int min_depth = 7, max_depth = -1;
+    uint16_t darkest_gr = 0xFFFFu;
+    for (unsigned i = 0; i < count; ++i) {
+        int depth = colour_zone_depth(colour_classify(&readings[i]));
+        if (depth < 0) continue;
+        if (depth < min_depth) min_depth = depth;
+        uint16_t gr = colour_gr_x1000(&readings[i]);
+        if (depth > max_depth || (depth == max_depth && gr < darkest_gr)) {
+            max_depth = depth;
+            darkest_gr = gr;
+            result.darkest_angle = angles[i];
+        }
+    }
+    if (max_depth < 0) return result;
+    result.depth_range = max_depth - min_depth;
+    if (result.depth_range < 1) return result;
+    // Weight each direction by how much deeper it is than the shallowest.
+    float x = 0.0f, y = 0.0f;
+    for (unsigned i = 0; i < count; ++i) {
+        int depth = colour_zone_depth(colour_classify(&readings[i]));
+        if (depth <= min_depth) continue;
+        float radians = (float)angles[i] * 3.14159265f / 180.0f;
+        x += (float)(depth - min_depth) * cosf(radians);
+        y += (float)(depth - min_depth) * sinf(radians);
+    }
+    int angle = (int)lroundf(atan2f(y, x) * 180.0f / 3.14159265f);
+    result.vector_angle = (angle % 360 + 360) % 360;
+    result.valid = true;
+    return result;
 }

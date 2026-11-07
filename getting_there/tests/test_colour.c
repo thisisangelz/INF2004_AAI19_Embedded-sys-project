@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -149,10 +150,79 @@ static void check_arrival_rules(void)
     assert(colour_sensor_init());
 }
 
+// Simulated mat: radius 35 cm, white edge plus five rings of equal width.
+// Readings use the calibrated means for each surface.
+static colour_reading_t surface_at(double x, double y)
+{
+    static const colour_reading_t by_depth[7] = {
+        {2900, 1000, 922, 800}, {7800, 1000, 1015, 800}, {6450, 1000, 927, 800},
+        {5150, 1000, 785, 800}, {3770, 1000, 628, 800}, {2700, 1000, 475, 800},
+        {1930, 1000, 344, 800},
+    };
+    double band = 35.0 / 6.0, d = hypot(x, y);
+    int depth = d > 35.0 ? 0 : 6 - (int)(d / band);
+    if (depth < 1 && d <= 35.0) depth = 1;
+    return by_depth[depth > 6 ? 6 : depth];
+}
+
+static int angle_error(int a, int b)
+{
+    int e = ((a - b) % 360 + 360) % 360;
+    return e > 180 ? 360 - e : e;
+}
+
+// Robot centre at (x, y) cm facing heading_deg, sensor offset_cm ahead of the
+// wheels. Returns the scan estimate and the true centre direction.
+static colour_scan_result_t simulate_scan(double x, double y, double heading_deg, double offset_cm,
+                                          int *truth)
+{
+    int angles[12];
+    colour_reading_t readings[12];
+    for (int i = 0; i < 12; ++i) {
+        angles[i] = i * 30;
+        double a = (heading_deg + angles[i]) * 3.14159265358979 / 180.0;
+        readings[i] = surface_at(x + offset_cm * cos(a), y + offset_cm * sin(a));
+    }
+    int centre = (int)lround(atan2(-y, -x) * 180.0 / 3.14159265358979 - heading_deg);
+    *truth = (centre % 360 + 360) % 360;
+    return colour_scan_estimate(angles, readings, 12);
+}
+
+static void check_scan_direction(void)
+{
+    static const struct { double x, y, heading, offset; const char *name; } cases[] = {
+        {0, 20, 0, 10, "side-on across ring 2"},
+        {0, -26, 180, 10, "side-on across ring 1, other way"},
+        {26, 0, 0, 10, "facing away on ring 1"},
+        {33, 0, 90, 10, "on the white edge, sensor sweeping onto the floor"},
+        {-12, 9, 45, 8, "ring 3, diagonal"},
+        {0, 20, 0, 6, "side-on across ring 2, sensor 6 cm ahead"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        int truth;
+        colour_scan_result_t est = simulate_scan(cases[i].x, cases[i].y, cases[i].heading,
+                                                 cases[i].offset, &truth);
+        if (!est.valid || angle_error(est.vector_angle, truth) > 30 ||
+            angle_error(est.darkest_angle, truth) > 45) {
+            fprintf(stderr, "%s: valid %d vector %d darkest %d truth %d\n", cases[i].name,
+                    est.valid, est.vector_angle, est.darkest_angle, truth);
+            assert(false);
+        }
+    }
+    // Far from the mat every reading is floor: no direction.
+    int truth;
+    assert(!simulate_scan(150, 0, 0, 10, &truth).valid);
+    // Unknown readings are ignored rather than counted as a depth.
+    int angles[3] = {0, 90, 180};
+    colour_reading_t mixed[3] = {{400, 900, 800, 700}, {2700, 1000, 475, 800}, {5150, 1000, 785, 800}};
+    colour_scan_result_t est = colour_scan_estimate(angles, mixed, 3);
+    assert(est.valid && est.darkest_angle == 90 && est.depth_range == 2);
+}
+
 int main(void)
 {
     check_calibration_data();
     check_arrival_rules();
-    puts("Colour: all three calibration rounds classified, shadows, lighter-ring-first arrival, three-sample agreement, run reset, read-failure fallback and missing sensor passed");
+    check_scan_direction();    puts("Colour: all three calibration rounds classified, shadows, lighter-ring-first arrival, three-sample agreement, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
     return 0;
 }

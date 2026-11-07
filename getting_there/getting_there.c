@@ -506,6 +506,70 @@ static void report_faults(void)
         if (fault_test((fault_t)f)) report_printf("FAULT: %s\n", fault_name((fault_t)f));
 }
 
+#if COLOUR_SCAN_TEST
+#define SCAN_STEPS 12u
+#define SCAN_STEP_DEG 30
+#define SCAN_ROUNDS 2u
+#define SCAN_READS 3u
+_Static_assert(SCAN_STEPS * SCAN_STEP_DEG == 360, "scan covers a full turn");
+
+// Three fresh readings while stopped; keep the median by G/R.
+static bool scan_read(colour_reading_t *out)
+{
+    colour_reading_t r[SCAN_READS];
+    for (unsigned i = 0; i < SCAN_READS; ++i) {
+        if (!colour_sensor_read(&r[i])) return false;
+        for (unsigned j = i; j && colour_gr_x1000(&r[j]) < colour_gr_x1000(&r[j - 1]); --j) {
+            colour_reading_t swap = r[j]; r[j] = r[j - 1]; r[j - 1] = swap;
+        }
+    }
+    *out = r[SCAN_READS / 2];
+    return true;
+}
+
+// Turns on the spot through a full circle, logging the colour under the
+// sensor at each step, then estimates the direction of the mat centre.
+static bool colour_scan_run(void)
+{
+    run_started_ms = now_ms();
+    if (!colour_sensor_available()) {
+        report_printf("COLOUR SCAN FAILED: colour sensor not available\n");
+        return false;
+    }
+    if (!motion_learn_direction()) return false;
+    float origin = motion_heading();
+    report_printf("COLOUR SCAN: %u rounds, %u readings at %d-degree steps from heading %d\n",
+                  SCAN_ROUNDS, SCAN_STEPS, SCAN_STEP_DEG, (int)origin);
+    bool all_valid = true;
+    for (unsigned round = 1; round <= SCAN_ROUNDS; ++round) {
+        int angles[SCAN_STEPS];
+        colour_reading_t readings[SCAN_STEPS];
+        cue_play(CUE_PASS);
+        for (unsigned i = 0; i < SCAN_STEPS; ++i) {
+            if (!run_can_continue()) return false;
+            angles[i] = (int)i * SCAN_STEP_DEG;
+            if (!motion_turn_to_heading(origin + (float)angles[i]) || !motion_pause_ms(200)) return false;
+            if (!scan_read(&readings[i])) {
+                report_printf("COLOUR SCAN FAILED: sensor read error\n");
+                return false;
+            }
+            colour_zone_t zone = colour_classify(&readings[i]);
+            report_printf("COLOUR_SCAN,round=%u,angle=%d,heading=%d,zone=%s,depth=%d,c=%u,r=%u,g=%u,b=%u,gr=%u\n",
+                          round, angles[i], (int)line_normalise_heading(motion_heading()),
+                          colour_zone_name(zone), colour_zone_depth(zone), readings[i].c, readings[i].r,
+                          readings[i].g, readings[i].b, colour_gr_x1000(&readings[i]));
+            if (!report_checkpoint()) { fault_raise(FAULT_REPORT); return false; }
+        }
+        colour_scan_result_t est = colour_scan_estimate(angles, readings, SCAN_STEPS);
+        report_printf("COLOUR_SCAN_RESULT,round=%u,valid=%u,darkest_angle=%d,vector_angle=%d,depth_range=%d\n",
+                      round, est.valid, est.darkest_angle, est.vector_angle, est.depth_range);
+        if (!est.valid) all_valid = false;
+        if (!motion_turn_to_heading(origin)) return false;
+    }
+    return all_valid;
+}
+#endif
+
 static bool wait_start_release(void)
 {
     report_printf("Release GP20 to continue. Waiting at most 10 seconds; GP21 stops startup.\n");
@@ -530,6 +594,9 @@ int main(void)
     cues_init();
     sleep_ms(2000);
     report_printf("Getting there | line-search v16 dip-probes ble-minus58 colour-ring4 cues | AP1 only\n");
+#if COLOUR_SCAN_TEST
+    report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
+#endif
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
     report_printf("Move using Wi-Fi direction; receive payload only after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);
@@ -579,6 +646,20 @@ int main(void)
         if (!ready) report_printf("FAILED: gyro calibration; check IMU wiring and keep the robot still\n");
     }
     bool radio_initialised = false;
+#if COLOUR_SCAN_TEST
+    // Test build: no radio and no approach; scan the colour on the spot.
+    (void)approach_beacon; (void)on_in_range;
+    if (ready && !motion_stop_requested()) {
+        bool scanned = colour_scan_run();
+        motion_stop();
+        if (scanned) completion_sound();
+        else cue_play(CUE_FAULT);
+        report_printf("RESULT: %s\n", scanned ? "COLOUR SCAN COMPLETE" : "COLOUR SCAN FAILED");
+    } else {
+        cue_play(CUE_FAULT);
+        report_printf("RESULT: STARTUP FAILED OR STOPPED\n");
+    }
+#else
     if (ready) {
         report_printf("Starting Wi-Fi/Bluetooth hardware.\n");
         int radio_error = cyw43_arch_init();
@@ -624,6 +705,7 @@ int main(void)
         cue_play(CUE_FAULT);
         report_printf("RESULT: STARTUP FAILED OR STOPPED\n");
     }
+#endif
     motion_stop();
     // Also quiesces any scan/cleanup still pending after a fatal radio failure.
     if (radio_initialised) cyw43_arch_deinit();
