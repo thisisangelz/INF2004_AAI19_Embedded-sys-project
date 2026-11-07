@@ -1,0 +1,89 @@
+========== SAVED RUN ==========
+IMU WHO_AM_I=0x70 | gyro +/- 1000 dps | turns 25% (slow 20%), drive 35%
+IMU I2C: 100000 Hz, 5 ms transaction timeout, 2 stopped recovery attempts
+Getting there | line-search v16 dip-probes ble-minus58 colour-ring4 cues | AP1 only
+TEST BUILD: colour scan on the spot after calibration; no radio, no approach
+Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log
+Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.
+Move using Wi-Fi direction; receive payload only after BLE averages >= -58 dBm
+On the mat: colour RING4 or darker after a lighter ring, then BLE >= -85 dBm is enough
+Waiting for GP20: press to start; GP21 replays the previous run.
+GP20 START: preparing persistent log; motors remain stopped.
+Preparing persistent log: erasing 128 sectors in the reserved 512 KiB region
+Preparing persistent log: 16/128 flash sectors erased
+Preparing persistent log: 32/128 flash sectors erased
+Preparing persistent log: 48/128 flash sectors erased
+Preparing persistent log: 64/128 flash sectors erased
+Preparing persistent log: 80/128 flash sectors erased
+Preparing persistent log: 96/128 flash sectors erased
+Preparing persistent log: 112/128 flash sectors erased
+Preparing persistent log: 128/128 flash sectors erased
+Release GP20 to continue. Waiting at most 10 seconds; GP21 stops startup.
+GP20 released. Persistent log ready.
+COLOUR SENSOR: TCS34725 ID 0x44 ready on GP0/GP1; arrival at RING4 or darker after a lighter mat ring
+Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.
+Keep robot still: calibrating gyro for 2 seconds
+Gyro Z bias calibrated
+Learning gyro direction: 15 degree turn, then return to original heading
+TURN OK: commanded 15 degrees, settled gyro rotation 14 degrees, error +0 degrees, elapsed 551 ms, peak gyro Z 84 dps, corrections 0
+TURN OK: commanded -14 degrees, settled gyro rotation -15 degrees, error +0 degrees, elapsed 514 ms, peak gyro Z 104 dps, corrections 0
+Gyro direction learnt: positive motor turn gives gyro Z sign +1
+COLOUR SCAN: 2 rounds, 12 readings at 30-degree steps from heading 0
+COLOUR_SCAN,round=1,angle=0,heading=359,zone=RING1,depth=2,c=8245,r=2900,g=2551,b=2550,gr=879
+TURN OK: commanded 30 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 681 ms, peak gyro Z 111 dps, corrections 0
+COLOUR_SCAN,round=1,angle=30,heading=29,zone=WHITE,depth=1,c=10991,r=3510,g=3663,b=3433,gr=1043
+TURN OK: commanded 30 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 628 ms, peak gyro Z 111 dps, corrections 0
+COLOUR_SCAN,round=1,angle=60,heading=59,zone=FLOOR,depth=0,c=3864,r=1346,g=1299,b=1083,gr=965
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 616 ms, peak gyro Z 111 dps, corrections 0
+COLOUR_SCAN,round=1,angle=90,heading=90,zone=FLOOR,depth=0,c=3073,r=1110,g=1023,b=841,gr=921
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 610 ms, peak gyro Z 110 dps, corrections 0
+COLOUR_SCAN,round=1,angle=120,heading=120,zone=FLOOR,depth=0,c=3297,r=1176,g=1099,b=915,gr=934
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 604 ms, peak gyro Z 108 dps, corrections 0
+COLOUR_SCAN,round=1,angle=150,heading=149,zone=WHITE,depth=1,c=3652,r=1253,g=1230,b=1041,gr=981
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 609 ms, peak gyro Z 114 dps, corrections 0
+COLOUR_SCAN,round=1,angle=180,heading=180,zone=WHITE,depth=1,c=11236,r=3579,g=3736,b=3532,gr=1043
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 598 ms, peak gyro Z 109 dps, corrections 0
+COLOUR_SCAN,round=1,angle=210,heading=210,zone=RING1,depth=2,c=9761,r=3394,g=3030,b=3048,gr=892
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error -1 degrees, elapsed 616 ms, peak gyro Z 109 dps, corrections 0
+COLOUR_SCAN,round=1,angle=240,heading=240,zone=RING3,depth=4,c=5620,r=2390,g=1519,b=1620,gr=635
+TURN OK: commanded 28 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 598 ms, peak gyro Z 109 dps, corrections 0
+COLOUR_SCAN,round=1,angle=270,heading=269,zone=RING4,depth=5,c=3673,r=1841,g=870,b=943,gr=472
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 610 ms, peak gyro Z 109 dps, corrections 0
+COLOUR_SCAN,round=1,angle=300,heading=299,zone=RING4,depth=5,c=3563,r=1798,g=842,b=908,gr=468
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 622 ms, peak gyro Z 104 dps, corrections 0
+COLOUR_SCAN,round=1,angle=330,heading=329,zone=RING3,depth=4,c=5031,r=2155,g=1358,b=1435,gr=630
+COLOUR_SCAN_RESULT,round=1,valid=1,darkest_angle=300,vector_angle=282,depth_range=5
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 622 ms, peak gyro Z 106 dps, corrections 0
+COLOUR_SCAN,round=2,angle=0,heading=359,zone=RING2,depth=3,c=7588,r=2780,g=2279,b=2317,gr=819
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 640 ms, peak gyro Z 99 dps, corrections 0
+COLOUR_SCAN,round=2,angle=30,heading=29,zone=WHITE,depth=1,c=10891,r=3519,g=3579,b=3412,gr=1017
+TURN OK: commanded 30 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 622 ms, peak gyro Z 106 dps, corrections 0
+COLOUR_SCAN,round=2,angle=60,heading=60,zone=WHITE,depth=1,c=5784,r=1943,g=1945,b=1724,gr=1001
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 604 ms, peak gyro Z 110 dps, corrections 0
+COLOUR_SCAN,round=2,angle=90,heading=89,zone=FLOOR,depth=0,c=3140,r=1127,g=1046,b=862,gr=928
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 604 ms, peak gyro Z 109 dps, corrections 0
+COLOUR_SCAN,round=2,angle=120,heading=120,zone=FLOOR,depth=0,c=3252,r=1151,g=1085,b=904,gr=942
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 598 ms, peak gyro Z 111 dps, corrections 0
+COLOUR_SCAN,round=2,angle=150,heading=150,zone=WHITE,depth=1,c=6174,r=2043,g=2064,b=1879,gr=1010
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 592 ms, peak gyro Z 113 dps, corrections 0
+COLOUR_SCAN,round=2,angle=180,heading=180,zone=WHITE,depth=1,c=11022,r=3567,g=3604,b=3466,gr=1010
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 604 ms, peak gyro Z 107 dps, corrections 0
+COLOUR_SCAN,round=2,angle=210,heading=209,zone=RING2,depth=3,c=8562,r=3138,g=2562,b=2631,gr=816
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 621 ms, peak gyro Z 101 dps, corrections 0
+COLOUR_SCAN,round=2,angle=240,heading=240,zone=RING3,depth=4,c=5617,r=2407,g=1511,b=1612,gr=627
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 592 ms, peak gyro Z 115 dps, corrections 0
+COLOUR_SCAN,round=2,angle=270,heading=270,zone=RING4,depth=5,c=3387,r=1770,g=774,b=844,gr=437
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 610 ms, peak gyro Z 112 dps, corrections 0
+COLOUR_SCAN,round=2,angle=300,heading=299,zone=RING5,depth=6,c=3009,r=1640,g=660,b=714,gr=402
+TURN OK: commanded 29 degrees, settled gyro rotation 29 degrees, error +0 degrees, elapsed 616 ms, peak gyro Z 106 dps, corrections 0
+COLOUR_SCAN,round=2,angle=330,heading=329,zone=RING3,depth=4,c=4605,r=2047,g=1210,b=1283,gr=591
+COLOUR_SCAN_RESULT,round=2,valid=1,darkest_angle=300,vector_angle=286,depth_range=6
+TURN OK: commanded 29 degrees, settled gyro rotation 30 degrees, error +0 degrees, elapsed 622 ms, peak gyro Z 101 dps, corrections 0
+COMPLETION BEEPS: GP22, three rising beeps
+Completion beeps finished; motors stopped
+RESULT: COLOUR SCAN COMPLETE
+FAULT MASK: 0x000
+Run ended. Log survives power-off. Next boot: open serial, press GP21 BEFORE GP20.
+
+[COMPLETE: all recorded run text saved]
+========== END OF SAVED RUN ==========
