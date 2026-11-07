@@ -25,7 +25,7 @@ typedef struct {
     uint16_t c, r, g, b;
 } colour_reading_t;
 
-// Pure helpers, no hardware access.
+// Pure helpers, no hardware access (colour_mat.c).
 colour_zone_t colour_classify(const colour_reading_t *reading);
 const char *colour_zone_name(colour_zone_t zone);
 uint16_t colour_gr_x1000(const colour_reading_t *reading);
@@ -43,6 +43,14 @@ bool colour_arrival_check(void);
 // at least one reading. False before the first check, after a failed read,
 // or without a sensor. Navigation uses it to take smaller steps on the mat.
 bool colour_on_mat(void);
+// Mat depth (see colour_zone_depth) of the latest check's last reading;
+// -1 before a check, after a failed read or without a sensor.
+int colour_last_depth(void);
+// Records that a lighter mat surface was seen outside an arrival check, for
+// example during a colour scan, so a robot started on ring 4 can arrive.
+void colour_note_lighter_mat(void);
+// White edge or rings 1-3: the surfaces that must be seen before arrival.
+bool colour_lighter_mat_zone(colour_zone_t zone);
 // One fresh reading (about 115 ms). False on an I2C error or missing sensor.
 bool colour_sensor_read(colour_reading_t *reading);
 
@@ -59,6 +67,7 @@ typedef struct {
     int darkest_angle;  // angle of the deepest reading (lowest G/R on ties)
     int vector_angle;   // depth-weighted mean direction, 0..359
     int depth_range;    // deepest minus shallowest depth seen
+    int max_depth;      // deepest depth seen; -1 if every reading was unknown
 } colour_scan_result_t;
 colour_scan_result_t colour_scan_estimate(const int *angles, const colour_reading_t *readings,
                                           unsigned count);

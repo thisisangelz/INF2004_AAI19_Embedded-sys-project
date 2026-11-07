@@ -8,7 +8,7 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 
 | Board | File | What it is |
 |---|---|---|
-| Robot | `build/getting_there.uf2` | Current robot firmware: v18 navigation, colour-ring arrival and buzzer sounds. Banner `line-search v18 steps500-mat250 back-search ble-minus58 colour-ring4 cues` |
+| Robot | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer and buzzer sounds. Banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate ble-minus58 colour-ring4 cues` |
 | Robot (test) | `build/getting_there_colour_scan.uf2` | Colour scan test only: turns on the spot, no Wi-Fi, BLE or driving |
 | Robot (tool) | `../tcs34725_calib/build/tcs34725_calib.uf2` | Colour sensor calibration tool |
 | AP1-AP3 | `../picow_access_point*_powerbank/build/picow_access_point*_powerbank.uf2` | Current beacon firmware with buzzer sounds |
@@ -47,9 +47,37 @@ Why:
   stop (white edge or any ring) and is logged as `STEP: colour sensor sees the
   mat; forward blocks now 250 ms`.
 
+### Colour gate and mat steering
+
+The [side-on run](../docs/runs/2026-11-07-side-on-mat-ring1-transfer.md)
+drove along the rings and transferred on ring 1, because BLE alone reached
+-58 dBm there. Two further changes:
+
+- **Colour gate.** With a working colour sensor the transfer happens only
+  after colour arrival (ring 4 or darker after a lighter ring), and BLE then
+  only needs -85 dBm. Until then each stop logs `ARRIVAL: not on RING4 or
+  darker yet; BLE transfer waits for the colour mat` and skips the 5 s BLE
+  check, so floor stops take about 8 s instead of 13 s. A missing sensor, or
+  one disabled after three failed reads, brings back the -58 dBm BLE gate.
+- **Mat steering.** As soon as a stop sees the mat (white edge or any ring),
+  or the robot starts on it, colour steering replaces the Wi-Fi line
+  (`FOLLOW: colour sensor sees the mat ...; colour steering takes over`). The
+  robot does the colour scan from the scan test (12 stops of 30 degrees,
+  `COLOUR_SCAN` lines), turns to the estimated centre direction (`MAT: scan N
+  points ...`), then takes up to four 250 ms steps (`MAT_STEP` lines), checking
+  the colour at each stop. It scans again if the surface gets lighter. If a
+  scan sees no ring, a read fails, or six scans have been used, the Wi-Fi
+  search resumes. On ring 4 with AP1 failing even the -85 dBm gate it never
+  drives on into the beacon box: three stationary retries, then a payload fault.
+  A scan that sees a lighter ring also counts for arrival, so a robot started
+  on ring 4 can still arrive.
+- **Floor vs ring 1.** Under the brighter 7 November light the floor read as
+  ring 1. White edge and ring 1 now also need blue/red >= 842; see the
+  [calibration update](../docs/calibration/2026-11-06-tcs34725-mat.md).
+
 Unchanged: the decline and recovery rules, return travel, the 2400 ms trial
-length (now five stops), the 60 s powered-travel and 15-minute limits, BLE
-gates and colour arrival. Host checks keep v16's step sizes for the recorded-run
+length (now five stops), the 60 s powered-travel and 15-minute limits and the
+arrival rule itself. Host checks keep v16's step sizes for the recorded-run
 regressions and add v18 cases: step sizes, a 1.1 s weak patch that v16 reverses
 on and v18 drives through, and all four model target directions (including
 directly behind) at both step sizes.

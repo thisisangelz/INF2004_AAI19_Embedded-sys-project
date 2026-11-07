@@ -188,22 +188,62 @@ static unsigned colour_checks, colour_arrive_at_check, colour_inits, colour_rese
 static int close_threshold = AP1_CLOSE_RSSI_DBM;
 static unsigned strict_attempts, loose_attempts;
 static bool complete_on_loose;
+// colour_present: a working sensor, so only colour arrival allows a transfer.
+// Off by default: the v16 regressions use the BLE-only gate, as before.
+static bool colour_present;
+static bool mat_stub, model_lighter_seen;
+static unsigned mat_from_check, colour_reads;
+static int model_last_depth;
 bool colour_sensor_init(void) { ++colour_inits; return true; }
-bool colour_sensor_available(void) { return true; }
-void colour_arrival_reset(void) { ++colour_resets; }
+bool colour_sensor_available(void) { return colour_present; }
+void colour_arrival_reset(void) { ++colour_resets; model_lighter_seen = false; model_last_depth = -1; }
+void colour_note_lighter_mat(void) { model_lighter_seen = true; }
+bool colour_lighter_mat_zone(colour_zone_t zone) { return zone >= COLOUR_WHITE && zone < COLOUR_ARRIVAL_ZONE; }
+
+// Model mat: radius 0.35 m around AP1, white edge plus five equal rings, the
+// sensor 0.08 m ahead of the wheel axis. Readings are calibrated means.
+#define MODEL_MAT_RADIUS 0.35
+#define MODEL_SENSOR_AHEAD 0.08
+static int model_depth(void)
+{
+    double radians = current_heading * 3.141592653589793 / 180.0;
+    double d = hypot(robot_x + MODEL_SENSOR_AHEAD * cos(radians) - beacon_x,
+                     robot_y + MODEL_SENSOR_AHEAD * sin(radians) - beacon_y);
+    if (d > MODEL_MAT_RADIUS) return 0;
+    int depth = 6 - (int)(d / (MODEL_MAT_RADIUS / 6.0));
+    return depth < 1 ? 1 : depth > 6 ? 6 : depth;
+}
+bool colour_sensor_read(colour_reading_t *reading)
+{
+    static const colour_reading_t by_depth[7] = {
+        {2900, 1000, 922, 760}, {7800, 1000, 1015, 970}, {6450, 1000, 927, 910},
+        {5150, 1000, 785, 800}, {3770, 1000, 628, 800}, {2700, 1000, 475, 800},
+        {1930, 1000, 344, 800},
+    };
+    assert(!motors_on);
+    ++colour_reads;
+    *reading = by_depth[model ? model_depth() : 0];
+    return colour_present;
+}
+// Scripted arrival by check number (0 = never), or the model's mat rule:
+// ring 4 or darker after a lighter mat surface at an earlier check.
 bool colour_arrival_check(void)
 {
     assert(!motors_on && !scan_active);
     ++colour_checks;
-    return colour_arrive_at_check && colour_checks >= colour_arrive_at_check;
+    if (!model) return colour_arrive_at_check && colour_checks >= colour_arrive_at_check;
+    if (!colour_present) return false;
+    int depth = model_depth();
+    bool seen_before = model_lighter_seen;
+    if (depth >= 1 && depth <= 4) model_lighter_seen = true;
+    model_last_depth = depth;
+    return depth >= 5 && seen_before;
 }
-const char *colour_zone_name(colour_zone_t zone) { return zone == COLOUR_RING4 ? "RING4" : "OTHER"; }
-// On the mat: scripted, or in the model within the mat's 0.35 m radius.
-static bool mat_stub;
-static unsigned mat_from_check;
+int colour_last_depth(void) { return model ? model_last_depth : -1; }
+// On the mat: scripted, or in the model the last check saw the mat.
 bool colour_on_mat(void)
 {
-    if (model) return hypot(robot_x - beacon_x, robot_y - beacon_y) < 0.35;
+    if (model) return colour_present && model_last_depth >= 1;
     return mat_stub || (mat_from_check && colour_checks >= mat_from_check);
 }
 void payload_client_set_close_threshold(int dbm) { assert(!motors_on); close_threshold = dbm; }
@@ -211,11 +251,13 @@ int payload_client_close_threshold(void) { return close_threshold; }
 void payload_client_init(void) { }bool payload_client_ready(void) { return !ui_bt_failure && !ui_bt_timeout; }
 bool payload_client_start_failed(void) { return ui_bt_failure; }
 const uint8_t *payload_client_data(uint16_t *length) { *length = 0; return NULL; }
+static bool ble_never; // AP1 never passes any BLE gate
 static payload_result_t scripted_attempt(void)
 {
     assert(!motors_on && !scan_active);
     sleep_ms(ble_delay_ms);
     ++ble_calls;
+    if (ble_never) return PAYLOAD_NOT_CLOSE;
     if (close_threshold == COLOUR_ARRIVAL_BLE_DBM) ++loose_attempts; else ++strict_attempts;
     if (complete_on_loose && close_threshold == COLOUR_ARRIVAL_BLE_DBM) return PAYLOAD_COMPLETE;
     if (fail_at_ble_call == ble_calls) return PAYLOAD_FATAL;
@@ -319,6 +361,8 @@ static void reset(void)
     // Recorded-run and v16 regression checks keep their 250/100 ms steps;
     // shipped_steps() selects the robot's v18 sizes.
     floor_block_ms = 250; dip_probe_ms = 100; step_on_mat = mat_stub = false; mat_from_check = 0;
+    colour_present = model_lighter_seen = colour_arrived = false; colour_reads = mat_scans_used = 0;
+    model_last_depth = -1; ble_never = false;
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
 }
@@ -981,19 +1025,19 @@ static void print_model_failure(unsigned target)
 
 static void check_v18_steps(void)
 {
-    // Floor: 500 ms steps. The third stop's colour check sees the mat, so the
-    // third step and later ones are 250 ms; the change is logged once.
-    reset(); shipped_steps(); mat_from_check=3; complete_after_step=5;
-    assert(approach_beacon() && forwards_count==5 && !backwards_count);
+    // Floor: 500 ms steps. The second stop's colour check sees the mat, so the
+    // third step and later ones are 250 ms; the change is logged once. Colour
+    // steering is spent here, so the Wi-Fi line keeps driving on the mat.
+    follow_result_t followed;
+    reset(); shipped_steps(); mat_scans_used=MAT_MAX_SCANS; mat_from_check=2; complete_after_step=5;
+    assert(follow_direction(0,0,&followed)==PAYLOAD_COMPLETE && forwards_count==5 && !backwards_count);
     assert(moves[0].ms==500 && moves[1].ms==500 && moves[2].ms==250 && moves[4].ms==250);
     assert(translation_ms==1750 && strstr(log_text,"STEP: colour sensor sees the mat; forward blocks now 250 ms"));
     assert(strstr(log_text,"500 ms on the floor, 250 ms on the mat"));
     // Leaving the mat again restores the floor step.
-    reset(); shipped_steps(); mat_stub=true; complete_after_step=3;
-    assert(approach_beacon() && moves[0].ms==250);
-    mat_stub=false; assert(forward_block_ms()==500 && strstr(log_text,"no longer sees the mat"));
+    mat_from_check=0; assert(forward_block_ms()==500 && strstr(log_text,"no longer sees the mat"));
     // A flat side trial still covers 2400 ms, now in five stops instead of ten.
-    reset(); shipped_steps(); follow_result_t followed;
+    reset(); shipped_steps();
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
     assert(followed.end==FOLLOW_NO_GAIN && forwards_count==5 && moves[4].ms==400 && translation_ms==2400);
     // Probes are 250 ms each, so the dip check looks 0.5 s past the third weak position.
@@ -1022,12 +1066,67 @@ static void check_v18_steps(void)
     }
 }
 
+static int sensor_depth_now(void) { return model_depth(); }
+
+static void check_mat_steering(void)
+{
+    // Colour gate: with a working sensor, BLE is not even tried before
+    // arrival. In the 7 November side-on run v16 transferred on ring 1
+    // because BLE alone read -58 dBm; here BLE would succeed from step 1.
+    reset(); colour_present=true; complete_after_step=1; colour_arrive_at_check=5; complete_on_loose=true;
+    assert(approach_beacon() && forwards_count==4 && ble_calls==1 && !strict_attempts && loose_attempts==1);
+    assert(strstr(log_text,"BLE transfer waits for the colour mat"));
+    // A missing sensor keeps the strict BLE gate.
+    reset(); complete_after_step=1;
+    assert(approach_beacon() && forwards_count==1 && strict_attempts==2);
+
+    // Started on ring 1 driving along the ring, like the side-on run: scan,
+    // turn toward the centre and arrive at ring 4 with no Wi-Fi line at all.
+    // Then started on ring 2 facing straight out, and on the white edge.
+    static const struct { double x, y, heading; const char *name; } starts[] = {
+        {0.0, -0.26, 0, "ring 1, along the ring"},
+        {0.20, 0.0, 0, "ring 2, facing out"},
+        {-0.30, 0.10, 90, "white edge, side-on"},
+    };
+    for (unsigned i=0;i<sizeof(starts)/sizeof(*starts);++i) {
+        reset(); shipped_steps(); model=true; colour_present=true;
+        robot_x=starts[i].x; robot_y=starts[i].y; current_heading=starts[i].heading;
+        bool arrived=approach_beacon();
+        if (!arrived || sensor_depth_now()<5 || strict_attempts || strstr(log_text,"LINE_POINT,line=1,point=1")) {
+            fprintf(stderr,"Mat start '%s': arrived %d, sensor depth %d, robot (%.2f, %.2f)\n",
+                    starts[i].name,arrived,sensor_depth_now(),robot_x,robot_y);
+            for (char *row=strtok(log_text,"\n");row;row=strtok(NULL,"\n"))
+                if (!strncmp(row,"MAT",3) || !strncmp(row,"COLOUR_SCAN_RESULT",18) || !strncmp(row,"FAILED",6))
+                    fprintf(stderr,"%s\n",row);
+            assert(false);
+        }
+        assert(!strict_attempts && loose_attempts==1 && strstr(log_text,"MAT: scan 1 points"));
+        // One scan was enough from each start (ring 1 along the ring: 90
+        // degrees left; ring 2 facing out: 180; white edge: within 4 degrees
+        // of the true centre direction).
+        assert(mat_scans_used==1 && move_count<=2 && !backwards_count);
+        for (unsigned m=0;m<move_count;++m) assert(moves[m].forwards && moves[m].ms==250);
+    }
+
+    // On ring 4 but AP1 never passes even the loose gate: stop there with a
+    // payload fault rather than driving on into the beacon box.
+    reset(); shipped_steps(); model=true; colour_present=true; ble_never=true; robot_y=-0.26;
+    assert(!approach_beacon() && fault_test(FAULT_PAYLOAD) && sensor_depth_now()>=5);
+    assert(strstr(log_text,"AP1 BLE never came in range") && strstr(log_text,"stationary retry 3/3"));
+
+    // The colour reads floor all round (no ring pattern): give up colour
+    // steering after its scan budget and never transfer without arrival.
+    reset(); shipped_steps(); colour_present=true; mat_stub=true; sim_time=0;
+    assert(!approach_beacon() && mat_scans_used==MAT_MAX_SCANS && !ble_calls);
+    assert(strstr(log_text,"found no ring to steer toward") && strstr(log_text,"resuming the Wi-Fi line search"));
+}
+
 int main(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
-    check_v18_steps();
+    check_v18_steps(); check_mat_steering();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     tone_stops=0;
     uint64_t before=sim_time; completion_sound();
@@ -1040,16 +1139,19 @@ int main(void)
     // first line lets a side target establish a decline and then be reached
     // by a perpendicular; a rear target (robot facing away) is now reached
     // by the trial straight back, which v16 never tried. Both step sizes.
+    // Third pass: v18 steps with the colour sensor, so the last part is colour
+    // steering and only ring 4 allows the transfer.
     const double targets[4][2]={{2,0},{0,2},{-2,0},{0,-2}};
-    for (unsigned shipped=0;shipped<2;++shipped)
+    for (unsigned shipped=0;shipped<3;++shipped)
     for (unsigned i=0;i<4;++i) {
         reset(); if (shipped) shipped_steps();
-        model=true; beacon_x=targets[i][0]; beacon_y=targets[i][1];
+        model=true; beacon_x=targets[i][0]; beacon_y=targets[i][1]; colour_present=shipped==2;
         bool arrived=approach_beacon();
         if (!arrived) print_model_failure(i);
         assert(arrived && hypot(robot_x-beacon_x,robot_y-beacon_y)<0.25);
         assert(translation_ms<=LINE_TRANSLATION_MS);
         if (i==2) assert(strstr(log_text,"straight back"));
+        if (colour_present) assert(strstr(log_text,"colour steering takes over") && !strict_attempts && model_depth()>=5);
     }
     for (int fail=0;fail<2;++fail) {
         reset(); ui_test=true; ui_stage=1; complete_first=true; ui_log_failure=fail;
@@ -1063,6 +1165,6 @@ int main(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, v18 500/250 ms steps, weak patch, all four model targets at both step sizes, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }

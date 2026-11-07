@@ -17,10 +17,12 @@ three positions reduces the effect of an isolated strong point. After three weak
 positions, it rechecks while stopped, then allows up to two 250 ms forward probes.
 Recovery resumes the same heading. Persistent decline returns only to the retained
 best point, then tries both perpendicular directions and then straight back.
-An inconsistent return no longer stops the run; three unsuccessful trials do. See
+An inconsistent return no longer stops the run; three unsuccessful trials do.
+Once the colour sensor sees the mat, colour scans steer the robot to ring 4,
+and with a working sensor the payload transfers only there. See
 [the robot instructions](getting_there/README.md) for the v18 changes, limits,
 sampling settings and the hardware test procedure. Flash
-`getting_there/build/getting_there.uf2` and confirm `line-search v18 steps500-mat250 back-search`.
+`getting_there/build/getting_there.uf2` and confirm `line-search v18 steps500-mat250 back-search mat-steer colour-gate`.
 Flat readings no longer end the initial forward trial or an improving line.
 The 60-second combined powered travel budget, reserved return travel, 15-minute
 run limit, GP21 STOP and fault checks still apply. BLE must still pass the

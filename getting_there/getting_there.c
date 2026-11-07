@@ -55,17 +55,32 @@ static void on_in_range(void)
     cue_play(CUE_IN_RANGE);
 }
 
+// Set when the latest check_payload passed colour arrival (ring 4 or darker).
+static bool colour_arrived;
+
 static payload_result_t check_payload(void)
 {
     bool was_close = false;
+    colour_arrived = false;
     for (int attempt = 0; attempt < MAX_PAYLOAD_ATTEMPTS; ++attempt) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
         if (!save_checkpoint()) return PAYLOAD_FATAL;
         if (!was_close) {
             // Motors are stopped here. On the mat, the colour sensor decides
-            // arrival and BLE only has to show AP1 is in range; elsewhere the
-            // strict BLE proximity gate applies as before.
+            // arrival and BLE only has to show AP1 is in range.
             bool on_mat = colour_arrival_check();
+            colour_arrived = on_mat;
+            // With a working colour sensor, only the mat allows a transfer:
+            // the -58 dBm BLE gate alone passed on ring 1 when the robot
+            // drove along the rings (7 November side-on run). This also saves
+            // the 5 s BLE check at every stop before the mat. Without the
+            // sensor (missing, or disabled after read failures) the strict
+            // BLE gate below still applies.
+            if (!on_mat && colour_sensor_available()) {
+                report_printf("ARRIVAL: not on %s or darker yet; BLE transfer waits for the colour mat\n",
+                              colour_zone_name(COLOUR_ARRIVAL_ZONE));
+                return PAYLOAD_NOT_CLOSE;
+            }
             payload_client_set_close_threshold(on_mat ? COLOUR_ARRIVAL_BLE_DBM : AP1_CLOSE_RSSI_DBM);
             if (on_mat)
                 report_printf("ARRIVAL: colour sensor confirms %s or darker; BLE only needs AP1 >= %d dBm\n",
@@ -207,7 +222,8 @@ static bool record_point(float heading, uint32_t powered, line_pair_t readings)
     return save_checkpoint();
 }
 
-typedef enum { FOLLOW_NO_GAIN, FOLLOW_DECLINE } follow_end_t;
+// FOLLOW_MAT: a stop saw the mat, so colour steering takes over from Wi-Fi.
+typedef enum { FOLLOW_NO_GAIN, FOLLOW_DECLINE, FOLLOW_MAT } follow_end_t;
 typedef struct {
     float heading;
     bool progress, consistent;
@@ -242,6 +258,151 @@ static uint32_t forward_block_ms(void)
                       on_mat ? LINE_MAT_BLOCK_MS : (unsigned)floor_block_ms);
     }
     return on_mat ? LINE_MAT_BLOCK_MS : floor_block_ms;
+}
+
+// ---- Colour scan on the spot (mat steering and the colour_scan test build) ----
+#define SCAN_STEPS 12u
+#define SCAN_STEP_DEG 30
+#define SCAN_READS 3u
+_Static_assert(SCAN_STEPS * SCAN_STEP_DEG == 360, "scan covers a full turn");
+typedef enum { SCAN_DONE, SCAN_READ_FAILED, SCAN_STOPPED } scan_status_t;
+
+// Three fresh readings while stopped; keep the median by G/R.
+static bool scan_read(colour_reading_t *out)
+{
+    colour_reading_t r[SCAN_READS];
+    for (unsigned i = 0; i < SCAN_READS; ++i) {
+        if (!colour_sensor_read(&r[i])) return false;
+        for (unsigned j = i; j && colour_gr_x1000(&r[j]) < colour_gr_x1000(&r[j - 1]); --j) {
+            colour_reading_t swap = r[j]; r[j] = r[j - 1]; r[j - 1] = swap;
+        }
+    }
+    *out = r[SCAN_READS / 2];
+    return true;
+}
+
+// Turns on the spot through a full circle from origin, logging the colour
+// under the sensor (which sits ahead of the wheels) at each 30-degree step,
+// then estimates the direction of the mat centre. Ends facing origin + 330.
+static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_result_t *est,
+                                      bool *saw_lighter)
+{
+    int angles[SCAN_STEPS];
+    colour_reading_t readings[SCAN_STEPS];
+    *saw_lighter = false;
+    *est = (colour_scan_result_t){.valid = false, .max_depth = -1};
+    for (unsigned i = 0; i < SCAN_STEPS; ++i) {
+        if (!run_can_continue()) return SCAN_STOPPED;
+        angles[i] = (int)i * SCAN_STEP_DEG;
+        if (!motion_turn_to_heading(origin + (float)angles[i]) || !motion_pause_ms(200)) return SCAN_STOPPED;
+        if (!scan_read(&readings[i])) {
+            report_printf("COLOUR SCAN: sensor read error at %d degrees\n", angles[i]);
+            return SCAN_READ_FAILED;
+        }
+        colour_zone_t zone = colour_classify(&readings[i]);
+        if (colour_lighter_mat_zone(zone)) *saw_lighter = true;
+        report_printf("COLOUR_SCAN,round=%u,angle=%d,heading=%d,zone=%s,depth=%d,c=%u,r=%u,g=%u,b=%u,gr=%u\n",
+                      round, angles[i], (int)line_normalise_heading(motion_heading()),
+                      colour_zone_name(zone), colour_zone_depth(zone), readings[i].c, readings[i].r,
+                      readings[i].g, readings[i].b, colour_gr_x1000(&readings[i]));
+        if (!report_checkpoint()) { fault_raise(FAULT_REPORT); return SCAN_STOPPED; }
+    }
+    *est = colour_scan_estimate(angles, readings, SCAN_STEPS);
+    report_printf("COLOUR_SCAN_RESULT,round=%u,valid=%u,darkest_angle=%d,vector_angle=%d,depth_range=%d,max_depth=%d\n",
+                  round, est->valid, est->darkest_angle, est->vector_angle, est->depth_range, est->max_depth);
+    return SCAN_DONE;
+}
+
+// ---- Mat steering ----
+// The Wi-Fi gradient is too flat near AP1 to find the centre, and a robot
+// entering the mat side-on drives along the rings (7 November). On the mat
+// the colour scan points at the centre instead (four scan tests, 7 November:
+// the same darkest angle in both rounds of every run). After each scan the
+// robot turns that way and takes small steps, checking the colour at every
+// stop, until arrival or until the surface gets lighter, then scans again.
+#define MAT_MAX_SCANS 6u          // per run; then the Wi-Fi search resumes
+#define MAT_STEPS_PER_SCAN 4u     // small steps before checking the direction again
+#define MAT_ARRIVED_RETRIES 3u    // stationary BLE retries when on ring 4 but AP1 not in range
+static unsigned mat_scans_used;
+
+static bool mat_steering_ready(void)
+{
+    return colour_on_mat() && mat_scans_used < MAT_MAX_SCANS;
+}
+
+// Ring 4 or darker but AP1 failed even the loose BLE gate: never drive on
+// into the beacon box. Retry while stopped, then stop the run.
+static payload_result_t mat_wait_on_arrival(void)
+{
+    for (unsigned retry = 1; retry <= MAT_ARRIVED_RETRIES; ++retry) {
+        report_printf("MAT: on %s or darker but AP1 BLE not in range; stationary retry %u/%u\n",
+                      colour_zone_name(COLOUR_ARRIVAL_ZONE), retry, MAT_ARRIVED_RETRIES);
+        if (!motion_pause_ms(1000)) return PAYLOAD_FATAL;
+        payload_result_t result = check_payload();
+        if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (!colour_arrived) return PAYLOAD_NOT_CLOSE; // reading changed: keep steering
+    }
+    fault_raise(FAULT_PAYLOAD);
+    report_printf("FAILED: on the mat centre but AP1 BLE never came in range; no further movement\n");
+    return PAYLOAD_FATAL;
+}
+
+// Motors stopped, latest colour check on the mat but not arrived. Returns
+// COMPLETE or FATAL, or NOT_CLOSE when the mat is lost or the scans run out,
+// so the caller resumes the Wi-Fi search.
+static payload_result_t mat_approach(void)
+{
+    report_printf("MAT: colour sensor sees the mat; steering by colour scans with %u ms steps\n",
+                  LINE_MAT_BLOCK_MS);
+    cue_play(CUE_PASS);
+    while (mat_scans_used < MAT_MAX_SCANS) {
+        if (!run_can_continue()) return PAYLOAD_FATAL;
+        unsigned scan = ++mat_scans_used;
+        float origin = motion_heading();
+        colour_scan_result_t est;
+        bool saw_lighter;
+        scan_status_t status = colour_scan_turn(origin, scan, &est, &saw_lighter);
+        if (status == SCAN_STOPPED) return PAYLOAD_FATAL;
+        if (status == SCAN_READ_FAILED) {
+            report_printf("MAT: scan %u could not read the colour sensor; resuming the Wi-Fi search\n", scan);
+            return PAYLOAD_NOT_CLOSE;
+        }
+        // The scan saw the ring pattern, so a robot started on ring 4 can arrive.
+        if (saw_lighter) colour_note_lighter_mat();
+        if (!est.valid || est.max_depth < colour_zone_depth(COLOUR_RING1)) {
+            report_printf("MAT: scan %u found no ring to steer toward; resuming the Wi-Fi search\n", scan);
+            return PAYLOAD_NOT_CLOSE;
+        }
+        float heading = line_normalise_heading(origin + (float)est.vector_angle);
+        report_printf("MAT: scan %u points %d degrees from its start, heading %d\n",
+                      scan, est.vector_angle, (int)heading);
+        if (!motion_turn_to_heading(heading)) return PAYLOAD_FATAL;
+        // The sensor may already be over ring 4 after turning.
+        payload_result_t result = check_payload();
+        if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (colour_arrived) {
+            result = mat_wait_on_arrival();
+            if (result != PAYLOAD_NOT_CLOSE) return result;
+        }
+        int previous = colour_last_depth();
+        for (unsigned step = 1; step <= MAT_STEPS_PER_SCAN; ++step) {
+            uint32_t actual;
+            result = translate_block(true, LINE_MAT_BLOCK_MS, heading, 0, 0, false, &actual);
+            if (result != PAYLOAD_NOT_CLOSE) return result;
+            int depth = colour_last_depth();
+            report_printf("MAT_STEP,scan=%u,step=%u,heading=%d,depth=%d,previous=%d\n",
+                          scan, step, (int)heading, depth, previous);
+            if (colour_arrived) {
+                result = mat_wait_on_arrival();
+                if (result != PAYLOAD_NOT_CLOSE) return result;
+            }
+            // Lighter (or unreadable): off the line to the centre, so scan again.
+            if (depth < previous) break;
+            previous = depth;
+        }
+    }
+    report_printf("MAT: %u colour scans used without arrival; resuming the Wi-Fi search\n", MAT_MAX_SCANS);
+    return PAYLOAD_NOT_CLOSE;
 }
 
 static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_position,
@@ -321,6 +482,12 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
         position += actual;
         followed->position = position;
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (mat_steering_ready()) {
+            followed->end = FOLLOW_MAT;
+            report_printf("FOLLOW: colour sensor sees the mat at %lu powered ms; colour steering takes over\n",
+                          (unsigned long)position);
+            return PAYLOAD_NOT_CLOSE;
+        }
         wifi_sampler_set_position(heading, position, true);
         line_pair_t current;
         result = measure_pair(&current);
@@ -441,7 +608,7 @@ static payload_result_t check_directions(float origin, follow_result_t *followed
         float heading = line_normalise_heading(origin + offsets[i]);
         payload_result_t result = follow_direction(heading, LINE_DIRECTION_TEST_MS, followed);
         if (result != PAYLOAD_NOT_CLOSE) return result;
-        if (followed->progress) {
+        if (followed->progress || followed->end == FOLLOW_MAT) {
             *found = true;
             return PAYLOAD_NOT_CLOSE;
         }
@@ -469,6 +636,7 @@ static bool approach_beacon(void)
     wifi_sampler_init(run_can_continue);
     colour_arrival_reset();
     step_on_mat = false;
+    mat_scans_used = 0;
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -476,12 +644,26 @@ static bool approach_beacon(void)
     result = wait_for_wifi(&initial);
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL || !motion_learn_direction()) return false;
-    follow_result_t followed;
-    report_printf("APPROACH: follow current heading; after a confirmed decline return to best, then try both perpendiculars and straight back\n");
-    result = follow_direction(motion_heading(), 0, &followed);
-    if (result == PAYLOAD_COMPLETE) return true;
-    if (result == PAYLOAD_FATAL) return false;
+    follow_result_t followed = {.end = FOLLOW_MAT};
+    report_printf("APPROACH: follow current heading; after a confirmed decline return to best, then try both perpendiculars and straight back; on the mat, steer by colour\n");
+    // Started on the mat: colour steering first, without any Wi-Fi line.
+    if (!mat_steering_ready()) {
+        result = follow_direction(motion_heading(), 0, &followed);
+        if (result == PAYLOAD_COMPLETE) return true;
+        if (result == PAYLOAD_FATAL) return false;
+    }
     while (run_can_continue()) {
+        if (followed.end == FOLLOW_MAT) {
+            result = mat_approach();
+            if (result == PAYLOAD_COMPLETE) return true;
+            if (result == PAYLOAD_FATAL) return false;
+            report_printf("APPROACH: resuming the Wi-Fi line search at heading %d\n",
+                          (int)line_normalise_heading(motion_heading()));
+            result = follow_direction(motion_heading(), 0, &followed);
+            if (result == PAYLOAD_COMPLETE) return true;
+            if (result == PAYLOAD_FATAL) return false;
+            continue;
+        }
         if (followed.end != FOLLOW_DECLINE) {
             fault_raise(FAULT_NO_DIRECTION);
             report_printf("FAILED: current heading ended without a confirmed decline; no further direction search\n");
@@ -528,28 +710,10 @@ static void report_faults(void)
 }
 
 #if COLOUR_SCAN_TEST
-#define SCAN_STEPS 12u
-#define SCAN_STEP_DEG 30
 #define SCAN_ROUNDS 2u
-#define SCAN_READS 3u
-_Static_assert(SCAN_STEPS * SCAN_STEP_DEG == 360, "scan covers a full turn");
 
-// Three fresh readings while stopped; keep the median by G/R.
-static bool scan_read(colour_reading_t *out)
-{
-    colour_reading_t r[SCAN_READS];
-    for (unsigned i = 0; i < SCAN_READS; ++i) {
-        if (!colour_sensor_read(&r[i])) return false;
-        for (unsigned j = i; j && colour_gr_x1000(&r[j]) < colour_gr_x1000(&r[j - 1]); --j) {
-            colour_reading_t swap = r[j]; r[j] = r[j - 1]; r[j - 1] = swap;
-        }
-    }
-    *out = r[SCAN_READS / 2];
-    return true;
-}
-
-// Turns on the spot through a full circle, logging the colour under the
-// sensor at each step, then estimates the direction of the mat centre.
+// Two full turns on the spot, logging the colour under the sensor at each
+// step and the estimated direction of the mat centre.
 static bool colour_scan_run(void)
 {
     run_started_ms = now_ms();
@@ -563,27 +727,12 @@ static bool colour_scan_run(void)
                   SCAN_ROUNDS, SCAN_STEPS, SCAN_STEP_DEG, (int)origin);
     bool all_valid = true;
     for (unsigned round = 1; round <= SCAN_ROUNDS; ++round) {
-        int angles[SCAN_STEPS];
-        colour_reading_t readings[SCAN_STEPS];
         cue_play(CUE_PASS);
-        for (unsigned i = 0; i < SCAN_STEPS; ++i) {
-            if (!run_can_continue()) return false;
-            angles[i] = (int)i * SCAN_STEP_DEG;
-            if (!motion_turn_to_heading(origin + (float)angles[i]) || !motion_pause_ms(200)) return false;
-            if (!scan_read(&readings[i])) {
-                report_printf("COLOUR SCAN FAILED: sensor read error\n");
-                return false;
-            }
-            colour_zone_t zone = colour_classify(&readings[i]);
-            report_printf("COLOUR_SCAN,round=%u,angle=%d,heading=%d,zone=%s,depth=%d,c=%u,r=%u,g=%u,b=%u,gr=%u\n",
-                          round, angles[i], (int)line_normalise_heading(motion_heading()),
-                          colour_zone_name(zone), colour_zone_depth(zone), readings[i].c, readings[i].r,
-                          readings[i].g, readings[i].b, colour_gr_x1000(&readings[i]));
-            if (!report_checkpoint()) { fault_raise(FAULT_REPORT); return false; }
-        }
-        colour_scan_result_t est = colour_scan_estimate(angles, readings, SCAN_STEPS);
-        report_printf("COLOUR_SCAN_RESULT,round=%u,valid=%u,darkest_angle=%d,vector_angle=%d,depth_range=%d\n",
-                      round, est.valid, est.darkest_angle, est.vector_angle, est.depth_range);
+        colour_scan_result_t est;
+        bool saw_lighter;
+        scan_status_t status = colour_scan_turn(origin, round, &est, &saw_lighter);
+        if (status == SCAN_READ_FAILED) report_printf("COLOUR SCAN FAILED: sensor read error\n");
+        if (status != SCAN_DONE) return false;
         if (!est.valid) all_valid = false;
         if (!motion_turn_to_heading(origin)) return false;
     }
@@ -614,15 +763,16 @@ int main(void)
     bool ready = motion_init();
     cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v18 steps500-mat250 back-search ble-minus58 colour-ring4 cues | AP1 only\n");
+    report_printf("Getting there | line-search v18 steps500-mat250 back-search mat-steer colour-gate ble-minus58 colour-ring4 cues | AP1 only\n");
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
 #endif
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
-    report_printf("Move using Wi-Fi direction; receive payload only after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);
-    report_printf("On the mat: colour %s or darker after a lighter ring, then BLE >= %d dBm is enough\n",
+    report_printf("Move using Wi-Fi direction; on the mat, steer by colour scans\n");
+    report_printf("Transfer only on colour %s or darker after a lighter ring, with BLE >= %d dBm\n",
                   colour_zone_name(COLOUR_ARRIVAL_ZONE), COLOUR_ARRIVAL_BLE_DBM);
+    report_printf("Without a working colour sensor: transfer after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);
     // GP21 is not armed as STOP here. Boot/replay must not erase the old run,
     // start movement, initialise the radio, or prevent the later GP20 start.
     bool last_replay = false;
