@@ -3,10 +3,17 @@
 #include "wifi_sampler.h"
 
 #define LINE_BLOCK_MS 750u
-#define LINE_FORWARD_BLOCK_MS 250u
+// v18 step sizes. Every stop costs about 13 s (BLE check and two Wi-Fi
+// batches), so the floor uses 500 ms steps (v16: 250 ms). Once the colour
+// sensor sees the mat the robot is close, and 250 ms steps avoid driving past
+// the centre. Three weak positions now span 1.5 s of travel instead of
+// 0.75 s, so a short weak patch in the signal no longer ends a good line.
+#define LINE_FORWARD_BLOCK_MS 500u
+#define LINE_MAT_BLOCK_MS 250u
 #define LINE_DECLINE_POSITIONS 3u
 #define LINE_REFERENCE_POSITIONS 3u
-#define LINE_DIP_PROBE_MS 100u
+// v16: 100 ms. Each probe now looks a full mat step further past a weak patch.
+#define LINE_DIP_PROBE_MS 250u
 #define LINE_DIP_MAX_PROBES 2u
 #define LINE_DIRECTION_TEST_MS 2400u
 #define LINE_SWEEP_MS 6000u

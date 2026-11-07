@@ -21,7 +21,7 @@ endif()
 # Every robot firmware target shares the sources, flash layout and settings.
 function(getting_there_firmware target)
     add_executable(${target}
-        getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c robot_cues.c
+        getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c colour_mat.c robot_cues.c
         ../common/buzzer.c
         imu_mpu9250.c
     )
