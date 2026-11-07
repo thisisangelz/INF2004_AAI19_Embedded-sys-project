@@ -99,7 +99,13 @@ static colour_zone_t classify_purple(uint16_t gr, uint16_t br)
     return COLOUR_RING6;
 }
 
-colour_zone_t colour_classify_mat(const colour_reading_t *reading, colour_mat_t *mat)
+// The mat of the beacon this robot build approaches; COLOUR_MAT_NONE accepts
+// any mat (host tests and the colour scan test build).
+static colour_mat_t target_mat = COLOUR_MAT_NONE;
+void colour_set_target_mat(colour_mat_t mat) { target_mat = mat; }
+colour_mat_t colour_target_mat(void) { return target_mat; }
+
+static colour_zone_t classify_any_mat(const colour_reading_t *reading, colour_mat_t *mat)
 {
     *mat = COLOUR_MAT_NONE;
     if (reading->c < C_USABLE_MIN || !reading->r) return COLOUR_UNKNOWN;
@@ -115,6 +121,22 @@ colour_zone_t colour_classify_mat(const colour_reading_t *reading, colour_mat_t 
     }
     *mat = COLOUR_MAT_PURPLE;
     return classify_purple(gr, br);
+}
+
+colour_zone_t colour_classify_mat(const colour_reading_t *reading, colour_mat_t *mat)
+{
+    colour_zone_t zone = classify_any_mat(reading, mat);
+    if (target_mat == COLOUR_MAT_NONE || *mat == COLOUR_MAT_NONE || *mat == target_mat) return zone;
+    // Another beacon's mat. Its rings are floor to this robot, so they never
+    // start colour steering or count toward arrival. A white edge still counts
+    // as this mat's edge: the edges differ only slightly, and on 7 November
+    // the purple edge read as pink white.
+    if (zone == COLOUR_WHITE) {
+        *mat = target_mat;
+        return zone;
+    }
+    *mat = COLOUR_MAT_NONE;
+    return COLOUR_FLOOR;
 }
 
 colour_zone_t colour_classify(const colour_reading_t *reading)

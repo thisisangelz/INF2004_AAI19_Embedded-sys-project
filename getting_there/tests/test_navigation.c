@@ -231,6 +231,9 @@ static int model_depth(void)
 {
     double d = model_sensor_d();
     if (d > MODEL_MAT_RADIUS) return 0;
+    // Another beacon's mat reads as floor once the robot's own mat is set.
+    colour_mat_t model_mat = model_blue ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK;
+    if (colour_target_mat() != COLOUR_MAT_NONE && colour_target_mat() != model_mat) return 0;
     int bands = model_bands();
     int depth = bands - (int)(d / (MODEL_MAT_RADIUS / bands));
     depth = depth < 1 ? 1 : depth > bands ? bands : depth;
@@ -406,6 +409,8 @@ static void reset(void)
     model_last_depth = -1; ble_never = false;
     model_blue = false; model_min_sensor_d = 1e9; mat_near_block_ms = LINE_MAT_NEAR_BLOCK_MS;
     model_dim_inner = model_box_solid = false; model_blocked_blocks = 0;
+    // Any mat, unless a test sets one (firmware_main sets AP1's pink mat).
+    colour_set_target_mat(COLOUR_MAT_NONE);
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
 }
@@ -1238,6 +1243,16 @@ static void check_near_centre_steps(void)
     reset(); shipped_steps(); model=true; colour_present=true; model_blue=true; model_dim_inner=true;
     robot_x=0.02;
     assert(approach_beacon() && !move_count && strstr(log_text,"every scan direction is within two rings"));
+
+    // Each beacon has its own mat. The AP1 robot (pink) started on the blue
+    // mat never steers by colour or transfers there; the AP2 robot (blue)
+    // does, from the same start.
+    reset(); shipped_steps(); model=true; colour_present=true; model_blue=true;
+    colour_set_target_mat(COLOUR_MAT_PINK); robot_y=-0.26;
+    assert(!approach_beacon() && !ble_calls && !strstr(log_text,"MAT: colour sensor sees the mat"));
+    reset(); shipped_steps(); model=true; colour_present=true; model_blue=true;
+    colour_set_target_mat(COLOUR_MAT_BLUE); robot_y=-0.26;
+    assert(approach_beacon() && loose_attempts==1 && strstr(log_text,"MAT: colour sensor sees the mat"));
     // The same stop rules without a solid box: arrival still never reads, so
     // the robot must stop once nothing around it is darker, not drive on.
     reset(); shipped_steps(); model=true; colour_present=true; model_blue=true; model_dim_inner=true;
@@ -1289,6 +1304,8 @@ int main(void)
         assert(ui_replays==1 && ui_begins==1 && ui_finished && !motors_on);
         if (fail) assert(!ble_calls && !forwards_count && fault_test(FAULT_REPORT));
         else assert(strstr(log_text,"RESULT: PAYLOAD CONFIRMED") && colour_inits == 1);
+        // The AP1 build keeps to the pink mat.
+        assert(colour_target_mat() == COLOUR_MAT_PINK && strstr(log_text,"Colour mat: PINK (AP1)"));
         // Start beep, calibration tone and completion cue on success; the
         // falling fault cue when the log cannot be prepared.
         if (fail) assert(cue_counts[CUE_FAULT] == 1 && !cue_counts[CUE_CALIBRATING] && !tone_starts);

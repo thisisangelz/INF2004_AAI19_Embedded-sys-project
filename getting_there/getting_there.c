@@ -826,9 +826,15 @@ int main(void)
     bool ready = motion_init();
     cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v18 steps500-mat250 back-search mat-steer colour-gate multi-mat ble-minus58 cues | " TARGET_NAME " only\n");
+    report_printf("Getting there | line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat ble-minus58 cues | " TARGET_NAME " only\n");
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
+    report_printf("Colour mats: pink, blue and purple all recognised\n");
+#else
+    // Each beacon has its own mat; the other two read as floor.
+    colour_set_target_mat(TARGET_MAT);
+    report_printf("Colour mat: %s (" TARGET_NAME "); other mats read as floor\n",
+                  colour_mat_name(TARGET_MAT));
 #endif
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");

@@ -38,6 +38,12 @@ typedef struct {
 } colour_reading_t;
 
 // Pure helpers, no hardware access (colour_mat.c).
+// The beacon's own mat (AP1 pink, AP2 blue, AP3 purple; see target_beacon.h).
+// Once set, rings of the other mats classify as floor with COLOUR_MAT_NONE,
+// and any white edge counts as this mat's edge. COLOUR_MAT_NONE (the
+// default) accepts every mat.
+void colour_set_target_mat(colour_mat_t mat);
+colour_mat_t colour_target_mat(void);
 colour_zone_t colour_classify_mat(const colour_reading_t *reading, colour_mat_t *mat);
 colour_zone_t colour_classify(const colour_reading_t *reading);
 const char *colour_zone_name(colour_zone_t zone);

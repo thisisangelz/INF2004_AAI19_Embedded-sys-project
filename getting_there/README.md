@@ -8,22 +8,28 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 
 | Board | File | What it is |
 |---|---|---|
-| Robot, going to AP1 | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, any colour mat, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate multi-mat ble-minus58 cues \| AP1 only` |
-| Robot, going to AP2 | `build/getting_there_ap2.uf2` | The same firmware aimed at AP2 (`I AM PICO W 2`, beacon ID 2); banner ends `AP2 only` |
-| Robot, going to AP3 | `build/getting_there_ap3.uf2` | The same firmware aimed at AP3 (`I AM PICO W 3`, beacon ID 3); banner ends `AP3 only` |
+| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
+| Robot, going to AP2 (blue mat) | `build/getting_there_ap2.uf2` | The same firmware aimed at AP2 (`I AM PICO W 2`, beacon ID 2, blue mat); banner ends `AP2 only` |
+| Robot, going to AP3 (purple mat) | `build/getting_there_ap3.uf2` | The same firmware aimed at AP3 (`I AM PICO W 3`, beacon ID 3, purple mat); banner ends `AP3 only` |
 | Robot (test) | `build/getting_there_colour_scan.uf2` | Colour scan test only: turns on the spot, no Wi-Fi, BLE or driving |
 | Robot (tool) | `../tcs34725_calib/build/tcs34725_calib.uf2`, `tcs34725_calib6.uf2` | Colour sensor calibration tool: pink 5-ring mat, blue and purple 6-ring mats |
 | AP1-AP3 | `../picow_access_point*_powerbank/build/picow_access_point*_powerbank.uf2` | Current beacon firmware with buzzer sounds |
 
-## Any beacon on any colour mat (branch feature/colour-ring-sensing)
+## One colour mat per beacon (branch feature/colour-ring-sensing)
 
-Each colour reading now identifies its mat as well as its ring, from the
+Each colour reading identifies its mat as well as its ring, from the
 calibrations of the pink mat (6 November, 5 rings) and the blue and purple
 mats ([7 November](../docs/calibration/2026-11-07-tcs34725-blue-purple-mats.md),
 6 rings each). The three mats do not overlap in colour: blue/red splits the
 floor and pink from blue and purple, and green/red splits blue from purple.
-So a beacon can sit on any of the three mats and the robot needs no setting
-for it.
+
+Each beacon has its own mat: **AP1 pink (red), AP2 blue, AP3 purple**
+(`TARGET_MAT` in `target_beacon.h`). The robot build for a beacon treats the
+rings of the other two mats as floor, so they never start colour steering or
+count toward arrival. A white edge always counts as the beacon's own edge,
+because the edges differ only slightly (on 7 November the purple edge read as
+pink white). The start of each run logs `Colour mat: PINK (AP1)` (or BLUE
+(AP2), PURPLE (AP3)). The colour scan test build still recognises all three.
 
 | Mat | Rings | Ring cue | Arrival |
 |---|---|---|---|

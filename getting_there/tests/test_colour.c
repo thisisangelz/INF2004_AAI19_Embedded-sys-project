@@ -289,6 +289,37 @@ static void check_blue_purple(void)
     assert(colour_near_arrival(2));
     queue3(floor, floor, floor); colour_arrival_check();
     assert(!colour_near_arrival(6));
+
+    // Each beacon's own mat (AP1 pink, AP2 blue, AP3 purple). With a target
+    // set, rings of the other mats are floor; any white edge is the target's.
+    colour_mat_t m;
+    const colour_reading_t blue_white = rgb(14000, 1204, 1184), pink_white = at(7800, 1013);
+    colour_set_target_mat(COLOUR_MAT_PINK);
+    assert(colour_classify_mat(&pink2, &m) == COLOUR_RING2 && m == COLOUR_MAT_PINK);
+    assert(colour_classify_mat(&blue5, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&purple5, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&blue_white, &m) == COLOUR_WHITE && m == COLOUR_MAT_PINK);
+    colour_set_target_mat(COLOUR_MAT_BLUE);
+    assert(colour_classify_mat(&blue5, &m) == COLOUR_RING5 && m == COLOUR_MAT_BLUE);
+    assert(colour_classify_mat(&pink2, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&purple3, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&pink_white, &m) == COLOUR_WHITE && m == COLOUR_MAT_BLUE);
+    // The AP2 robot on the purple mat: never on its mat, never arrives.
+    colour_arrival_reset();
+    queue3(purple3, purple3, purple3); assert(!colour_arrival_check() && !colour_on_mat());
+    queue3(purple5, purple5, purple5); assert(!colour_arrival_check() && !colour_on_mat());
+    assert(!colour_near_arrival(6));
+    // ...and on its own blue mat it arrives as before.
+    queue3(blue2, blue2, blue2); assert(!colour_arrival_check() && colour_on_mat());
+    queue3(blue5, blue5, blue5); assert(colour_arrival_check());
+    colour_set_target_mat(COLOUR_MAT_PURPLE);
+    colour_arrival_reset();
+    queue3(blue2, blue2, blue2); assert(!colour_arrival_check() && !colour_on_mat());
+    queue3(blue5, blue5, blue5); assert(!colour_arrival_check());
+    queue3(purple3, purple3, purple3); assert(!colour_arrival_check() && colour_on_mat());
+    queue3(purple5, purple5, purple5); assert(colour_arrival_check());
+    colour_set_target_mat(COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&blue5, &m) == COLOUR_RING5 && m == COLOUR_MAT_BLUE);
 }
 
 // Simulated mat: radius 35 cm, white edge plus five rings of equal width.

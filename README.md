@@ -18,13 +18,21 @@ positions, it rechecks while stopped, then allows up to two 250 ms forward probe
 Recovery resumes the same heading. Persistent decline returns only to the retained
 best point, then tries both perpendicular directions and then straight back.
 An inconsistent return no longer stops the run; three unsuccessful trials do.
-Once the colour sensor sees the mat, colour scans steer the robot to ring 4,
-and with a working sensor the payload transfers only there. See
+Once the colour sensor sees the beacon's mat, colour scans steer the robot to
+its arrival ring (pink ring 4, blue or purple ring 5), and with a working sensor
+the payload transfers only there. See
 [the robot instructions](getting_there/README.md) for the v18 changes, limits,
-sampling settings and the hardware test procedure. Flash
-`getting_there/build/getting_there.uf2` (or `getting_there_ap2.uf2` / `getting_there_ap3.uf2`
-for the other beacons) and confirm `line-search v18 steps500-mat250 back-search mat-steer colour-gate multi-mat`.
-The colour sensor recognises the pink, blue and purple mats itself, so any beacon can sit on any mat.
+sampling settings and the hardware test procedure.
+
+| Beacon | Mat | Robot firmware |
+|---|---|---|
+| AP1 | Pink (red) | `getting_there/build/getting_there.uf2` |
+| AP2 | Blue | `getting_there/build/getting_there_ap2.uf2` |
+| AP3 | Purple | `getting_there/build/getting_there_ap3.uf2` |
+
+Each robot build ignores the other two mats (they read as floor). Confirm the
+banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat`
+and the line `Colour mat: PINK (AP1)` (or BLUE (AP2), PURPLE (AP3)).
 Flat readings no longer end the initial forward trial or an improving line.
 The 60-second combined powered travel budget, reserved return travel, 15-minute
 run limit, GP21 STOP and fault checks still apply. BLE must still pass the
