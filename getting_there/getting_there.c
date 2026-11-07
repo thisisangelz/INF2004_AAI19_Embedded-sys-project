@@ -226,6 +226,24 @@ static bool log_dip_reading(const char *stage, unsigned probe, uint32_t position
     return save_checkpoint();
 }
 
+// Step sizes. The host tests set the v16 sizes (250/100 ms) to replay runs
+// recorded with them; the robot always uses the defaults below.
+static uint32_t floor_block_ms = LINE_FORWARD_BLOCK_MS, dip_probe_ms = LINE_DIP_PROBE_MS;
+static bool step_on_mat;
+
+// Large steps on the floor, small steps once the latest stop saw the mat.
+static uint32_t forward_block_ms(void)
+{
+    bool on_mat = colour_on_mat();
+    if (on_mat != step_on_mat) {
+        step_on_mat = on_mat;
+        report_printf("STEP: %s; forward blocks now %u ms\n",
+                      on_mat ? "colour sensor sees the mat" : "colour sensor no longer sees the mat",
+                      on_mat ? LINE_MAT_BLOCK_MS : (unsigned)floor_block_ms);
+    }
+    return on_mat ? LINE_MAT_BLOCK_MS : floor_block_ms;
+}
+
 static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_position,
                                              line_pair_t reference, uint32_t *position,
                                              line_pair_t *current, bool *recovered)
@@ -243,10 +261,10 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
 
     for (unsigned probe = 1; probe <= LINE_DIP_MAX_PROBES; ++probe) {
         report_printf("DIP: forward probe %u/%u, at most %u ms; frozen reference retained\n",
-                      probe, LINE_DIP_MAX_PROBES, LINE_DIP_PROBE_MS);
+                      probe, LINE_DIP_MAX_PROBES, (unsigned)dip_probe_ms);
         uint32_t actual;
-        result = translate_block(true, LINE_DIP_PROBE_MS, heading, *position,
-            translation_cost(*position + LINE_DIP_PROBE_MS + BLOCK_RESERVE_MS - best_position),
+        result = translate_block(true, dip_probe_ms, heading, *position,
+            translation_cost(*position + dip_probe_ms + BLOCK_RESERVE_MS - best_position),
             false, &actual);
         *position += actual;
         if (result != PAYLOAD_NOT_CLOSE) return result;
@@ -286,12 +304,14 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     unsigned recent_count = 1, recent_next = 1;
     line_pair_t decline_reference = best;
     bool dip_active = false;
-    report_printf("FOLLOW: heading %d, blocks at most %u ms; %s\n",
-                  (int)heading, LINE_FORWARD_BLOCK_MS,
-                  trial_ms ? "side trial until confirmed improvement" :
+    report_printf("FOLLOW: heading %d, blocks at most %u ms on the floor, %u ms on the mat; %s\n",
+                  (int)heading, (unsigned)floor_block_ms, LINE_MAT_BLOCK_MS,
+                  trial_ms ? "trial until confirmed improvement" :
                   "continue through inconclusive readings within run and travel limits");
     while (run_can_continue()) {
-        uint32_t block = LINE_FORWARD_BLOCK_MS;
+        // Weak positions must be at least one full step apart to count separately.
+        const uint32_t step = forward_block_ms();
+        uint32_t block = step;
         if (!followed->progress && position < trial_ms && block > trial_ms - position)
             block = trial_ms - position;
         wifi_sampler_set_reference(line_reference(best));
@@ -319,7 +339,7 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
                               rssi_decode(decline_reference.first.code), rssi_decode(decline_reference.second.code),
                               (unsigned long)best_position);
             }
-            if (!decline_positions || position - last_decline_position >= LINE_FORWARD_BLOCK_MS) {
+            if (!decline_positions || position - last_decline_position >= step) {
                 ++decline_positions;
                 last_decline_position = position;
             }
@@ -406,13 +426,19 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     return PAYLOAD_FATAL;
 }
 
-static payload_result_t check_perpendiculars(float origin, follow_result_t *followed, bool *found)
+// Both perpendiculars, then straight back (v16 tried only the two sides, so a
+// robot started facing away from AP1 could never turn round). A return whose
+// RSSI disagrees with the best point no longer stops the search: the next
+// trial measures its own starting baseline, so it does not depend on it.
+#define SEARCH_DIRECTIONS 3u
+static payload_result_t check_directions(float origin, follow_result_t *followed, bool *found)
 {
+    static const float offsets[SEARCH_DIRECTIONS] = {-90.0f, 90.0f, 180.0f};
     *found = false;
-    report_printf("DIRECTION SEARCH: two perpendicular directions, origin %d degrees; follow first confirmed improvement\n",
+    report_printf("DIRECTION SEARCH: both perpendiculars, then straight back, origin %d degrees; follow first confirmed improvement\n",
                   (int)origin);
-    for (unsigned i = 0; i < 2u; ++i) {
-        float heading = line_normalise_heading(origin + (i ? 90.0f : -90.0f));
+    for (unsigned i = 0; i < SEARCH_DIRECTIONS; ++i) {
+        float heading = line_normalise_heading(origin + offsets[i]);
         payload_result_t result = follow_direction(heading, LINE_DIRECTION_TEST_MS, followed);
         if (result != PAYLOAD_NOT_CLOSE) return result;
         if (followed->progress) {
@@ -420,18 +446,17 @@ static payload_result_t check_perpendiculars(float origin, follow_result_t *foll
             return PAYLOAD_NOT_CLOSE;
         }
         if (followed->end == FOLLOW_NO_GAIN) {
-            report_printf("SIDE TRIAL: no confirmed gain; return to its starting best point before checking the other side\n");
+            report_printf("TRIAL: no confirmed gain; return to its starting best point before the next direction\n");
             result = return_along_line(followed->position, 0, heading);
             if (result != PAYLOAD_NOT_CLOSE) return result;
             line_pair_t returned;
             result = measure_pair(&returned);
             if (result != PAYLOAD_NOT_CLOSE) return result;
             followed->consistent = line_return_consistent(followed->baseline, returned);
-            report_printf("SIDE RETURN: RSSI %s; timed position remains approximate\n",
-                          followed->consistent ? "consistent with starting best point" : "inconsistent, stopping");
+            report_printf("TRIAL RETURN: RSSI %s; timed position remains approximate\n",
+                          followed->consistent ? "consistent with starting best point" :
+                          "inconsistent with starting best point, continuing from here");
         }
-        // A failed return must stop further movement, including the other side.
-        if (!followed->consistent) return PAYLOAD_NOT_CLOSE;
     }
     return PAYLOAD_NOT_CLOSE;
 }
@@ -443,6 +468,7 @@ static bool approach_beacon(void)
     wifi_quiescent = true;
     wifi_sampler_init(run_can_continue);
     colour_arrival_reset();
+    step_on_mat = false;
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -451,7 +477,7 @@ static bool approach_beacon(void)
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL || !motion_learn_direction()) return false;
     follow_result_t followed;
-    report_printf("APPROACH: follow current heading; after a confirmed decline return to best and check only perpendicular directions\n");
+    report_printf("APPROACH: follow current heading; after a confirmed decline return to best, then try both perpendiculars and straight back\n");
     result = follow_direction(motion_heading(), 0, &followed);
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -461,21 +487,16 @@ static bool approach_beacon(void)
             report_printf("FAILED: current heading ended without a confirmed decline; no further direction search\n");
             return false;
         }
-        if (!followed.consistent) {
-            fault_raise(FAULT_NO_DIRECTION);
-            report_printf("FAILED: return RSSI inconsistent with best point; no further movement\n");
-            return false;
-        }
+        if (!followed.consistent)
+            report_printf("RETURN: RSSI inconsistent with best point; searching from here\n");
         float origin = followed.heading;
         bool found = false;
-        result = check_perpendiculars(origin, &followed, &found);
+        result = check_directions(origin, &followed, &found);
         if (result == PAYLOAD_COMPLETE) return true;
         if (result == PAYLOAD_FATAL) return false;
         if (!found) {
             fault_raise(FAULT_NO_DIRECTION);
-            if (!followed.consistent)
-                report_printf("FAILED: perpendicular return RSSI inconsistent; no further movement\n");
-            else report_printf("FAILED: neither perpendicular direction confirmed improvement\n");
+            report_printf("FAILED: no direction confirmed improvement (both perpendiculars and straight back)\n");
             return false;
         }
     }
@@ -593,7 +614,7 @@ int main(void)
     bool ready = motion_init();
     cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v16 dip-probes ble-minus58 colour-ring4 cues | AP1 only\n");
+    report_printf("Getting there | line-search v18 steps500-mat250 back-search ble-minus58 colour-ring4 cues | AP1 only\n");
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
 #endif

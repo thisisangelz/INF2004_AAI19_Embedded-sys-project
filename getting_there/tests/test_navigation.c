@@ -25,6 +25,8 @@ static size_t script_length;
 static int default_rssi;
 static bool model;
 static double robot_x, robot_y, beacon_x, beacon_y;
+// Model weak patch: AP1 reads 12 dB lower while dead_from <= x < dead_to.
+static double dead_from, dead_to;
 static struct { bool forwards; float heading; uint32_t ms; unsigned scans_before; } moves[512];
 static unsigned move_count;
 static uint32_t mock_duration, mock_elapsed;
@@ -196,6 +198,14 @@ bool colour_arrival_check(void)
     return colour_arrive_at_check && colour_checks >= colour_arrive_at_check;
 }
 const char *colour_zone_name(colour_zone_t zone) { return zone == COLOUR_RING4 ? "RING4" : "OTHER"; }
+// On the mat: scripted, or in the model within the mat's 0.35 m radius.
+static bool mat_stub;
+static unsigned mat_from_check;
+bool colour_on_mat(void)
+{
+    if (model) return hypot(robot_x - beacon_x, robot_y - beacon_y) < 0.35;
+    return mat_stub || (mat_from_check && colour_checks >= mat_from_check);
+}
 void payload_client_set_close_threshold(int dbm) { assert(!motors_on); close_threshold = dbm; }
 int payload_client_close_threshold(void) { return close_threshold; }
 void payload_client_init(void) { }bool payload_client_ready(void) { return !ui_bt_failure && !ui_bt_timeout; }
@@ -247,6 +257,7 @@ static void deliver_scan(void)
         double distance = fmax(0.10, hypot(robot_x - beacon_x, robot_y - beacon_y));
         double bias = 10 * sin(current_heading * 3.141592653589793 / 180.0);
         rssi = (int)lround(-50 - 20 * log10(distance) + bias);
+        if (robot_x >= dead_from && robot_x < dead_to) rssi -= 12;
     }
     cyw43_ev_scan_result_t result = {.rssi = (int16_t)rssi, .ssid_len = 11, .bssid = {1,2,3,4,5,6}};
     memcpy(result.ssid, "I AM PICO W", 11);
@@ -296,7 +307,7 @@ static void reset(void)
     tone_starts = tone_stops = retry_mode = complete_after_step = fail_at_ble_call = retry_calls = 0;
     complete_at_ble_call = 0;
     script = NULL; script_length = 0; default_rssi = -70;
-    current_heading = 0; robot_x = robot_y = beacon_x = beacon_y = 0;
+    current_heading = 0; robot_x = robot_y = beacon_x = beacon_y = dead_from = dead_to = 0;
     log_length = 0; log_text[0] = 0; move_count = 0;
     ble_delay_ms = stop_at_scan = stop_at_step = fail_at_step = checkpoint_calls = mock_duration = mock_elapsed = 0;
     scan_delay_ms = 200; // Ordinary control tests deliberately use stationary fallback.
@@ -305,9 +316,14 @@ static void reset(void)
     close_threshold = AP1_CLOSE_RSSI_DBM; strict_attempts = loose_attempts = 0; complete_on_loose = false;
     memset(cue_counts, 0, sizeof(cue_counts)); cue_end = 0; close_callback = NULL; in_range_cue_on = false;
     run_started_ms = now_ms(); translation_ms = profile_id = 0; wifi_quiescent = true;
+    // Recorded-run and v16 regression checks keep their 250/100 ms steps;
+    // shipped_steps() selects the robot's v18 sizes.
+    floor_block_ms = 250; dip_probe_ms = 100; step_on_mat = mat_stub = false; mat_from_check = 0;
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
 }
+// The step sizes the robot actually uses (reset() selects v16's).
+static void shipped_steps(void) { floor_block_ms = LINE_FORWARD_BLOCK_MS; dip_probe_ms = LINE_DIP_PROBE_MS; }
 static line_pair_t pair(int first, int second)
 {
     return (line_pair_t){.first = {.code = rssi_encode(first)}, .second = {.code = rssi_encode(second)}};
@@ -459,23 +475,24 @@ static void check_follow_first(void)
     };
     reset(); script=failed_side; script_length=sizeof(failed_side)/sizeof(*failed_side);
     follow_result_t followed; bool found=false;
-    assert(check_perpendiculars(0,&followed,&found)==PAYLOAD_NOT_CLOSE && found);
+    assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && found);
     assert(followed.heading==90 && followed.progress && followed.consistent);
     assert(forwards_count==12 && backwards_count==4 && current_heading==90);
     for (unsigned i=0;i<move_count;++i) assert(moves[i].heading==270 || moves[i].heading==90);
     static const int side[] = {-70,-70,-65,-65,-65,-65,-71,-71,-72,-72,-73,-73,
                               -73,-73,-74,-74,-75,-75,-65,-65};
     reset(); script=side; script_length=sizeof(side)/sizeof(*side);
-    assert(check_perpendiculars(0,&followed,&found)==PAYLOAD_NOT_CLOSE && found);
+    assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && found);
     assert(followed.heading==270 && current_heading==270 && forwards_count==7 && backwards_count==2);
     reset(); stop_at_scan=11;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_FATAL && stopped && forwards_count==1 && !backwards_count);
 }
 
-static void check_two_direction_policy(void)
+static void check_direction_policy(void)
 {
     // An improving forward line ends on sustained decline. Both sides then
-    // decline without improving: stop after these two checks, with no recovery pass.
+    // decline without improving, and the flat trial straight back finds no
+    // gain either: stop after these three checks, with no recovery pass.
     static const int no_side[] = {
         -70, -70,-70,-65,-65,-65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65,
         -65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65,
@@ -483,37 +500,46 @@ static void check_two_direction_policy(void)
     };
     reset(); script=no_side; script_length=sizeof(no_side)/sizeof(*no_side);
     assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
-    assert(forwards_count==17 && backwards_count==6 && translation_ms==6450);
-    assert(strstr(log_text,"neither perpendicular direction confirmed improvement"));
+    // v16's 17 forward/6 reverse blocks, plus a 2400 ms back trial and its return.
+    assert(forwards_count==27 && backwards_count==10 && translation_ms==11250);
+    assert(strstr(log_text,"no direction confirmed improvement (both perpendiculars and straight back)"));
     assert(!strstr(log_text,"FALLBACK:") && !strstr(log_text,"four fallback"));
-    for (unsigned i=0;i<move_count;++i)
-        assert(moves[i].heading==0 || moves[i].heading==270 || moves[i].heading==90);
-    // A failed return check cannot trigger another heading search.
+    bool went_back=false;
+    for (unsigned i=0;i<move_count;++i) {
+        assert(moves[i].heading==0 || moves[i].heading==270 || moves[i].heading==90 || moves[i].heading==180);
+        if (moves[i].heading==180 && moves[i].forwards) went_back=true;
+    }
+    assert(went_back);
+    // A return that disagrees with the best point no longer ends the run: the
+    // same three-direction search follows from where the robot stopped.
     int inconsistent[sizeof(no_side)/sizeof(*no_side)];
     memcpy(inconsistent,no_side,sizeof(no_side)); inconsistent[19]=inconsistent[20]=-90;
     reset(); script=inconsistent; script_length=sizeof(inconsistent)/sizeof(*inconsistent);
-    assert(!approach_beacon() && forwards_count==7 && backwards_count==2);
-    assert(!strstr(log_text,"DIRECTION SEARCH") && strstr(log_text,"return RSSI inconsistent"));
+    assert(!approach_beacon() && forwards_count==27 && backwards_count==10);
+    assert(strstr(log_text,"inconsistent with best point; searching from here") && strstr(log_text,"DIRECTION SEARCH"));
     // Even if the initial direction never improved, a consistent decline return
-    // can check the two perpendicular headings, without a four-heading search.
+    // checks the other directions, starting with the first perpendicular.
     static const int rejected_forward[] = {-70,-70,-70,-74,-74,-75,-75,-76,-76,
                                           -76,-76,-77,-77,-78,-78,-70,-70};
     reset(); script=rejected_forward; script_length=sizeof(rejected_forward)/sizeof(*rejected_forward);
     complete_after_step=6;
     assert(approach_beacon() && forwards_count==6 && backwards_count==2 && current_heading==270);
-    // Flat side trials must return to the same starting best point before
-    // testing the opposite side. This differs from ending an improving line.
+    // Flat trials must return to the same starting best point before testing
+    // the next direction. This differs from ending an improving line.
     reset(); follow_result_t followed; bool found;
-    assert(check_perpendiculars(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found);
-    assert(forwards_count==20 && backwards_count==8 && translation_ms==9600 && move_count==28);
+    assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found);
+    assert(forwards_count==30 && backwards_count==12 && translation_ms==14400 && move_count==42);
     assert(moves[10].heading==270 && !moves[10].forwards);
-    assert(moves[14].heading==90 && moves[14].forwards && followed.consistent);
-    assert(strstr(log_text,"SIDE RETURN: RSSI consistent"));
+    assert(moves[14].heading==90 && moves[14].forwards);
+    assert(moves[28].heading==180 && moves[28].forwards && followed.consistent);
+    assert(strstr(log_text,"TRIAL RETURN: RSSI consistent"));
+    // An inconsistent return after the first side still tries the other two.
     int bad_flat[24];
     for (unsigned i=0;i<24;++i) bad_flat[i]=i<22 ? -70 : -90;
     reset(); script=bad_flat; script_length=24;
-    assert(check_perpendiculars(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found && !followed.consistent);
-    assert(forwards_count==10 && backwards_count==4 && current_heading==270);
+    assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found);
+    assert(strstr(log_text,"inconsistent with starting best point, continuing from here"));
+    assert(forwards_count==30 && backwards_count==12 && current_heading==180);
 }
 
 static void check_recorded_run(void)
@@ -561,7 +587,7 @@ static void check_recorded_run(void)
     assert(!moves[19].forwards && moves[19].ms==450);
     assert(moves[20].forwards && moves[20].heading==270);
     assert(strstr(log_text,"return only 1200 powered ms to best point 3010"));
-    assert(!strstr(log_text,"FALLBACK:") && strstr(log_text,"perpendicular directions"));
+    assert(!strstr(log_text,"FALLBACK:") && strstr(log_text,"both perpendiculars"));
 }
 
 static void check_decline_positions(void)
@@ -943,11 +969,65 @@ static void check_colour_arrival(void){
     assert(approach_beacon() && loose_attempts >= 1 && strict_attempts == 1);
 }
 
+static void print_model_failure(unsigned target)
+{
+    fprintf(stderr,"Model target %u failed at (%.2f, %.2f), translation %u ms, faults %x\n",
+            target,robot_x,robot_y,translation_ms,fault_mask());
+    for (char *row=strtok(log_text,"\n");row;row=strtok(NULL,"\n"))
+        if (!strncmp(row,"FOLLOW:",7) || !strncmp(row,"RETURN:",7) || !strncmp(row,"TRIAL",5) ||
+            !strncmp(row,"DIRECTION",9) || !strncmp(row,"DIP:",4) || !strncmp(row,"FAILED",6))
+            fprintf(stderr,"%s\n",row);
+}
+
+static void check_v18_steps(void)
+{
+    // Floor: 500 ms steps. The third stop's colour check sees the mat, so the
+    // third step and later ones are 250 ms; the change is logged once.
+    reset(); shipped_steps(); mat_from_check=3; complete_after_step=5;
+    assert(approach_beacon() && forwards_count==5 && !backwards_count);
+    assert(moves[0].ms==500 && moves[1].ms==500 && moves[2].ms==250 && moves[4].ms==250);
+    assert(translation_ms==1750 && strstr(log_text,"STEP: colour sensor sees the mat; forward blocks now 250 ms"));
+    assert(strstr(log_text,"500 ms on the floor, 250 ms on the mat"));
+    // Leaving the mat again restores the floor step.
+    reset(); shipped_steps(); mat_stub=true; complete_after_step=3;
+    assert(approach_beacon() && moves[0].ms==250);
+    mat_stub=false; assert(forward_block_ms()==500 && strstr(log_text,"no longer sees the mat"));
+    // A flat side trial still covers 2400 ms, now in five stops instead of ten.
+    reset(); shipped_steps(); follow_result_t followed;
+    assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(followed.end==FOLLOW_NO_GAIN && forwards_count==5 && moves[4].ms==400 && translation_ms==2400);
+    // Probes are 250 ms each, so the dip check looks 0.5 s past the third weak position.
+    uint32_t position=1500; line_pair_t current; bool recovered;
+    reset(); shipped_steps();
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_NOT_CLOSE);
+    assert(!recovered && forwards_count==2 && position==2000 && moves[0].ms==250);
+
+    // A 12 dB weak patch about 1.1 s of travel long, 0.8 m along a line
+    // straight at AP1, like the dips in the 7 November three-chair logs
+    // (sideways run: still weak 0.7 s after it began). With v16 steps, three
+    // weak positions and both 100 ms probes all fall inside it, so the robot
+    // reverses off a good line. With v18 steps the third position is already
+    // past the patch and the robot drives on to AP1.
+    for (unsigned shipped=0;shipped<2;++shipped) {
+        reset(); if (shipped) shipped_steps();
+        model=true; beacon_x=2; dead_from=0.80; dead_to=1.10;
+        bool arrived=approach_beacon();
+        if (shipped) {
+            if (!arrived) print_model_failure(0);
+            assert(arrived && !backwards_count && !strstr(log_text,"DIRECTION SEARCH"));
+        } else {
+            assert(backwards_count && strstr(log_text,"DIRECTION SEARCH"));
+            assert(strstr(log_text,"stage=probe,probe=2") && !strstr(log_text,"recovered=1"));
+        }
+    }
+}
+
 int main(void)
 {
-    check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_two_direction_policy(); check_recorded_run(); check_decline_positions();
+    check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
+    check_v18_steps();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     tone_stops=0;
     uint64_t before=sim_time; completion_sound();
@@ -956,27 +1036,20 @@ int main(void)
     reset(); stop_during_pause=true; completion_sound(); assert(tone_starts==1 && tone_stops==1);
     reset(); fail_drive=true; assert(!approach_beacon() && forwards_count==1 && !backwards_count);
     reset(); fail_turn=true; assert(!approach_beacon() && !forwards_count);
+    // Ideal model, beacon 2 m ahead, left, behind and right. Continuing the
+    // first line lets a side target establish a decline and then be reached
+    // by a perpendicular; a rear target (robot facing away) is now reached
+    // by the trial straight back, which v16 never tried. Both step sizes.
     const double targets[4][2]={{2,0},{0,2},{-2,0},{0,-2}};
+    for (unsigned shipped=0;shipped<2;++shipped)
     for (unsigned i=0;i<4;++i) {
-        reset(); model=true; beacon_x=targets[i][0]; beacon_y=targets[i][1];
+        reset(); if (shipped) shipped_steps();
+        model=true; beacon_x=targets[i][0]; beacon_y=targets[i][1];
         bool arrived=approach_beacon();
-        if (!arrived && i!=2) {
-            fprintf(stderr,"Model target %u failed at (%.2f, %.2f), translation %u ms, faults %x\n",
-                    i,robot_x,robot_y,translation_ms,fault_mask());
-            for (char *row=strtok(log_text,"\n");row;row=strtok(NULL,"\n"))
-                if (!strncmp(row,"FOLLOW:",7) || !strncmp(row,"RETURN:",7) ||
-                    !strncmp(row,"DIRECTION",9) || !strncmp(row,"FALLBACK",8) || !strncmp(row,"FAILED",6))
-                    fprintf(stderr,"%s\n",row);
-        }
-        if (i!=2) assert(arrived && hypot(robot_x-beacon_x,robot_y-beacon_y)<0.25);
-        else {
-            // Continuing the initial line allows a side target to establish a
-            // decline and then be reached by a perpendicular. A rear target
-            // still has no improving perpendicular in this ideal model.
-            assert(!arrived && fault_test(FAULT_NO_DIRECTION));
-            assert(strstr(log_text,"neither perpendicular direction confirmed improvement"));
-        }
+        if (!arrived) print_model_failure(i);
+        assert(arrived && hypot(robot_x-beacon_x,robot_y-beacon_y)<0.25);
         assert(translation_ms<=LINE_TRANSLATION_MS);
+        if (i==2) assert(strstr(log_text,"straight back"));
     }
     for (int fail=0;fail<2;++fail) {
         reset(); ui_test=true; ui_stage=1; complete_first=true; ui_log_failure=fail;
@@ -990,6 +1063,6 @@ int main(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded 100 ms probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, perpendicular search, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, v18 500/250 ms steps, weak patch, all four model targets at both step sizes, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }

@@ -39,6 +39,10 @@ void colour_arrival_reset(void);
 // Call with motors stopped. Takes COLOUR_ARRIVAL_SAMPLES fresh readings
 // (about 115 ms each), logs them and returns true when arrival is confirmed.
 bool colour_arrival_check(void);
+// True when the latest arrival check saw the mat (white edge or any ring) in
+// at least one reading. False before the first check, after a failed read,
+// or without a sensor. Navigation uses it to take smaller steps on the mat.
+bool colour_on_mat(void);
 // One fresh reading (about 115 ms). False on an I2C error or missing sensor.
 bool colour_sensor_read(colour_reading_t *reading);
 

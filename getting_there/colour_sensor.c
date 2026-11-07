@@ -44,6 +44,7 @@ _Static_assert(COLOUR_ARRIVAL_SAMPLES == 3, "COLOUR log line prints exactly thre
 
 static bool available;
 static bool lighter_mat_seen;
+static bool on_mat;
 static unsigned failed_checks;
 
 static int tcs_write(uint8_t reg, uint8_t value)
@@ -125,9 +126,11 @@ bool colour_sensor_available(void) { return available; }
 
 void colour_arrival_reset(void)
 {
-    lighter_mat_seen = false;
+    lighter_mat_seen = on_mat = false;
     failed_checks = 0;
 }
+
+bool colour_on_mat(void) { return available && on_mat; }
 
 // Waits one full integration so every reading is fresh, not a repeat.
 static bool read_fresh(colour_reading_t *reading)
@@ -151,6 +154,7 @@ static bool lighter_mat(colour_zone_t zone)
 bool colour_arrival_check(void)
 {
     if (!available) return false;
+    on_mat = false;
     colour_zone_t zones[COLOUR_ARRIVAL_SAMPLES];
     colour_reading_t last = {0};
     bool all_dark = true, read_ok = true;
@@ -173,8 +177,10 @@ bool colour_arrival_check(void)
     // Seen before this check's verdict, so one check cannot both introduce and
     // satisfy the lighter-ring requirement.
     bool seen_before = lighter_mat_seen;
-    for (unsigned i = 0; i < COLOUR_ARRIVAL_SAMPLES; ++i)
+    for (unsigned i = 0; i < COLOUR_ARRIVAL_SAMPLES; ++i) {
         if (lighter_mat(zones[i])) lighter_mat_seen = true;
+        if (zones[i] >= COLOUR_WHITE) on_mat = true;
+    }
     bool arrived = all_dark && seen_before;
     report_printf("COLOUR,zones=%s/%s/%s,c=%u,r=%u,g=%u,b=%u,gr=%u,lighter_seen=%u,arrived=%u\n",
                   colour_zone_name(zones[0]), colour_zone_name(zones[1]), colour_zone_name(zones[2]),

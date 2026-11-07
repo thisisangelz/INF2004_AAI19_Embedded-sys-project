@@ -109,8 +109,13 @@ static void check_arrival_rules(void)
 
     assert(colour_sensor_init() && colour_sensor_available() && config_writes == 4);
     colour_arrival_reset();
+    assert(!colour_on_mat()); // no check yet
     // Dark readings with no lighter ring first: not arrival (a dark object on the floor).
     queue3(ring4, ring4, ring4); assert(!colour_arrival_check());
+    assert(colour_on_mat()); // small steps on any mat reading, even before arrival
+    queue3(floor, floor, floor); assert(!colour_arrival_check());
+    assert(!colour_on_mat());
+    queue3(floor, floor, ring2); assert(!colour_arrival_check() && colour_on_mat());
     queue3(floor, floor, floor); assert(!colour_arrival_check());
     // A lighter ring and dark readings in the same check do not count yet.
     queue3(ring3, ring4, ring4); assert(!colour_arrival_check());
@@ -127,13 +132,15 @@ static void check_arrival_rules(void)
     queue3(ring4, ring5, ring4); assert(colour_arrival_check());
     // Floor shadows never count as a lighter mat ring.
     colour_arrival_reset();
-    queue3(at(2379, 908), at(2813, 930), floor); assert(!colour_arrival_check());
+    queue3(at(2379, 908), at(2813, 930), floor); assert(!colour_arrival_check() && !colour_on_mat());
     queue3(ring4, ring4, ring4); assert(!colour_arrival_check());
 
     // Read failures: two are tolerated, the third disables arrival for the run.
+    // A failed read also clears "on the mat", so the robot uses floor steps.
     colour_arrival_reset();
+    queue3(ring2, ring2, ring2); assert(!colour_arrival_check() && colour_on_mat());
     bus_dead = true;
-    assert(!colour_arrival_check() && colour_sensor_available());
+    assert(!colour_arrival_check() && colour_sensor_available() && !colour_on_mat());
     assert(!colour_arrival_check() && colour_sensor_available());
     assert(!colour_arrival_check() && !colour_sensor_available());
     assert(strstr(log_text, "disabled, arrival uses the BLE proximity gate only"));
@@ -223,6 +230,7 @@ int main(void)
 {
     check_calibration_data();
     check_arrival_rules();
-    check_scan_direction();    puts("Colour: all three calibration rounds classified, shadows, lighter-ring-first arrival, three-sample agreement, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
+    check_scan_direction();
+    puts("Colour: all three calibration rounds classified, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
     return 0;
 }
