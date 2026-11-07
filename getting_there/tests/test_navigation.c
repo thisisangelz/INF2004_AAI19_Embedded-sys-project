@@ -27,6 +27,9 @@ static bool model;
 static double robot_x, robot_y, beacon_x, beacon_y;
 // Model weak patch: AP1 reads 12 dB lower while dead_from <= x < dead_to.
 static double dead_from, dead_to;
+// Closest the colour sensor came to the mat centre while driving (model).
+static double model_min_sensor_d;
+static double model_sensor_d(void);
 static struct { bool forwards; float heading; uint32_t ms; unsigned scans_before; } moves[512];
 static unsigned move_count;
 static uint32_t mock_duration, mock_elapsed;
@@ -164,6 +167,7 @@ bool motion_drive_update(void)
         double distance = (mock_forwards ? 1 : -1) * 0.20 * delta / 750.0;
         double radians = current_heading * 3.141592653589793 / 180.0;
         robot_x += distance * cos(radians); robot_y += distance * sin(radians);
+        if (model_sensor_d() < model_min_sensor_d) model_min_sensor_d = model_sensor_d();
     }
     if (mock_elapsed >= mock_duration) motors_on = false;
     return true;
@@ -197,36 +201,55 @@ static int model_last_depth;
 bool colour_sensor_init(void) { ++colour_inits; return true; }
 bool colour_sensor_available(void) { return colour_present; }
 void colour_arrival_reset(void) { ++colour_resets; model_lighter_seen = false; model_last_depth = -1; }
-// The model mat is pink, so only the pink bit counts.
-void colour_note_lighter_mats(unsigned mask) { if (mask & (1u << COLOUR_MAT_PINK)) model_lighter_seen = true; }
-
-// Model mat: radius 0.35 m around AP1, white edge plus five equal rings, the
-// sensor 0.08 m ahead of the wheel axis. Readings are calibrated means.
+// Model mat: pink (white edge plus five rings) by default, or blue (white edge
+// plus six rings), radius 0.35 m around the beacon, so blue rings are narrower.
+// The sensor is 0.08 m ahead of the wheel axis; readings are calibrated means.
+static bool model_blue;
 #define MODEL_MAT_RADIUS 0.35
 #define MODEL_SENSOR_AHEAD 0.08
-static int model_depth(void)
+#define MODEL_BOX_RADIUS 0.03     // the beacon box: the sensor must stay outside
+static int model_bands(void) { return model_blue ? 7 : 6; }     // white edge + rings
+static int model_arrival_depth(void) { return model_blue ? 6 : 5; } // blue ring 5, pink ring 4
+static double model_sensor_d(void)
 {
     double radians = current_heading * 3.141592653589793 / 180.0;
-    double d = hypot(robot_x + MODEL_SENSOR_AHEAD * cos(radians) - beacon_x,
-                     robot_y + MODEL_SENSOR_AHEAD * sin(radians) - beacon_y);
+    return hypot(robot_x + MODEL_SENSOR_AHEAD * cos(radians) - beacon_x,
+                 robot_y + MODEL_SENSOR_AHEAD * sin(radians) - beacon_y);
+}
+static int model_depth(void)
+{
+    double d = model_sensor_d();
     if (d > MODEL_MAT_RADIUS) return 0;
-    int depth = 6 - (int)(d / (MODEL_MAT_RADIUS / 6.0));
-    return depth < 1 ? 1 : depth > 6 ? 6 : depth;
+    int bands = model_bands();
+    int depth = bands - (int)(d / (MODEL_MAT_RADIUS / bands));
+    return depth < 1 ? 1 : depth > bands ? bands : depth;
+}
+void colour_note_lighter_mats(unsigned mask)
+{
+    if (mask & (1u << (model_blue ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK))) model_lighter_seen = true;
 }
 bool colour_sensor_read(colour_reading_t *reading)
 {
-    static const colour_reading_t by_depth[7] = {
-        {2900, 1000, 922, 760}, {7800, 1000, 1015, 970}, {6450, 1000, 927, 910},
+    static const colour_reading_t pink[6] = {
+        {7800, 1000, 1015, 970}, {6450, 1000, 927, 910},
         {5150, 1000, 785, 800}, {3770, 1000, 628, 800}, {2700, 1000, 475, 800},
         {1930, 1000, 344, 800},
     };
+    // Blue: 7 November calibration means, white edge to ring 6.
+    static const colour_reading_t blue[7] = {
+        {14078, 4000, 4820, 4738}, {8493, 2290, 2898, 3026}, {7105, 1765, 2410, 2715},
+        {6650, 1493, 2235, 2739}, {4685, 942, 1541, 2091}, {3355, 658, 1074, 1560},
+        {2577, 518, 799, 1222},
+    };
+    static const colour_reading_t floor_reading = {2900, 1000, 922, 760};
     assert(!motors_on);
     ++colour_reads;
-    *reading = by_depth[model ? model_depth() : 0];
+    int depth = model ? model_depth() : 0;
+    *reading = depth == 0 ? floor_reading : model_blue ? blue[depth - 1] : pink[depth - 1];
     return colour_present;
 }
-// Scripted arrival by check number (0 = never), or the model's mat rule:
-// ring 4 or darker after a lighter mat surface at an earlier check.
+// Scripted arrival by check number (0 = never), or the model's mat rule: the
+// arrival ring or darker after a lighter surface of the mat at an earlier check.
 bool colour_arrival_check(void)
 {
     assert(!motors_on && !scan_active);
@@ -235,11 +258,16 @@ bool colour_arrival_check(void)
     if (!colour_present) return false;
     int depth = model_depth();
     bool seen_before = model_lighter_seen;
-    if (depth >= 1 && depth <= 4) model_lighter_seen = true;
+    if (depth >= 1 && depth < model_arrival_depth()) model_lighter_seen = true;
     model_last_depth = depth;
-    return depth >= 5 && seen_before;
+    return depth >= model_arrival_depth() && seen_before;
 }
 int colour_last_depth(void) { return model ? model_last_depth : -1; }
+bool colour_near_arrival(unsigned rings)
+{
+    return model && colour_present && model_last_depth >= 1 &&
+           model_arrival_depth() - model_last_depth <= (int)rings;
+}
 // On the mat: scripted, or in the model the last check saw the mat.
 bool colour_on_mat(void)
 {
@@ -363,6 +391,7 @@ static void reset(void)
     floor_block_ms = 250; dip_probe_ms = 100; step_on_mat = mat_stub = false; mat_from_check = 0;
     colour_present = model_lighter_seen = colour_arrived = false; colour_reads = mat_scans_used = 0;
     model_last_depth = -1; ble_never = false;
+    model_blue = false; model_min_sensor_d = 1e9; mat_near_block_ms = LINE_MAT_NEAR_BLOCK_MS;
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
 }
@@ -1104,8 +1133,14 @@ static void check_mat_steering(void)
         // One scan was enough from each start (ring 1 along the ring: 90
         // degrees left; ring 2 facing out: 180; white edge: within 4 degrees
         // of the true centre direction).
-        assert(mat_scans_used==1 && move_count<=2 && !backwards_count);
-        for (unsigned m=0;m<move_count;++m) assert(moves[m].forwards && moves[m].ms==250);
+        // One scan was enough from each start (ring 1 along the ring: 90
+        // degrees left; ring 2 facing out: 180; white edge: within 4 degrees
+        // of the true centre direction). Outer steps are 250 ms; within two
+        // rings of arrival they are 100 ms.
+        assert(mat_scans_used==1 && move_count<=4 && !backwards_count);
+        for (unsigned m=0;m<move_count;++m)
+            assert(moves[m].forwards && (moves[m].ms==250 || moves[m].ms==100));
+        assert(moves[move_count-1].ms==100);
     }
 
     // On ring 4 but AP1 never passes even the loose gate: stop there with a
@@ -1121,12 +1156,53 @@ static void check_mat_steering(void)
     assert(strstr(log_text,"found no ring to steer toward") && strstr(log_text,"resuming the Wi-Fi line search"));
 }
 
+// On 7 November the robot drove into the beacon box on the blue mat and
+// nearly on the purple one. The 6-ring mats fit one more ring in the same
+// radius, and in this model a 250 ms step (6.7 cm) is wider than a blue ring
+// (5 cm). From five starts per mat, 100 ms steps within two rings of arrival
+// must stop on the arrival ring itself (pink ring 4, blue ring 5) without the
+// sensor ever reaching the ring inside it. With 250 ms steps the blue runs
+// reach ring 6, next to the box.
+static void check_near_centre_steps(void)
+{
+    static const struct { double x, y, heading; const char *name; } starts[] = {
+        {0.0, -0.26, 0, "ring 1, along the ring"},
+        {0.20, 0.0, 0, "ring 2, facing out"},
+        {-0.30, 0.10, 90, "white edge, side-on"},
+        {-0.33, 0.0, 0, "white edge, facing the centre"},
+        {0.0, -0.30, 90, "white edge, facing the centre from below"},
+    };
+    for (unsigned blue=0;blue<2;++blue) {
+        unsigned old_overshoots=0;
+        for (unsigned old=0;old<2;++old)
+        for (unsigned i=0;i<sizeof(starts)/sizeof(*starts);++i) {
+            reset(); shipped_steps(); model=true; colour_present=true; model_blue=blue;
+            if (old) mat_near_block_ms=LINE_MAT_BLOCK_MS;
+            robot_x=starts[i].x; robot_y=starts[i].y; current_heading=starts[i].heading;
+            model_min_sensor_d=model_sensor_d();
+            bool arrived=approach_beacon();
+            // Inner edge of the arrival ring: the ring inside it starts here.
+            double inner_edge=MODEL_MAT_RADIUS/model_bands();
+            bool overshot=model_min_sensor_d<inner_edge;
+            if (old) { old_overshoots+=overshot; continue; }
+            if (!arrived || overshot || model_depth()!=model_arrival_depth() || mat_scans_used!=1) {
+                fprintf(stderr,"%s mat '%s': arrived %d, closest %.3f m (arrival ring inner edge %.3f), depth %d, scans %u\n",
+                        blue?"Blue":"Pink",starts[i].name,arrived,model_min_sensor_d,inner_edge,model_depth(),mat_scans_used);
+                assert(false);
+            }
+            assert(model_min_sensor_d>MODEL_BOX_RADIUS && !strict_attempts);
+        }
+        // The old 250 ms steps reach the innermost ring on the blue mat.
+        if (blue) assert(old_overshoots>=3);
+    }
+}
+
 int main(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
-    check_v18_steps(); check_mat_steering();
+    check_v18_steps(); check_mat_steering(); check_near_centre_steps();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     tone_stops=0;
     uint64_t before=sim_time; completion_sound();
@@ -1165,6 +1241,6 @@ int main(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }

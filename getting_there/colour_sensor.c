@@ -38,6 +38,10 @@ static bool available;
 static unsigned lighter_mats;
 static bool on_mat;
 static int last_depth = -1;
+// Fewest rings between any reading of the latest check and its mat's arrival
+// ring (0 or less: on it or inside). NOT_ON_MAT when no reading was on a mat.
+#define NOT_ON_MAT 1000
+static int last_rings_to_arrival = NOT_ON_MAT;
 static unsigned failed_checks;
 
 static int tcs_write(uint8_t reg, uint8_t value)
@@ -89,11 +93,16 @@ void colour_arrival_reset(void)
     lighter_mats = 0;
     on_mat = false;
     last_depth = -1;
+    last_rings_to_arrival = NOT_ON_MAT;
     failed_checks = 0;
 }
 
 bool colour_on_mat(void) { return available && on_mat; }
 int colour_last_depth(void) { return available ? last_depth : -1; }
+bool colour_near_arrival(unsigned rings)
+{
+    return available && last_rings_to_arrival <= (int)rings;
+}
 void colour_note_lighter_mats(unsigned mat_mask) { lighter_mats |= mat_mask; }
 
 // Waits one full integration so every reading is fresh, not a repeat.
@@ -115,6 +124,7 @@ bool colour_arrival_check(void)
     if (!available) return false;
     on_mat = false;
     last_depth = -1;
+    last_rings_to_arrival = NOT_ON_MAT;
     colour_zone_t zones[COLOUR_ARRIVAL_SAMPLES];
     colour_mat_t mats[COLOUR_ARRIVAL_SAMPLES];
     colour_reading_t last = {0};
@@ -148,6 +158,10 @@ bool colour_arrival_check(void)
     for (unsigned i = 0; i < COLOUR_ARRIVAL_SAMPLES; ++i) {
         if (colour_lighter_zone(mats[i], zones[i])) lighter_mats |= 1u << mats[i];
         if (zones[i] >= COLOUR_WHITE) on_mat = true;
+        if (mats[i] != COLOUR_MAT_NONE) {
+            int rings = colour_zone_depth(colour_arrival_zone(mats[i])) - colour_zone_depth(zones[i]);
+            if (rings < last_rings_to_arrival) last_rings_to_arrival = rings;
+        }
     }
     last_depth = colour_zone_depth(zones[COLOUR_ARRIVAL_SAMPLES - 1]);
     bool arrived = all_dark && seen_before;

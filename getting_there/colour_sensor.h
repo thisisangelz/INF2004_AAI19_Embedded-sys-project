@@ -65,6 +65,10 @@ bool colour_on_mat(void);
 // Mat depth (see colour_zone_depth) of the latest check's last reading;
 // -1 before a check, after a failed read or without a sensor.
 int colour_last_depth(void);
+// True when a reading of the latest check was within this many rings of its
+// own mat's arrival ring (pink ring 4, blue or purple ring 5), or past it.
+// 0: on the arrival ring; 2: pink ring 2 or blue/purple ring 3 and inward.
+bool colour_near_arrival(unsigned rings);
 // Records that lighter surfaces of these mats (bit 1u << colour_mat_t) were
 // seen outside an arrival check, for example during a colour scan, so a robot
 // started on the arrival ring can arrive.

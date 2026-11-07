@@ -246,7 +246,15 @@ static bool log_dip_reading(const char *stage, unsigned probe, uint32_t position
 // Step sizes. The host tests set the v16 sizes (250/100 ms) to replay runs
 // recorded with them; the robot always uses the defaults below.
 static uint32_t floor_block_ms = LINE_FORWARD_BLOCK_MS, dip_probe_ms = LINE_DIP_PROBE_MS;
+// The tests set 250 to reproduce the 7 November blue-mat run.
+static uint32_t mat_near_block_ms = LINE_MAT_NEAR_BLOCK_MS;
 static bool step_on_mat;
+
+// On the mat: 250 ms steps on the outer rings, 100 ms near the centre.
+static uint32_t mat_step_ms(void)
+{
+    return colour_near_arrival(LINE_MAT_NEAR_RINGS) ? mat_near_block_ms : LINE_MAT_BLOCK_MS;
+}
 
 // Large steps on the floor, small steps once the latest stop saw the mat.
 static uint32_t forward_block_ms(void)
@@ -256,9 +264,9 @@ static uint32_t forward_block_ms(void)
         step_on_mat = on_mat;
         report_printf("STEP: %s; forward blocks now %u ms\n",
                       on_mat ? "colour sensor sees the mat" : "colour sensor no longer sees the mat",
-                      on_mat ? LINE_MAT_BLOCK_MS : (unsigned)floor_block_ms);
+                      on_mat ? (unsigned)mat_step_ms() : (unsigned)floor_block_ms);
     }
-    return on_mat ? LINE_MAT_BLOCK_MS : floor_block_ms;
+    return on_mat ? mat_step_ms() : floor_block_ms;
 }
 
 // ---- Colour scan on the spot (mat steering and the colour_scan test build) ----
@@ -324,7 +332,9 @@ static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_
 // robot turns that way and takes small steps, checking the colour at every
 // stop, until arrival or until the surface gets lighter, then scans again.
 #define MAT_MAX_SCANS 6u          // per run; then the Wi-Fi search resumes
-#define MAT_STEPS_PER_SCAN 4u     // small steps before checking the direction again
+// Travel after each scan before checking the direction again: four outer
+// steps, or ten near the centre, so small steps do not cause extra scans.
+#define MAT_TRAVEL_PER_SCAN_MS 1000u
 #define MAT_ARRIVED_RETRIES 3u    // stationary BLE retries when arrived but AP1 not in range
 static unsigned mat_scans_used;
 
@@ -355,8 +365,8 @@ static payload_result_t mat_wait_on_arrival(void)
 // so the caller resumes the Wi-Fi search.
 static payload_result_t mat_approach(void)
 {
-    report_printf("MAT: colour sensor sees the mat; steering by colour scans with %u ms steps\n",
-                  LINE_MAT_BLOCK_MS);
+    report_printf("MAT: colour sensor sees the mat; steering by colour scans with %u ms steps, %u ms within %u rings of arrival\n",
+                  LINE_MAT_BLOCK_MS, (unsigned)mat_near_block_ms, LINE_MAT_NEAR_RINGS);
     cue_play(CUE_PASS);
     while (mat_scans_used < MAT_MAX_SCANS) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
@@ -389,13 +399,16 @@ static payload_result_t mat_approach(void)
             if (result != PAYLOAD_NOT_CLOSE) return result;
         }
         int previous = colour_last_depth();
-        for (unsigned step = 1; step <= MAT_STEPS_PER_SCAN; ++step) {
-            uint32_t actual;
-            result = translate_block(true, LINE_MAT_BLOCK_MS, heading, 0, 0, false, &actual);
+        uint32_t travelled = 0;
+        for (unsigned step = 1; travelled < MAT_TRAVEL_PER_SCAN_MS; ++step) {
+            uint32_t actual, block = mat_step_ms();
+            result = translate_block(true, block, heading, 0, 0, false, &actual);
             if (result != PAYLOAD_NOT_CLOSE) return result;
+            // A stop that moved nothing still counts a full block, so the loop ends.
+            travelled += actual ? actual : block;
             int depth = colour_last_depth();
-            report_printf("MAT_STEP,scan=%u,step=%u,heading=%d,depth=%d,previous=%d\n",
-                          scan, step, (int)heading, depth, previous);
+            report_printf("MAT_STEP,scan=%u,step=%u,heading=%d,ms=%lu,depth=%d,previous=%d\n",
+                          scan, step, (int)heading, (unsigned long)block, depth, previous);
             if (colour_arrived) {
                 result = mat_wait_on_arrival();
                 if (result != PAYLOAD_NOT_CLOSE) return result;

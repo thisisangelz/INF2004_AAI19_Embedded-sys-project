@@ -266,6 +266,29 @@ static void check_blue_purple(void)
     queue3(blue5, blue5, blue5); assert(colour_arrival_check());
     colour_note_lighter_mats(1u << COLOUR_MAT_PINK);
     queue3(purple5, purple5, purple5); assert(!colour_arrival_check());
+
+    // Rings to arrival on each reading's own mat, for the smaller steps near
+    // the centre: blue ring 1 is four rings from ring 5, ring 3 is two.
+    const colour_reading_t blue1 = rgb(8500, 1265, 1310), blue3 = rgb(6000, 1485, 1800);
+    const colour_reading_t floor = at(2900, 922);
+    colour_arrival_reset();
+    assert(!colour_near_arrival(6)); // no check yet
+    queue3(blue1, blue1, blue1); colour_arrival_check();
+    assert(!colour_near_arrival(2) && colour_near_arrival(4));
+    queue3(blue3, blue3, blue3); colour_arrival_check();
+    assert(colour_near_arrival(2) && !colour_near_arrival(1));
+    queue3(blue6, blue6, blue6); colour_arrival_check();
+    assert(colour_near_arrival(0)); // past the arrival ring
+    // Pink ring 2 is two rings from pink ring 4, purple ring 3 two from ring 5.
+    queue3(pink2, pink2, pink2); colour_arrival_check();
+    assert(colour_near_arrival(2) && !colour_near_arrival(1));
+    queue3(purple3, purple3, purple3); colour_arrival_check();
+    assert(colour_near_arrival(2) && !colour_near_arrival(1));
+    // The closest reading counts; floor alone is never near.
+    queue3(floor, floor, blue3); colour_arrival_check();
+    assert(colour_near_arrival(2));
+    queue3(floor, floor, floor); colour_arrival_check();
+    assert(!colour_near_arrival(6));
 }
 
 // Simulated mat: radius 35 cm, white edge plus five rings of equal width.

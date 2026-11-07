@@ -10,6 +10,14 @@
 // 0.75 s, so a short weak patch in the signal no longer ends a good line.
 #define LINE_FORWARD_BLOCK_MS 500u
 #define LINE_MAT_BLOCK_MS 250u
+// Near the centre: 100 ms steps once a stop is within two rings of the mat's
+// arrival ring. The blue and purple mats fit six rings where pink has five,
+// so their inner rings are narrower. With 250 ms steps on 7 November the robot
+// drove into the beacon box on the blue mat and nearly on the purple one; in
+// the host model a 250 ms step is wider than a blue ring. 100 ms matches the
+// v16 dip probes, so the motors are known to handle it.
+#define LINE_MAT_NEAR_BLOCK_MS 100u
+#define LINE_MAT_NEAR_RINGS 2u
 #define LINE_DECLINE_POSITIONS 3u
 #define LINE_REFERENCE_POSITIONS 3u
 // v16: 100 ms. Each probe now looks a full mat step further past a weak patch.

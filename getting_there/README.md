@@ -76,9 +76,10 @@ Why:
   facing away from AP1 could not turn round; that run also stopped on an
   inconsistent return. The third trial is straight back along the last line.
 - **On the mat** the robot is already close, and 250 ms steps keep it from
-  driving past the centre. The switch follows the colour sensor reading at each
-  stop (white edge or any ring) and is logged as `STEP: colour sensor sees the
-  mat; forward blocks now 250 ms`.
+  driving past the centre; within two rings of the arrival ring (pink ring 2,
+  blue or purple ring 3, and inward) steps are 100 ms. The switch follows the
+  colour sensor reading at each stop and is logged as `STEP: colour sensor sees
+  the mat; forward blocks now ... ms`.
 
 ### Colour gate and mat steering
 
@@ -97,8 +98,13 @@ drove along the rings and transferred on ring 1, because BLE alone reached
   (`FOLLOW: colour sensor sees the mat ...; colour steering takes over`). The
   robot does the colour scan from the scan test (12 stops of 30 degrees,
   `COLOUR_SCAN` lines), turns to the estimated centre direction (`MAT: scan N
-  points ...`), then takes up to four 250 ms steps (`MAT_STEP` lines), checking
-  the colour at each stop. It scans again if the surface gets lighter. If a
+  points ...`), then drives up to 1 s in steps (`MAT_STEP` lines, with `ms=`),
+  checking the colour at each stop: 250 ms steps on the outer rings, 100 ms
+  within two rings of the arrival ring. The blue and purple mats fit six rings
+  where pink has five, so their inner rings are narrower; with 250 ms steps the
+  robot drove into the beacon box on the blue mat on 7 November and nearly on
+  the purple one. In the host model the 100 ms steps stop on the arrival ring
+  itself from every start, where 250 ms steps reached blue ring 6. It scans again if the surface gets lighter. If a
   scan sees no ring, a read fails, or six scans have been used, the Wi-Fi
   search resumes. On ring 4 with AP1 failing even the -85 dBm gate it never
   drives on into the beacon box: three stationary retries, then a payload fault.
