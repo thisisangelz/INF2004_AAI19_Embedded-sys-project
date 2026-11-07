@@ -34,9 +34,14 @@
 _Static_assert(COLOUR_ARRIVAL_SAMPLES == 3, "COLOUR log line prints exactly three zones");
 
 static bool available;
-static bool lighter_mat_seen;
+// Bit (1u << colour_mat_t) per mat whose lighter surface has been seen.
+static unsigned lighter_mats;
 static bool on_mat;
 static int last_depth = -1;
+// Fewest rings between any reading of the latest check and its mat's arrival
+// ring (0 or less: on it or inside). NOT_ON_MAT when no reading was on a mat.
+#define NOT_ON_MAT 1000
+static int last_rings_to_arrival = NOT_ON_MAT;
 static unsigned failed_checks;
 
 static int tcs_write(uint8_t reg, uint8_t value)
@@ -76,8 +81,8 @@ bool colour_sensor_init(void)
         return false;
     }
     available = true;
-    report_printf("COLOUR SENSOR: TCS34725 ID 0x%02x ready on GP0/GP1; arrival at %s or darker after a lighter mat ring\n",
-                  id, colour_zone_name(COLOUR_ARRIVAL_ZONE));
+    report_printf("COLOUR SENSOR: TCS34725 ID 0x%02x ready on GP0/GP1; pink, blue and purple mats; arrival on %s or darker after a lighter ring of the same mat\n",
+                  id, COLOUR_ARRIVAL_TEXT);
     return true;
 }
 
@@ -85,14 +90,20 @@ bool colour_sensor_available(void) { return available; }
 
 void colour_arrival_reset(void)
 {
-    lighter_mat_seen = on_mat = false;
+    lighter_mats = 0;
+    on_mat = false;
     last_depth = -1;
+    last_rings_to_arrival = NOT_ON_MAT;
     failed_checks = 0;
 }
 
 bool colour_on_mat(void) { return available && on_mat; }
 int colour_last_depth(void) { return available ? last_depth : -1; }
-void colour_note_lighter_mat(void) { lighter_mat_seen = true; }
+bool colour_near_arrival(unsigned rings)
+{
+    return available && last_rings_to_arrival <= (int)rings;
+}
+void colour_note_lighter_mats(unsigned mat_mask) { lighter_mats |= mat_mask; }
 
 // Waits one full integration so every reading is fresh, not a repeat.
 static bool read_fresh(colour_reading_t *reading)
@@ -108,23 +119,26 @@ static bool read_fresh(colour_reading_t *reading)
     return true;
 }
 
-bool colour_lighter_mat_zone(colour_zone_t zone)
-{
-    return zone >= COLOUR_WHITE && zone < COLOUR_ARRIVAL_ZONE;
-}
-
 bool colour_arrival_check(void)
 {
     if (!available) return false;
     on_mat = false;
     last_depth = -1;
+    last_rings_to_arrival = NOT_ON_MAT;
     colour_zone_t zones[COLOUR_ARRIVAL_SAMPLES];
+    colour_mat_t mats[COLOUR_ARRIVAL_SAMPLES];
     colour_reading_t last = {0};
     bool all_dark = true, read_ok = true;
     for (unsigned i = 0; i < COLOUR_ARRIVAL_SAMPLES; ++i) {
-        if (!read_fresh(&last)) { read_ok = false; zones[i] = COLOUR_UNKNOWN; break; }
-        zones[i] = colour_classify(&last);
-        if (zones[i] < COLOUR_ARRIVAL_ZONE) all_dark = false;
+        if (!read_fresh(&last)) {
+            read_ok = false;
+            zones[i] = COLOUR_UNKNOWN;
+            mats[i] = COLOUR_MAT_NONE;
+            break;
+        }
+        zones[i] = colour_classify_mat(&last, &mats[i]);
+        // Every reading on the same mat, each at its arrival ring or darker.
+        if (!colour_zone_arrived(mats[i], zones[i]) || mats[i] != mats[0]) all_dark = false;
     }
     if (!read_ok) {
         if (++failed_checks >= MAX_FAILED_CHECKS) {
@@ -139,16 +153,23 @@ bool colour_arrival_check(void)
     failed_checks = 0;
     // Seen before this check's verdict, so one check cannot both introduce and
     // satisfy the lighter-ring requirement.
-    bool seen_before = lighter_mat_seen;
+    // The lighter surface must belong to the mat the robot arrives on.
+    bool seen_before = (lighter_mats >> mats[0]) & 1u;
     for (unsigned i = 0; i < COLOUR_ARRIVAL_SAMPLES; ++i) {
-        if (colour_lighter_mat_zone(zones[i])) lighter_mat_seen = true;
+        if (colour_lighter_zone(mats[i], zones[i])) lighter_mats |= 1u << mats[i];
         if (zones[i] >= COLOUR_WHITE) on_mat = true;
+        if (mats[i] != COLOUR_MAT_NONE) {
+            int rings = colour_zone_depth(colour_arrival_zone(mats[i])) - colour_zone_depth(zones[i]);
+            if (rings < last_rings_to_arrival) last_rings_to_arrival = rings;
+        }
     }
     last_depth = colour_zone_depth(zones[COLOUR_ARRIVAL_SAMPLES - 1]);
     bool arrived = all_dark && seen_before;
-    report_printf("COLOUR,zones=%s/%s/%s,c=%u,r=%u,g=%u,b=%u,gr=%u,lighter_seen=%u,arrived=%u\n",
+    report_printf("COLOUR,zones=%s/%s/%s,mats=%s/%s/%s,c=%u,r=%u,g=%u,b=%u,gr=%u,br=%u,lighter_seen=%u,arrived=%u\n",
                   colour_zone_name(zones[0]), colour_zone_name(zones[1]), colour_zone_name(zones[2]),
-                  last.c, last.r, last.g, last.b, colour_gr_x1000(&last), seen_before, arrived);
+                  colour_mat_name(mats[0]), colour_mat_name(mats[1]), colour_mat_name(mats[2]),
+                  last.c, last.r, last.g, last.b, colour_gr_x1000(&last), colour_br_x1000(&last),
+                  seen_before, arrived);
     return arrived;
 }
 

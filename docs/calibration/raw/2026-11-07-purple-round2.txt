@@ -1,0 +1,343 @@
+---- Opened the serial port COM8 ----
+LIVE [next: FLOOR] C= 3876 R= 1375 G= 1295 B= 1084 | G/R=0.941 B/R=0.788
+LIVE [next: FLOOR] C= 3835 R= 1362 G= 1281 B= 1074 | G/R=0.940 B/R=0.788
+LIVE [next: FLOOR] C= 3837 R= 1363 G= 1282 B= 1074 | G/R=0.940 B/R=0.787
+LIVE [next: FLOOR] C= 3820 R= 1358 G= 1276 B= 1071 | G/R=0.939 B/R=0.788
+LIVE [next: FLOOR] C= 3782 R= 1345 G= 1262 B= 1062 | G/R=0.938 B/R=0.789
+LIVE [next: FLOOR] C= 3779 R= 1344 G= 1261 B= 1061 | G/R=0.938 B/R=0.789
+LIVE [next: FLOOR] C= 3781 R= 1344 G= 1262 B= 1062 | G/R=0.938 B/R=0.790
+LIVE [next: FLOOR] C= 3786 R= 1346 G= 1263 B= 1063 | G/R=0.938 B/R=0.789
+LIVE [next: FLOOR] C= 3789 R= 1347 G= 1264 B= 1064 | G/R=0.938 B/R=0.789
+LIVE [next: FLOOR] C= 3806 R= 1352 G= 1270 B= 1068 | G/R=0.939 B/R=0.789
+LIVE [next: FLOOR] C= 3810 R= 1354 G= 1272 B= 1068 | G/R=0.939 B/R=0.788
+LIVE [next: FLOOR] C= 3821 R= 1358 G= 1275 B= 1072 | G/R=0.938 B/R=0.789
+LIVE [next: FLOOR] C= 3820 R= 1357 G= 1275 B= 1071 | G/R=0.939 B/R=0.789
+LIVE [next: FLOOR] C= 3823 R= 1358 G= 1277 B= 1072 | G/R=0.940 B/R=0.789
+LIVE [next: FLOOR] C= 3896 R= 1381 G= 1303 B= 1090 | G/R=0.943 B/R=0.789
+LIVE [next: FLOOR] C= 3907 R= 1384 G= 1307 B= 1093 | G/R=0.944 B/R=0.789
+LIVE [next: FLOOR] C= 3906 R= 1384 G= 1306 B= 1093 | G/R=0.943 B/R=0.789
+LIVE [next: FLOOR] C= 3909 R= 1385 G= 1307 B= 1094 | G/R=0.943 B/R=0.789
+LIVE [next: FLOOR] C= 3914 R= 1387 G= 1309 B= 1095 | G/R=0.943 B/R=0.789
+LIVE [next: FLOOR] C= 3923 R= 1389 G= 1312 B= 1098 | G/R=0.944 B/R=0.790
+LIVE [next: FLOOR] C= 3941 R= 1394 G= 1318 B= 1103 | G/R=0.945 B/R=0.791
+LIVE [next: FLOOR] C= 3945 R= 1395 G= 1320 B= 1105 | G/R=0.946 B/R=0.792
+
+CAPTURING FLOOR: keep the robot still...
+CAPTURED FLOOR                                n=20 | C  3982 [ 3959.. 3997] | R  1405 G  1331 B  1115 | G/R  947 [ 946.. 948] | B/R  793 [ 792.. 795] (ratios x1000)
+
+Next: place the sensor over WHITE EDGE, then press GP20.
+LIVE [next: WHITE EDGE] C= 3978 R= 1403 G= 1330 B= 1115 | G/R=0.947 B/R=0.794
+
+Back: redo FLOOR, then press GP20.
+LIVE [next: FLOOR] C= 3991 R= 1408 G= 1335 B= 1118 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3993 R= 1408 G= 1335 B= 1119 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3994 R= 1408 G= 1336 B= 1119 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3995 R= 1408 G= 1336 B= 1119 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3997 R= 1409 G= 1337 B= 1120 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3997 R= 1409 G= 1337 B= 1120 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3996 R= 1409 G= 1336 B= 1120 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3995 R= 1408 G= 1336 B= 1119 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3996 R= 1408 G= 1336 B= 1120 | G/R=0.948 B/R=0.795
+LIVE [next: FLOOR] C= 3997 R= 1409 G= 1337 B= 1120 | G/R=0.948 B/R=0.794
+LIVE [next: FLOOR] C= 3999 R= 1410 G= 1337 B= 1121 | G/R=0.948 B/R=0.795
+LIVE [next: FLOOR] C= 4004 R= 1411 G= 1339 B= 1122 | G/R=0.948 B/R=0.795
+
+CAPTURING FLOOR: keep the robot still...
+CAPTURED FLOOR                                n=20 | C  3996 [ 3994.. 3999] | R  1408 G  1336 B  1119 | G/R  948 [ 948.. 948] | B/R  794 [ 794.. 795] (ratios x1000)
+
+Next: place the sensor over WHITE EDGE, then press GP20.
+LIVE [next: WHITE EDGE] C= 3986 R= 1405 G= 1333 B= 1117 | G/R=0.948 B/R=0.795
+LIVE [next: WHITE EDGE] C= 3996 R= 1408 G= 1336 B= 1120 | G/R=0.948 B/R=0.795
+LIVE [next: WHITE EDGE] C= 3998 R= 1409 G= 1337 B= 1120 | G/R=0.948 B/R=0.794
+LIVE [next: WHITE EDGE] C= 3987 R= 1405 G= 1333 B= 1117 | G/R=0.948 B/R=0.795
+LIVE [next: WHITE EDGE] C= 3932 R= 1388 G= 1314 B= 1103 | G/R=0.946 B/R=0.794
+LIVE [next: WHITE EDGE] C= 1762 R=  655 G=  581 B=  474 | G/R=0.887 B/R=0.723
+LIVE [next: WHITE EDGE] C= 2092 R=  711 G=  692 B=  609 | G/R=0.973 B/R=0.856
+LIVE [next: WHITE EDGE] C=14180 R= 4216 G= 4726 B= 4649 | G/R=1.120 B/R=1.102
+LIVE [next: WHITE EDGE] C=15652 R= 4641 G= 5217 B= 5139 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15687 R= 4654 G= 5229 B= 5151 | G/R=1.123 B/R=1.106
+LIVE [next: WHITE EDGE] C=15769 R= 4676 G= 5256 B= 5178 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15809 R= 4688 G= 5270 B= 5191 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15821 R= 4691 G= 5274 B= 5195 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15837 R= 4696 G= 5279 B= 5200 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15839 R= 4697 G= 5280 B= 5201 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15848 R= 4697 G= 5283 B= 5203 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15845 R= 4697 G= 5282 B= 5202 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15851 R= 4697 G= 5284 B= 5205 | G/R=1.124 B/R=1.108
+
+CAPTURING WHITE EDGE: keep the robot still...
+CAPTURED WHITE EDGE                           n=20 | C 15819 [15807..15833] | R  4691 G  5273 B  5194 | G/R 1123 [1123..1124] | B/R 1106 [1106..1107] (ratios x1000)
+
+Next: place the sensor over RING 1 (lightest), then press GP20.
+LIVE [next: RING 1 (lightest)] C=15806 R= 4688 G= 5269 B= 5192 | G/R=1.123 B/R=1.107
+LIVE [next: RING 1 (lightest)] C=15821 R= 4692 G= 5274 B= 5196 | G/R=1.124 B/R=1.107
+LIVE [next: RING 1 (lightest)] C=15846 R= 4696 G= 5282 B= 5203 | G/R=1.124 B/R=1.107
+
+Back: redo WHITE EDGE, then press GP20.
+LIVE [next: WHITE EDGE] C=15838 R= 4696 G= 5279 B= 5201 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15843 R= 4698 G= 5281 B= 5203 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15842 R= 4698 G= 5281 B= 5202 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15853 R= 4699 G= 5285 B= 5208 | G/R=1.124 B/R=1.108
+LIVE [next: WHITE EDGE] C=15842 R= 4697 G= 5281 B= 5203 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15851 R= 4698 G= 5284 B= 5205 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15828 R= 4695 G= 5276 B= 5196 | G/R=1.123 B/R=1.106
+LIVE [next: WHITE EDGE] C=15807 R= 4687 G= 5269 B= 5190 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15851 R= 4698 G= 5284 B= 5207 | G/R=1.124 B/R=1.108
+LIVE [next: WHITE EDGE] C=15849 R= 4697 G= 5283 B= 5205 | G/R=1.124 B/R=1.108
+LIVE [next: WHITE EDGE] C=15851 R= 4698 G= 5284 B= 5205 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15847 R= 4698 G= 5283 B= 5204 | G/R=1.124 B/R=1.107
+LIVE [next: WHITE EDGE] C=15848 R= 4698 G= 5283 B= 5205 | G/R=1.124 B/R=1.107
+
+CAPTURING WHITE EDGE: keep the robot still...
+CAPTURED WHITE EDGE                           n=20 | C 15831 [15787..15846] | R  4694 G  5276 B  5197 | G/R 1123 [1123..1124] | B/R 1106 [1106..1107] (ratios x1000)
+
+Next: place the sensor over RING 1 (lightest), then press GP20.
+LIVE [next: RING 1 (lightest)] C=15773 R= 4675 G= 5258 B= 5180 | G/R=1.124 B/R=1.108
+LIVE [next: RING 1 (lightest)] C=20018 R= 5892 G= 6673 B= 6599 | G/R=1.132 B/R=1.119
+LIVE [next: RING 1 (lightest)] C=10435 R= 3135 G= 3401 B= 3556 | G/R=1.084 B/R=1.134
+LIVE [next: RING 1 (lightest)] C= 8390 R= 2519 G= 2739 B= 2852 | G/R=1.087 B/R=1.132
+LIVE [next: RING 1 (lightest)] C= 8380 R= 2516 G= 2736 B= 2849 | G/R=1.087 B/R=1.132
+LIVE [next: RING 1 (lightest)] C= 8359 R= 2512 G= 2728 B= 2841 | G/R=1.085 B/R=1.130
+LIVE [next: RING 1 (lightest)] C= 8348 R= 2509 G= 2726 B= 2837 | G/R=1.086 B/R=1.130
+LIVE [next: RING 1 (lightest)] C= 8355 R= 2511 G= 2727 B= 2840 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8365 R= 2514 G= 2731 B= 2844 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8370 R= 2515 G= 2733 B= 2845 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8370 R= 2516 G= 2733 B= 2846 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8373 R= 2516 G= 2733 B= 2846 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8372 R= 2516 G= 2733 B= 2846 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8371 R= 2516 G= 2733 B= 2846 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8374 R= 2517 G= 2734 B= 2847 | G/R=1.086 B/R=1.131
+LIVE [next: RING 1 (lightest)] C= 8376 R= 2516 G= 2734 B= 2846 | G/R=1.086 B/R=1.131
+
+CAPTURING RING 1 (lightest): keep the robot still...
+CAPTURED RING 1 (lightest)                    n=20 | C  8368 [ 8359.. 8371] | R  2514 G  2731 B  2843 | G/R 1085 [1085..1086] | B/R 1130 [1130..1131] (ratios x1000)
+
+Next: place the sensor over RING 2, then press GP20.
+LIVE [next: RING 2] C= 8351 R= 2510 G= 2726 B= 2838 | G/R=1.086 B/R=1.130
+LIVE [next: RING 2] C= 8431 R= 2531 G= 2754 B= 2866 | G/R=1.088 B/R=1.132
+LIVE [next: RING 2] C= 6118 R= 1864 G= 1995 B= 2061 | G/R=1.070 B/R=1.105
+LIVE [next: RING 2] C= 6238 R= 1874 G= 1962 B= 2215 | G/R=1.046 B/R=1.181
+LIVE [next: RING 2] C= 6806 R= 2037 G= 2142 B= 2423 | G/R=1.051 B/R=1.189
+LIVE [next: RING 2] C= 6809 R= 2037 G= 2143 B= 2425 | G/R=1.052 B/R=1.190
+LIVE [next: RING 2] C= 6807 R= 2036 G= 2142 B= 2423 | G/R=1.052 B/R=1.190
+LIVE [next: RING 2] C= 6805 R= 2036 G= 2141 B= 2422 | G/R=1.051 B/R=1.189
+LIVE [next: RING 2] C= 6790 R= 2031 G= 2136 B= 2418 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6783 R= 2029 G= 2134 B= 2416 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6760 R= 2023 G= 2127 B= 2409 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6783 R= 2029 G= 2134 B= 2416 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6789 R= 2031 G= 2136 B= 2418 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6789 R= 2031 G= 2137 B= 2418 | G/R=1.052 B/R=1.190
+LIVE [next: RING 2] C= 6788 R= 2030 G= 2136 B= 2417 | G/R=1.052 B/R=1.190
+LIVE [next: RING 2] C= 6789 R= 2031 G= 2136 B= 2418 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6792 R= 2032 G= 2137 B= 2419 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6788 R= 2031 G= 2136 B= 2416 | G/R=1.051 B/R=1.189
+LIVE [next: RING 2] C= 6786 R= 2030 G= 2135 B= 2416 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6782 R= 2029 G= 2134 B= 2416 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6784 R= 2030 G= 2135 B= 2416 | G/R=1.051 B/R=1.190
+LIVE [next: RING 2] C= 6785 R= 2030 G= 2135 B= 2415 | G/R=1.051 B/R=1.189
+LIVE [next: RING 2] C= 6789 R= 2031 G= 2136 B= 2418 | G/R=1.051 B/R=1.190
+
+CAPTURING RING 2: keep the robot still...
+CAPTURED RING 2                               n=20 | C  6783 [ 6767.. 6786] | R  2029 G  2134 B  2415 | G/R 1051 [1051..1052] | B/R 1189 [1189..1191] (ratios x1000)
+
+Next: place the sensor over RING 3, then press GP20.
+LIVE [next: RING 3] C= 6782 R= 2029 G= 2134 B= 2415 | G/R=1.051 B/R=1.190
+LIVE [next: RING 3] C= 6773 R= 2027 G= 2131 B= 2412 | G/R=1.051 B/R=1.189
+LIVE [next: RING 3] C= 6764 R= 2024 G= 2128 B= 2409 | G/R=1.051 B/R=1.190
+LIVE [next: RING 3] C= 3624 R= 1120 G= 1135 B= 1265 | G/R=1.013 B/R=1.129
+LIVE [next: RING 3] C= 5208 R= 1555 G= 1580 B= 1938 | G/R=1.016 B/R=1.246
+LIVE [next: RING 3] C= 5331 R= 1589 G= 1616 B= 1988 | G/R=1.016 B/R=1.251
+LIVE [next: RING 3] C= 5343 R= 1589 G= 1617 B= 1995 | G/R=1.017 B/R=1.255
+LIVE [next: RING 3] C= 5253 R= 1567 G= 1585 B= 1964 | G/R=1.011 B/R=1.253
+LIVE [next: RING 3] C= 5254 R= 1567 G= 1586 B= 1965 | G/R=1.012 B/R=1.253
+LIVE [next: RING 3] C= 5253 R= 1567 G= 1585 B= 1964 | G/R=1.011 B/R=1.253
+LIVE [next: RING 3] C= 5252 R= 1567 G= 1585 B= 1964 | G/R=1.011 B/R=1.253
+LIVE [next: RING 3] C= 5255 R= 1568 G= 1586 B= 1965 | G/R=1.011 B/R=1.253
+LIVE [next: RING 3] C= 5252 R= 1568 G= 1586 B= 1963 | G/R=1.011 B/R=1.251
+LIVE [next: RING 3] C= 5254 R= 1567 G= 1585 B= 1964 | G/R=1.011 B/R=1.253
+LIVE [next: RING 3] C= 5254 R= 1568 G= 1586 B= 1964 | G/R=1.011 B/R=1.252
+LIVE [next: RING 3] C= 5255 R= 1568 G= 1586 B= 1964 | G/R=1.011 B/R=1.252
+LIVE [next: RING 3] C= 5256 R= 1568 G= 1586 B= 1965 | G/R=1.011 B/R=1.253
+LIVE [next: RING 3] C= 5252 R= 1567 G= 1585 B= 1964 | G/R=1.011 B/R=1.253
+LIVE [next: RING 3] C= 5256 R= 1568 G= 1586 B= 1965 | G/R=1.011 B/R=1.253
+
+CAPTURING RING 3: keep the robot still...
+CAPTURED RING 3                               n=20 | C  5264 [ 5255.. 5271] | R  1570 G  1589 B  1967 | G/R 1011 [1011..1012] | B/R 1251 [1251..1253] (ratios x1000)
+
+Next: place the sensor over RING 4, then press GP20.
+LIVE [next: RING 4] C= 5256 R= 1569 G= 1587 B= 1964 | G/R=1.011 B/R=1.251
+LIVE [next: RING 4] C= 5271 R= 1573 G= 1592 B= 1969 | G/R=1.012 B/R=1.251
+LIVE [next: RING 4] C= 5268 R= 1572 G= 1591 B= 1968 | G/R=1.012 B/R=1.251
+LIVE [next: RING 4] C= 5269 R= 1572 G= 1591 B= 1969 | G/R=1.012 B/R=1.252
+LIVE [next: RING 4] C= 5220 R= 1558 G= 1575 B= 1951 | G/R=1.010 B/R=1.252
+LIVE [next: RING 4] C= 4571 R= 1382 G= 1358 B= 1737 | G/R=0.982 B/R=1.256
+LIVE [next: RING 4] C= 4468 R= 1351 G= 1325 B= 1702 | G/R=0.980 B/R=1.259
+LIVE [next: RING 4] C= 4515 R= 1363 G= 1338 B= 1722 | G/R=0.981 B/R=1.263
+LIVE [next: RING 4] C= 3605 R= 1072 G= 1041 B= 1416 | G/R=0.971 B/R=1.320
+LIVE [next: RING 4] C= 3199 R=  959 G=  917 B= 1258 | G/R=0.956 B/R=1.311
+LIVE [next: RING 4] C= 3193 R=  957 G=  915 B= 1256 | G/R=0.956 B/R=1.312
+LIVE [next: RING 4] C= 3178 R=  953 G=  911 B= 1250 | G/R=0.955 B/R=1.311
+LIVE [next: RING 4] C= 3179 R=  954 G=  911 B= 1250 | G/R=0.954 B/R=1.310
+LIVE [next: RING 4] C= 3192 R=  957 G=  915 B= 1255 | G/R=0.956 B/R=1.311
+LIVE [next: RING 4] C= 3187 R=  956 G=  914 B= 1252 | G/R=0.956 B/R=1.309
+LIVE [next: RING 4] C= 3198 R=  959 G=  917 B= 1257 | G/R=0.956 B/R=1.310
+LIVE [next: RING 4] C= 3183 R=  955 G=  913 B= 1251 | G/R=0.956 B/R=1.309
+LIVE [next: RING 4] C= 3183 R=  955 G=  913 B= 1251 | G/R=0.956 B/R=1.309
+LIVE [next: RING 4] C= 3184 R=  954 G=  913 B= 1251 | G/R=0.957 B/R=1.311
+LIVE [next: RING 4] C= 3183 R=  954 G=  913 B= 1251 | G/R=0.957 B/R=1.311
+LIVE [next: RING 4] C= 3185 R=  955 G=  913 B= 1251 | G/R=0.956 B/R=1.309
+LIVE [next: RING 4] C= 3184 R=  955 G=  913 B= 1251 | G/R=0.956 B/R=1.309
+LIVE [next: RING 4] C= 3186 R=  956 G=  914 B= 1252 | G/R=0.956 B/R=1.309
+
+CAPTURING RING 4: keep the robot still...
+CAPTURED RING 4                               n=20 | C  3183 [ 3181.. 3185] | R   954 G   912 B  1250 | G/R  956 [ 955.. 957] | B/R 1309 [1309..1311] (ratios x1000)
+
+Next: place the sensor over RING 5, then press GP20.
+LIVE [next: RING 5] C= 3184 R=  955 G=  913 B= 1251 | G/R=0.956 B/R=1.309
+LIVE [next: RING 5] C= 3249 R=  973 G=  932 B= 1278 | G/R=0.957 B/R=1.313
+LIVE [next: RING 5] C= 3307 R=  988 G=  949 B= 1303 | G/R=0.960 B/R=1.318
+LIVE [next: RING 5] C=  858 R=  308 G=  243 B=  296 | G/R=0.788 B/R=0.961
+LIVE [next: RING 5] C= 2414 R=  709 G=  666 B=  998 | G/R=0.939 B/R=1.407
+LIVE [next: RING 5] C= 2369 R=  697 G=  653 B=  980 | G/R=0.936 B/R=1.406
+LIVE [next: RING 5] C= 2361 R=  695 G=  650 B=  977 | G/R=0.935 B/R=1.405
+LIVE [next: RING 5] C= 2352 R=  692 G=  648 B=  972 | G/R=0.936 B/R=1.404
+LIVE [next: RING 5] C= 2313 R=  683 G=  637 B=  955 | G/R=0.932 B/R=1.398
+LIVE [next: RING 5] C= 2323 R=  686 G=  640 B=  958 | G/R=0.932 B/R=1.396
+LIVE [next: RING 5] C= 2318 R=  684 G=  639 B=  956 | G/R=0.934 B/R=1.397
+LIVE [next: RING 5] C= 2320 R=  685 G=  639 B=  957 | G/R=0.932 B/R=1.397
+LIVE [next: RING 5] C= 2313 R=  683 G=  637 B=  955 | G/R=0.932 B/R=1.398
+LIVE [next: RING 5] C= 2315 R=  683 G=  638 B=  956 | G/R=0.934 B/R=1.399
+LIVE [next: RING 5] C= 2315 R=  684 G=  638 B=  956 | G/R=0.932 B/R=1.397
+LIVE [next: RING 5] C= 2318 R=  684 G=  639 B=  957 | G/R=0.934 B/R=1.399
+
+CAPTURING RING 5: keep the robot still...
+CAPTURED RING 5                               n=20 | C  2323 [ 2319.. 2326] | R   685 G   640 B   958 | G/R  933 [ 932.. 934] | B/R 1396 [1395..1398] (ratios x1000)
+
+Next: place the sensor over RING 6 (darkest, beside beacon box), then press GP20.
+LIVE [next: RING 6 (darkest, bes] C= 2319 R=  685 G=  639 B=  957 | G/R=0.932 B/R=1.397
+LIVE [next: RING 6 (darkest, bes] C= 2359 R=  695 G=  650 B=  975 | G/R=0.935 B/R=1.402
+LIVE [next: RING 6 (darkest, bes] C= 2348 R=  691 G=  647 B=  971 | G/R=0.936 B/R=1.405
+LIVE [next: RING 6 (darkest, bes] C=  882 R=  299 G=  238 B=  336 | G/R=0.795 B/R=1.123
+LIVE [next: RING 6 (darkest, bes] C= 1784 R=  515 G=  474 B=  771 | G/R=0.920 B/R=1.497
+LIVE [next: RING 6 (darkest, bes] C= 1980 R=  561 G=  525 B=  865 | G/R=0.935 B/R=1.541
+LIVE [next: RING 6 (darkest, bes] C= 2131 R=  597 G=  565 B=  937 | G/R=0.946 B/R=1.569
+LIVE [next: RING 6 (darkest, bes] C= 1967 R=  556 G=  520 B=  862 | G/R=0.935 B/R=1.550
+LIVE [next: RING 6 (darkest, bes] C= 2131 R=  594 G=  563 B=  941 | G/R=0.947 B/R=1.584
+LIVE [next: RING 6 (darkest, bes] C= 2133 R=  595 G=  564 B=  943 | G/R=0.947 B/R=1.584
+LIVE [next: RING 6 (darkest, bes] C= 2132 R=  595 G=  564 B=  942 | G/R=0.947 B/R=1.583
+LIVE [next: RING 6 (darkest, bes] C= 2134 R=  595 G=  564 B=  943 | G/R=0.947 B/R=1.584
+LIVE [next: RING 6 (darkest, bes] C= 2134 R=  595 G=  564 B=  943 | G/R=0.947 B/R=1.584
+LIVE [next: RING 6 (darkest, bes] C= 2134 R=  595 G=  564 B=  943 | G/R=0.947 B/R=1.584
+LIVE [next: RING 6 (darkest, bes] C= 2135 R=  595 G=  564 B=  944 | G/R=0.947 B/R=1.586
+LIVE [next: RING 6 (darkest, bes] C= 2136 R=  596 G=  564 B=  944 | G/R=0.946 B/R=1.583
+LIVE [next: RING 6 (darkest, bes] C= 2132 R=  595 G=  563 B=  942 | G/R=0.946 B/R=1.583
+LIVE [next: RING 6 (darkest, bes] C= 2118 R=  591 G=  560 B=  935 | G/R=0.947 B/R=1.582
+LIVE [next: RING 6 (darkest, bes] C= 2137 R=  596 G=  565 B=  944 | G/R=0.947 B/R=1.583
+
+CAPTURING RING 6 (darkest, beside beacon box): keep the robot still...
+CAPTURED RING 6 (darkest, beside beacon box)  n=20 | C  2137 [ 2134.. 2139] | R   595 G   564 B   944 | G/R  947 [ 947.. 947] | B/R 1584 [1583..1585] (ratios x1000)
+
+Next: place the sensor over OTHER (shadow / chair leg / tape), then press GP20.
+LIVE [next: OTHER (shadow / chai] C= 2123 R=  592 G=  561 B=  938 | G/R=0.947 B/R=1.584
+LIVE [next: OTHER (shadow / chai] C= 2116 R=  591 G=  559 B=  934 | G/R=0.945 B/R=1.580
+LIVE [next: OTHER (shadow / chai] C= 2078 R=  582 G=  550 B=  915 | G/R=0.945 B/R=1.572
+LIVE [next: OTHER (shadow / chai] C= 2070 R=  580 G=  547 B=  911 | G/R=0.943 B/R=1.570
+LIVE [next: OTHER (shadow / chai] C= 1957 R=  555 G=  519 B=  855 | G/R=0.935 B/R=1.540
+LIVE [next: OTHER (shadow / chai] C= 3267 R=  975 G=  936 B= 1286 | G/R=0.960 B/R=1.318
+LIVE [next: OTHER (shadow / chai] C= 8427 R= 2301 G= 2962 B= 2930 | G/R=1.287 B/R=1.273
+LIVE [next: OTHER (shadow / chai] C= 8295 R= 2263 G= 2920 B= 2883 | G/R=1.290 B/R=1.273
+LIVE [next: OTHER (shadow / chai] C= 8885 R= 2419 G= 3132 B= 3256 | G/R=1.294 B/R=1.346
+LIVE [next: OTHER (shadow / chai] C= 8078 R= 2242 G= 2893 B= 2715 | G/R=1.290 B/R=1.210
+LIVE [next: OTHER (shadow / chai] C= 7904 R= 2206 G= 2838 B= 2640 | G/R=1.286 B/R=1.196
+LIVE [next: OTHER (shadow / chai] C= 8019 R= 2237 G= 2878 B= 2676 | G/R=1.286 B/R=1.196
+LIVE [next: OTHER (shadow / chai] C= 7616 R= 2125 G= 2722 B= 2532 | G/R=1.280 B/R=1.191
+LIVE [next: OTHER (shadow / chai] C= 7500 R= 2102 G= 2683 B= 2482 | G/R=1.276 B/R=1.180
+LIVE [next: OTHER (shadow / chai] C= 7609 R= 2136 G= 2723 B= 2507 | G/R=1.274 B/R=1.173
+LIVE [next: OTHER (shadow / chai] C= 7609 R= 2135 G= 2723 B= 2509 | G/R=1.275 B/R=1.175
+LIVE [next: OTHER (shadow / chai] C= 7615 R= 2137 G= 2725 B= 2510 | G/R=1.275 B/R=1.174
+LIVE [next: OTHER (shadow / chai] C= 7626 R= 2140 G= 2729 B= 2513 | G/R=1.275 B/R=1.174
+LIVE [next: OTHER (shadow / chai] C= 7608 R= 2135 G= 2723 B= 2509 | G/R=1.275 B/R=1.175
+LIVE [next: OTHER (shadow / chai] C= 7607 R= 2134 G= 2723 B= 2509 | G/R=1.276 B/R=1.175
+LIVE [next: OTHER (shadow / chai] C= 7602 R= 2133 G= 2721 B= 2507 | G/R=1.275 B/R=1.175
+LIVE [next: OTHER (shadow / chai] C= 7588 R= 2128 G= 2716 B= 2505 | G/R=1.276 B/R=1.177
+LIVE [next: OTHER (shadow / chai] C= 7504 R= 2103 G= 2685 B= 2478 | G/R=1.276 B/R=1.178
+LIVE [next: OTHER (shadow / chai] C= 7510 R= 2104 G= 2686 B= 2481 | G/R=1.276 B/R=1.179
+LIVE [next: OTHER (shadow / chai] C= 7259 R= 2039 G= 2596 B= 2394 | G/R=1.273 B/R=1.174
+LIVE [next: OTHER (shadow / chai] C= 4761 R= 1385 G= 1684 B= 1520 | G/R=1.215 B/R=1.097
+LIVE [next: OTHER (shadow / chai] C= 2646 R=  962 G=  876 B=  734 | G/R=0.910 B/R=0.762
+LIVE [next: OTHER (shadow / chai] C= 2432 R=  893 G=  805 B=  672 | G/R=0.901 B/R=0.752
+LIVE [next: OTHER (shadow / chai] C= 2571 R=  939 G=  852 B=  711 | G/R=0.907 B/R=0.757
+LIVE [next: OTHER (shadow / chai] C= 2768 R=  999 G=  920 B=  768 | G/R=0.920 B/R=0.768
+LIVE [next: OTHER (shadow / chai] C= 2876 R= 1027 G=  957 B=  800 | G/R=0.931 B/R=0.778
+LIVE [next: OTHER (shadow / chai] C= 2934 R= 1045 G=  978 B=  815 | G/R=0.935 B/R=0.779
+LIVE [next: OTHER (shadow / chai] C= 2948 R= 1050 G=  982 B=  818 | G/R=0.935 B/R=0.779
+LIVE [next: OTHER (shadow / chai] C= 2949 R= 1050 G=  983 B=  819 | G/R=0.936 B/R=0.780
+LIVE [next: OTHER (shadow / chai] C= 2949 R= 1050 G=  983 B=  819 | G/R=0.936 B/R=0.780
+LIVE [next: OTHER (shadow / chai] C= 2950 R= 1050 G=  983 B=  819 | G/R=0.936 B/R=0.780
+LIVE [next: OTHER (shadow / chai] C= 2949 R= 1050 G=  983 B=  819 | G/R=0.936 B/R=0.780
+LIVE [next: OTHER (shadow / chai] C= 2949 R= 1050 G=  983 B=  818 | G/R=0.936 B/R=0.779
+LIVE [next: OTHER (shadow / chai] C= 2948 R= 1049 G=  982 B=  818 | G/R=0.936 B/R=0.779
+LIVE [next: OTHER (shadow / chai] C= 2947 R= 1050 G=  982 B=  818 | G/R=0.935 B/R=0.779
+LIVE [next: OTHER (shadow / chai] C= 2948 R= 1050 G=  982 B=  818 | G/R=0.935 B/R=0.779
+LIVE [next: OTHER (shadow / chai] C= 2948 R= 1050 G=  982 B=  818 | G/R=0.935 B/R=0.779
+LIVE [next: OTHER (shadow / chai] C= 2952 R= 1051 G=  984 B=  820 | G/R=0.936 B/R=0.780
+
+CAPTURING OTHER (shadow / chair leg / tape): keep the robot still...
+CAPTURED OTHER (shadow / chair leg / tape)    n=20 | C  2950 [ 2944.. 2954] | R  1050 G   983 B   819 | G/R  935 [ 935.. 936] | B/R  779 [ 779.. 780] (ratios x1000)
+
+========== CALIBRATION SUMMARY (6-ring mat, gain setting 1, 103 ms) ==========
+CSV,label,n,c_mean,c_min,c_max,r_mean,g_mean,b_mean,gr_mean,gr_min,gr_max,br_mean,br_min,br_max,saturated
+CSV,FLOOR,20,3996,3994,3999,1408,1336,1119,948,948,948,794,794,795,0
+CSV,WHITE EDGE,20,15831,15787,15846,4694,5276,5197,1123,1123,1124,1106,1106,1107,0
+CSV,RING 1 (lightest),20,8368,8359,8371,2514,2731,2843,1085,1085,1086,1130,1130,1131,0
+CSV,RING 2,20,6783,6767,6786,2029,2134,2415,1051,1051,1052,1189,1189,1191,0
+CSV,RING 3,20,5264,5255,5271,1570,1589,1967,1011,1011,1012,1251,1251,1253,0
+CSV,RING 4,20,3183,3181,3185,954,912,1250,956,955,957,1309,1309,1311,0
+CSV,RING 5,20,2323,2319,2326,685,640,958,933,932,934,1396,1395,1398,0
+CSV,RING 6 (darkest, beside beacon box),20,2137,2134,2139,595,564,944,947,947,947,1584,1583,1585,0
+CSV,OTHER (shadow / chair leg / tape),20,2950,2944,2954,1050,983,819,935,935,936,779,779,780,0
+
+Neighbour check: each step inward should differ in C, G/R or B/R.
+'separate' means no reading overlapped; one separate value is enough.
+WHITE EDGE -> RING 1 (lightest)
+  C    gap  +7416  separate
+  G/R  gap    +37  separate
+  B/R  gap    +23  separate
+RING 1 (lightest) -> RING 2
+  C    gap  +1573  separate
+  G/R  gap    +33  separate
+  B/R  gap    +58  separate
+RING 2 -> RING 3
+  C    gap  +1496  separate
+  G/R  gap    +39  separate
+  B/R  gap    +60  separate
+RING 3 -> RING 4
+  C    gap  +2070  separate
+  G/R  gap    +54  separate
+  B/R  gap    +56  separate
+RING 4 -> RING 5
+  C    gap   +855  separate
+  G/R  gap    +21  separate
+  B/R  gap    +84  separate
+RING 5 -> RING 6 (darkest, beside beacon box)
+  C    gap   +180  separate
+  G/R  gap    +13  separate
+  B/R  gap   +185  separate
+
+Floor and other surfaces against every mat surface (any value apart
+is enough). A CONFUSABLE target ring could cause a false arrival.
+  FLOOR  vs WHITE EDGE                           C gap +11788 | G/R gap  +175 | B/R gap  +311 | distinguishable
+  FLOOR  vs RING 1 (lightest)                    C gap  +4360 | G/R gap  +137 | B/R gap  +335 | distinguishable
+  FLOOR  vs RING 2                               C gap  +2768 | G/R gap  +103 | B/R gap  +394 | distinguishable
+  FLOOR  vs RING 3                               C gap  +1256 | G/R gap   +63 | B/R gap  +456 | distinguishable
+  FLOOR  vs RING 4                               C gap   +809 | G/R gap    +7 | B/R gap  +514 | distinguishable
+  FLOOR  vs RING 5                               C gap  +1668 | G/R gap   +14 | B/R gap  +600 | distinguishable
+  FLOOR  vs RING 6 (darkest, beside beacon box)  C gap  +1855 | G/R gap    +1 | B/R gap  +788 | distinguishable
+  OTHER  vs WHITE EDGE                           C gap +12833 | G/R gap  +187 | B/R gap  +326 | distinguishable
+  OTHER  vs RING 1 (lightest)                    C gap  +5405 | G/R gap  +149 | B/R gap  +350 | distinguishable
+  OTHER  vs RING 2                               C gap  +3813 | G/R gap  +115 | B/R gap  +409 | distinguishable
+  OTHER  vs RING 3                               C gap  +2301 | G/R gap   +75 | B/R gap  +471 | distinguishable
+  OTHER  vs RING 4                               C gap   +227 | G/R gap   +19 | B/R gap  +529 | distinguishable
+  OTHER  vs RING 5                               C gap   +618 | G/R gap    +1 | B/R gap  +615 | distinguishable
+  OTHER  vs RING 6 (darkest, beside beacon box)  C gap   +805 | G/R gap   +11 | B/R gap  +803 | distinguishable
+========== END OF SUMMARY ==========

@@ -66,21 +66,36 @@ typedef struct {
     bool saturated;
 } stats_t;
 
+/* Coloured rings inside the white edge: 5 for the pink AP1 mat
+ * (tcs34725_calib), 6 for the blue and purple mats (tcs34725_calib6, built
+ * with MAT_RINGS=6; seven bands counting the white edge). */
+#ifndef MAT_RINGS
+#define MAT_RINGS 5
+#endif
+
 /* Lightest to darkest; the beacon box sits on the darkest centre. */
 static const char *const LABELS[] = {
     "FLOOR",
     "WHITE EDGE",
-    "RING 1 (lightest pink)",
+    "RING 1 (lightest)",
     "RING 2",
     "RING 3",
     "RING 4",
+#if MAT_RINGS == 5
     "RING 5 (darkest, beside beacon box)",
+#elif MAT_RINGS == 6
+    "RING 5",
+    "RING 6 (darkest, beside beacon box)",
+#else
+#error "MAT_RINGS must be 5 or 6"
+#endif
     "OTHER (shadow / chair leg / tape)",
 };
 #define LABEL_COUNT    (int)(sizeof(LABELS) / sizeof(LABELS[0]))
-#define FIRST_MAT      1   /* WHITE EDGE */
-#define LAST_MAT       6   /* RING 5 */
-#define OTHER_LABEL    7
+#define FIRST_MAT      1                 /* WHITE EDGE */
+#define LAST_MAT       (1 + MAT_RINGS)   /* darkest ring */
+#define OTHER_LABEL    (LAST_MAT + 1)
+_Static_assert(LABEL_COUNT == MAT_RINGS + 3, "floor, white edge, rings and other");
 
 static stats_t results[LABEL_COUNT];
 static uint32_t i2c_errors;
@@ -238,11 +253,16 @@ static void capture(int label)
            st->saturated ? " | SATURATED" : "");
 }
 
-/* Reports the gap between [lo_a..hi_a] (lighter) and [lo_b..hi_b] (darker):
- * positive means every lighter reading was above every darker one. */
-static void print_gap(const char *what, int lighter_min, int darker_max)
+/* Gap between two ranges in either direction; positive means no overlap.
+ * Direction-free, so it works for any mat colour (pink rings lower G/R as
+ * they darken; other colours may change B/R instead). */
+static int range_gap(int a_min, int a_max, int b_min, int b_max)
 {
-    int gap = lighter_min - darker_max;
+    return a_min > b_max ? a_min - b_max : b_min - a_max;
+}
+
+static void print_gap(const char *what, int gap)
+{
     printf("  %-4s gap %+6d  %s\n", what, gap, gap > 0 ? "separate" : "OVERLAP");
 }
 
@@ -251,33 +271,29 @@ static void compare(int lighter, int darker)
     const stats_t *a = &results[lighter], *b = &results[darker];
     if (!a->n || !b->n) return;
     printf("%s -> %s\n", LABELS[lighter], LABELS[darker]);
-    print_gap("C", a->min_c, b->max_c);
-    print_gap("G/R", a->min_gr, b->max_gr);
-}
-
-/* Gap between two ranges in either direction; positive means no overlap. */
-static int range_gap(int a_min, int a_max, int b_min, int b_max)
-{
-    return a_min > b_max ? a_min - b_max : b_min - a_max;
+    print_gap("C", range_gap(a->min_c, a->max_c, b->min_c, b->max_c));
+    print_gap("G/R", range_gap(a->min_gr, a->max_gr, b->min_gr, b->max_gr));
+    print_gap("B/R", range_gap(a->min_br, a->max_br, b->min_br, b->max_br));
 }
 
 /* For surfaces with no expected order (floor, other): the two can be told
- * apart if C or G/R do not overlap. */
+ * apart if C, G/R or B/R do not overlap. */
 static void distinguish(int x, int y)
 {
     const stats_t *a = &results[x], *b = &results[y];
     if (!a->n || !b->n) return;
     int c_gap = range_gap(a->min_c, a->max_c, b->min_c, b->max_c);
     int gr_gap = range_gap(a->min_gr, a->max_gr, b->min_gr, b->max_gr);
-    printf("  %-6s vs %-36s C gap %+6d | G/R gap %+5d | %s\n",
-           x == 0 ? "FLOOR" : "OTHER", LABELS[y], c_gap, gr_gap,
-           c_gap > 0 || gr_gap > 0 ? "distinguishable" : "CONFUSABLE");
+    int br_gap = range_gap(a->min_br, a->max_br, b->min_br, b->max_br);
+    printf("  %-6s vs %-36s C gap %+6d | G/R gap %+5d | B/R gap %+5d | %s\n",
+           x == 0 ? "FLOOR" : "OTHER", LABELS[y], c_gap, gr_gap, br_gap,
+           c_gap > 0 || gr_gap > 0 || br_gap > 0 ? "distinguishable" : "CONFUSABLE");
 }
 
 static void print_summary(void)
 {
-    printf("\n========== CALIBRATION SUMMARY (gain setting %d, %d ms) ==========\n",
-           TCS_GAIN, INTEGRATION_MS);
+    printf("\n========== CALIBRATION SUMMARY (%d-ring mat, gain setting %d, %d ms) ==========\n",
+           MAT_RINGS, TCS_GAIN, INTEGRATION_MS);
     printf("CSV,label,n,c_mean,c_min,c_max,r_mean,g_mean,b_mean,"
            "gr_mean,gr_min,gr_max,br_mean,br_min,br_max,saturated\n");
     for (int i = 0; i < LABEL_COUNT; ++i) {
@@ -293,10 +309,10 @@ static void print_summary(void)
                st->min_gr, st->max_gr, (unsigned long)(st->sum_br / st->n),
                st->min_br, st->max_br, st->saturated);
     }
-    printf("\nNeighbour check: each step inward should get darker (lower C) and\n"
-           "deeper pink (lower G/R). 'separate' means no reading overlapped.\n");
+    printf("\nNeighbour check: each step inward should differ in C, G/R or B/R.\n"
+           "'separate' means no reading overlapped; one separate value is enough.\n");
     for (int i = FIRST_MAT; i < LAST_MAT; ++i) compare(i, i + 1);
-    printf("\nFloor and other surfaces against every mat surface (either value apart\n"
+    printf("\nFloor and other surfaces against every mat surface (any value apart\n"
            "is enough). A CONFUSABLE target ring could cause a false arrival.\n");
     for (int i = FIRST_MAT; i <= LAST_MAT; ++i) distinguish(0, i);
     for (int i = FIRST_MAT; i <= LAST_MAT; ++i) distinguish(OTHER_LABEL, i);
@@ -317,7 +333,7 @@ int main(void)
     gpio_pull_up(TCS_SDA_PIN);
     gpio_pull_up(TCS_SCL_PIN);
 
-    printf("\n===== TCS34725 colour-mat calibration =====\n");
+    printf("\n===== TCS34725 colour-mat calibration (%d-ring mat) =====\n", MAT_RINGS);
     printf("GP20: capture current surface | GP21: go back one surface\n");
     while (!tcs_start()) sleep_ms(1000);
 

@@ -182,6 +182,146 @@ static void check_arrival_rules(void)
     assert(colour_sensor_init());
 }
 
+static colour_reading_t rgb(uint16_t c, uint16_t gr, uint16_t br)
+{
+    return (colour_reading_t){.c = c, .r = 1000, .g = gr, .b = br};
+}
+
+// Blue and purple mats (7 November, two rounds each): every corner of each
+// captured G/R and B/R range must give the surface and the mat.
+static void check_blue_purple(void)
+{
+    static const struct {
+        uint16_t c, gr_min, gr_max, br_min, br_max;
+        colour_mat_t mat;
+        colour_zone_t zone;
+    } ranges[] = {
+        {3900, 947, 959, 779, 814, COLOUR_MAT_NONE, COLOUR_FLOOR},      // floor, both days
+        {3600, 947, 950, 812, 814, COLOUR_MAT_NONE, COLOUR_FLOOR},      // shadows on the floor
+        {3200, 935, 976, 779, 842, COLOUR_MAT_NONE, COLOUR_FLOOR},      // incl. G/R 975, B/R 842
+        {14000, 1202, 1244, 1182, 1219, COLOUR_MAT_BLUE, COLOUR_WHITE},
+        {8500, 1264, 1268, 1304, 1321, COLOUR_MAT_BLUE, COLOUR_RING1},
+        {7100, 1363, 1367, 1514, 1539, COLOUR_MAT_BLUE, COLOUR_RING2},
+        {6000, 1476, 1496, 1782, 1835, COLOUR_MAT_BLUE, COLOUR_RING3},
+        {4400, 1607, 1635, 2151, 2220, COLOUR_MAT_BLUE, COLOUR_RING4},
+        {3300, 1622, 1642, 2345, 2386, COLOUR_MAT_BLUE, COLOUR_RING5},
+        {2700, 1541, 1588, 2354, 2422, COLOUR_MAT_BLUE, COLOUR_RING6},
+        {14000, 1107, 1124, 1082, 1107, COLOUR_MAT_PURPLE, COLOUR_WHITE},
+        {8000, 1081, 1086, 1111, 1131, COLOUR_MAT_PURPLE, COLOUR_RING1},
+        {6500, 1049, 1052, 1171, 1191, COLOUR_MAT_PURPLE, COLOUR_RING2},
+        {5200, 1011, 1018, 1243, 1253, COLOUR_MAT_PURPLE, COLOUR_RING3},
+        {3300, 955, 965, 1307, 1311, COLOUR_MAT_PURPLE, COLOUR_RING4},
+        {2400, 932, 964, 1395, 1423, COLOUR_MAT_PURPLE, COLOUR_RING5},
+        {2100, 947, 976, 1565, 1585, COLOUR_MAT_PURPLE, COLOUR_RING6},
+        // Pink, 6 November with B/R from the raw captures.
+        {7800, 1006, 1029, 943, 958, COLOUR_MAT_PINK, COLOUR_WHITE},
+        {6400, 924, 931, 898, 906, COLOUR_MAT_PINK, COLOUR_RING1},
+        {5000, 781, 788, 780, 795, COLOUR_MAT_PINK, COLOUR_RING2},
+        {3800, 622, 632, 648, 660, COLOUR_MAT_PINK, COLOUR_RING3},
+        {2700, 471, 481, 500, 507, COLOUR_MAT_PINK, COLOUR_RING4},
+        {1900, 343, 345, 365, 372, COLOUR_MAT_PINK, COLOUR_RING5},
+    };
+    for (size_t i = 0; i < sizeof(ranges) / sizeof(ranges[0]); ++i) {
+        for (int corner = 0; corner < 4; ++corner) {
+            colour_reading_t r = rgb(ranges[i].c, corner & 1 ? ranges[i].gr_max : ranges[i].gr_min,
+                                     corner & 2 ? ranges[i].br_max : ranges[i].br_min);
+            colour_mat_t mat;
+            colour_zone_t zone = colour_classify_mat(&r, &mat);
+            if (zone != ranges[i].zone || mat != ranges[i].mat) {
+                fprintf(stderr, "G/R %u B/R %u classified %s %s, expected %s %s\n", r.g, r.b,
+                        colour_mat_name(mat), colour_zone_name(zone),
+                        colour_mat_name(ranges[i].mat), colour_zone_name(ranges[i].zone));
+                assert(false);
+            }
+        }
+    }
+    // Arrival is one ring short of the darkest on every mat.
+    assert(colour_arrival_zone(COLOUR_MAT_PINK) == COLOUR_RING4);
+    assert(colour_arrival_zone(COLOUR_MAT_BLUE) == COLOUR_RING5);
+    assert(colour_arrival_zone(COLOUR_MAT_PURPLE) == COLOUR_RING5);
+    assert(!colour_zone_arrived(COLOUR_MAT_NONE, COLOUR_RING6));
+    assert(colour_zone_depth(COLOUR_RING6) == 7);
+
+    const colour_reading_t blue2 = rgb(7100, 1365, 1530), blue4 = rgb(4400, 1620, 2180);
+    const colour_reading_t blue5 = rgb(3300, 1632, 2360), blue6 = rgb(2700, 1560, 2400);
+    const colour_reading_t purple3 = rgb(5200, 1014, 1248), purple5 = rgb(2400, 950, 1410);
+    const colour_reading_t pink2 = rgb(5000, 785, 790);
+    colour_arrival_reset();
+    // Blue: ring 4 is not yet arrival; ring 5 and 6 are, after a lighter blue ring.
+    queue3(blue2, blue2, blue2); assert(!colour_arrival_check() && colour_on_mat());
+    queue3(blue4, blue4, blue4); assert(!colour_arrival_check());
+    queue3(blue5, blue6, blue5); assert(colour_arrival_check());
+    assert(strstr(log_text, "mats=BLUE/BLUE/BLUE") && colour_last_depth() == 6);
+    // A lighter ring on another mat does not count: pink then purple ring 5.
+    colour_arrival_reset();
+    queue3(pink2, pink2, pink2); assert(!colour_arrival_check());
+    queue3(purple5, purple5, purple5); assert(!colour_arrival_check());
+    queue3(purple3, purple3, purple3); assert(!colour_arrival_check());
+    queue3(purple5, purple5, purple5); assert(colour_arrival_check());
+    // Readings from two mats in one check are not arrival.
+    queue3(purple5, blue5, purple5); assert(!colour_arrival_check());
+    // A scan can record the lighter ring, so a robot started on ring 5 arrives.
+    colour_arrival_reset();
+    colour_note_lighter_mats(1u << COLOUR_MAT_BLUE);
+    queue3(blue5, blue5, blue5); assert(colour_arrival_check());
+    colour_note_lighter_mats(1u << COLOUR_MAT_PINK);
+    queue3(purple5, purple5, purple5); assert(!colour_arrival_check());
+
+    // Rings to arrival on each reading's own mat, for the smaller steps near
+    // the centre: blue ring 1 is four rings from ring 5, ring 3 is two.
+    const colour_reading_t blue1 = rgb(8500, 1265, 1310), blue3 = rgb(6000, 1485, 1800);
+    const colour_reading_t floor = at(2900, 922);
+    colour_arrival_reset();
+    assert(!colour_near_arrival(6)); // no check yet
+    queue3(blue1, blue1, blue1); colour_arrival_check();
+    assert(!colour_near_arrival(2) && colour_near_arrival(4));
+    queue3(blue3, blue3, blue3); colour_arrival_check();
+    assert(colour_near_arrival(2) && !colour_near_arrival(1));
+    queue3(blue6, blue6, blue6); colour_arrival_check();
+    assert(colour_near_arrival(0)); // past the arrival ring
+    // Pink ring 2 is two rings from pink ring 4, purple ring 3 two from ring 5.
+    queue3(pink2, pink2, pink2); colour_arrival_check();
+    assert(colour_near_arrival(2) && !colour_near_arrival(1));
+    queue3(purple3, purple3, purple3); colour_arrival_check();
+    assert(colour_near_arrival(2) && !colour_near_arrival(1));
+    // The closest reading counts; floor alone is never near.
+    queue3(floor, floor, blue3); colour_arrival_check();
+    assert(colour_near_arrival(2));
+    queue3(floor, floor, floor); colour_arrival_check();
+    assert(!colour_near_arrival(6));
+
+    // Each beacon's own mat (AP1 pink, AP2 blue, AP3 purple). With a target
+    // set, rings of the other mats are floor; any white edge is the target's.
+    colour_mat_t m;
+    const colour_reading_t blue_white = rgb(14000, 1204, 1184), pink_white = at(7800, 1013);
+    colour_set_target_mat(COLOUR_MAT_PINK);
+    assert(colour_classify_mat(&pink2, &m) == COLOUR_RING2 && m == COLOUR_MAT_PINK);
+    assert(colour_classify_mat(&blue5, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&purple5, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&blue_white, &m) == COLOUR_WHITE && m == COLOUR_MAT_PINK);
+    colour_set_target_mat(COLOUR_MAT_BLUE);
+    assert(colour_classify_mat(&blue5, &m) == COLOUR_RING5 && m == COLOUR_MAT_BLUE);
+    assert(colour_classify_mat(&pink2, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&purple3, &m) == COLOUR_FLOOR && m == COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&pink_white, &m) == COLOUR_WHITE && m == COLOUR_MAT_BLUE);
+    // The AP2 robot on the purple mat: never on its mat, never arrives.
+    colour_arrival_reset();
+    queue3(purple3, purple3, purple3); assert(!colour_arrival_check() && !colour_on_mat());
+    queue3(purple5, purple5, purple5); assert(!colour_arrival_check() && !colour_on_mat());
+    assert(!colour_near_arrival(6));
+    // ...and on its own blue mat it arrives as before.
+    queue3(blue2, blue2, blue2); assert(!colour_arrival_check() && colour_on_mat());
+    queue3(blue5, blue5, blue5); assert(colour_arrival_check());
+    colour_set_target_mat(COLOUR_MAT_PURPLE);
+    colour_arrival_reset();
+    queue3(blue2, blue2, blue2); assert(!colour_arrival_check() && !colour_on_mat());
+    queue3(blue5, blue5, blue5); assert(!colour_arrival_check());
+    queue3(purple3, purple3, purple3); assert(!colour_arrival_check() && colour_on_mat());
+    queue3(purple5, purple5, purple5); assert(colour_arrival_check());
+    colour_set_target_mat(COLOUR_MAT_NONE);
+    assert(colour_classify_mat(&blue5, &m) == COLOUR_RING5 && m == COLOUR_MAT_BLUE);
+}
+
 // Simulated mat: radius 35 cm, white edge plus five rings of equal width.
 // Readings use the calibrated means for each surface.
 static colour_reading_t surface_at(double x, double y)
@@ -255,7 +395,8 @@ int main(void)
 {
     check_calibration_data();
     check_arrival_rules();
+    check_blue_purple();
     check_scan_direction();
-    puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
+    puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, blue and purple mats with per-mat arrival, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
     return 0;
 }

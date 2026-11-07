@@ -52,6 +52,12 @@ function(getting_there_firmware target)
 endfunction()
 
 getting_there_firmware(getting_there)
+# The same robot firmware aimed at AP2 or AP3 (Wi-Fi SSID, BLE beacon ID and
+# log names). Any beacon may sit on any colour mat.
+getting_there_firmware(robot_ap2)
+target_compile_definitions(robot_ap2 PRIVATE TARGET_BEACON_ID=2)
+getting_there_firmware(robot_ap3)
+target_compile_definitions(robot_ap3 PRIVATE TARGET_BEACON_ID=3)
 # Test build: after gyro calibration, turns on the spot and logs the colour
 # under the sensor at 30-degree steps instead of approaching AP1.
 # Short target name: longer ones push SDK object paths past Windows' 260-character limit.

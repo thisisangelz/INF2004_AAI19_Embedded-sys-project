@@ -1,0 +1,37 @@
+========== CALIBRATION SUMMARY (gain setting 1, 103 ms) ==========
+CSV,label,n,c_mean,c_min,c_max,r_mean,g_mean,b_mean,gr_mean,gr_min,gr_max,br_mean,br_min,br_max,saturated
+CSV,FLOOR,20,2902,2900,2904,1048,968,796,922,922,924,759,759,760,0
+CSV,WHITE EDGE,20,8301,8256,8400,2691,2762,2575,1025,1023,1029,956,955,958,0
+CSV,RING 1 (lightest pink),20,6603,6570,6638,2269,2099,2040,924,924,925,898,898,900,0
+CSV,RING 2,20,5268,5239,5294,1992,1570,1582,788,788,788,793,793,795,0
+CSV,RING 3,20,4135,4093,4153,1779,1121,1173,629,629,630,659,658,660,0
+CSV,RING 4,20,2906,2905,2908,1461,693,741,474,474,474,506,506,507,0
+CSV,RING 5 (darkest, beside beacon box),20,1988,1979,1991,1170,403,435,344,344,345,371,371,372,0
+CSV,OTHER (shadow / chair leg / tape),20,2813,2798,2831,1006,937,785,930,929,931,780,779,781,0
+
+Neighbour check: each step inward should get darker (lower C) and
+deeper pink (lower G/R). 'separate' means no reading overlapped.
+FLOOR -> WHITE EDGE
+  C    gap  -5500  OVERLAP
+  G/R  gap   -107  OVERLAP
+FLOOR -> RING 1 (lightest pink)
+  C    gap  -3738  OVERLAP
+  G/R  gap     -3  OVERLAP
+WHITE EDGE -> RING 1 (lightest pink)
+  C    gap  +1618  separate
+  G/R  gap    +98  separate
+RING 1 (lightest pink) -> RING 2
+  C    gap  +1276  separate
+  G/R  gap   +136  separate
+RING 2 -> RING 3
+  C    gap  +1086  separate
+  G/R  gap   +158  separate
+RING 3 -> RING 4
+  C    gap  +1185  separate
+  G/R  gap   +155  separate
+RING 4 -> RING 5 (darkest, beside beacon box)
+  C    gap   +914  separate
+  G/R  gap   +129  separate
+Compare OTHER against the rings by eye: it must not look like the
+target ring, or a shadow could trigger a false arrival.
+========== END OF SUMMARY ==========
