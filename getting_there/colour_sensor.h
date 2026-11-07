@@ -39,5 +39,24 @@ void colour_arrival_reset(void);
 // Call with motors stopped. Takes COLOUR_ARRIVAL_SAMPLES fresh readings
 // (about 115 ms each), logs them and returns true when arrival is confirmed.
 bool colour_arrival_check(void);
+// One fresh reading (about 115 ms). False on an I2C error or missing sensor.
+bool colour_sensor_read(colour_reading_t *reading);
+
+// Mat depth: 0 floor, 1 white edge, 2-6 rings 1-5; -1 unknown. Unlike G/R, it
+// orders the floor below the mat (floor G/R lies between white and ring 1).
+int colour_zone_depth(colour_zone_t zone);
+
+// Direction to the mat centre from readings taken while turning on the spot:
+// the sensor sits ahead of the wheels, so each angle samples a different
+// point. Angles are degrees from the scan origin, in the same direction as
+// the HEADING values in the log (set by the learnt gyro sign).
+typedef struct {
+    bool valid;         // at least two depths seen, so a direction exists
+    int darkest_angle;  // angle of the deepest reading (lowest G/R on ties)
+    int vector_angle;   // depth-weighted mean direction, 0..359
+    int depth_range;    // deepest minus shallowest depth seen
+} colour_scan_result_t;
+colour_scan_result_t colour_scan_estimate(const int *angles, const colour_reading_t *readings,
+                                          unsigned count);
 
 #endif
