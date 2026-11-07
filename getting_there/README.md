@@ -4,6 +4,41 @@ This AP1 programme developed from `Alvin_2` at `2012e7b` through the archived
 `line-search` branch. Flash `getting_there/build/getting_there.uf2` onto the robot.
 It approaches AP1, receives and verifies AP1's reply payload over BLE, then plays three short completion beeps.
 
+## Colour-ring arrival (branch feature/colour-ring-sensing)
+
+Firmware: `build/getting_there_colour_ring4.uf2`. Boot banner:
+`line-search v16 dip-probes ble-minus58 colour-ring4`. The v16 navigation is
+unchanged; only the arrival decision before each BLE check is new.
+
+The TCS34725 colour sensor on Grove 1 (I2C0, SDA GP0, SCL GP1) classifies the
+surface under the robot's front as floor, white edge or ring 1-5, using the
+thresholds in [the calibration record](../docs/calibration/2026-11-06-tcs34725-mat.md).
+At every stationary BLE check, before BLE starts, the robot takes three fresh
+colour readings (about 0.35 s):
+
+- **Arrived:** all three are ring 4 or darker, and a lighter mat surface (white
+  edge or rings 1-3) was seen at an earlier check in this run. BLE then only has
+  to show that AP1 is in range: filtered average >= -85 dBm
+  (`COLOUR_ARRIVAL_BLE_DBM`) three times in a row. The handshake still checks
+  beacon ID 1 and the payload CRC.
+- **Not arrived:** the strict -58 dBm BLE gate applies exactly as in v16.
+
+The lighter-ring requirement stops a dark or red object on the floor, or a run
+that starts on the mat, from counting as arrival. Shadows do not change the
+classified ring because the sensor lights the surface with its own LED.
+Stationary retries after arrival keep the loose gate without re-reading colour.
+
+If the sensor is missing at startup, or three colour checks in a row fail, the
+robot logs this and keeps the v16 BLE-only behaviour. Every check is logged:
+
+```text
+COLOUR,zones=RING3/RING4/RING4,c=2640,r=1333,g=629,b=666,gr=471,lighter_seen=1,arrived=0
+ARRIVAL: colour sensor confirms RING4 or darker; BLE only needs AP1 >= -85 dBm
+```
+
+On-mat BLE averages measured on 6 November were -64 to -73 dBm, so -85 dBm
+leaves margin. Not yet tested on the robot: whether 250 ms steps sample each
+ring before ring 4 is reached, and readings just after the robot stops.
 ## Hardware and starting a run
 
 | Function | Robo Pico connection |

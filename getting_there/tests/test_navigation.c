@@ -175,8 +175,24 @@ bool motion_drive(bool forwards, uint32_t ms, float heading)
     while (motors_on) { if (!motion_drive_update()) break; if (motors_on) sleep_ms(5); }
     return motion_drive_finish();
 }
-void payload_client_init(void) { }
-bool payload_client_ready(void) { return !ui_bt_failure && !ui_bt_timeout; }
+// Colour sensor: arrival is scripted by check number (0 = never).
+static unsigned colour_checks, colour_arrive_at_check, colour_inits, colour_resets;
+static int close_threshold = AP1_CLOSE_RSSI_DBM;
+static unsigned strict_attempts, loose_attempts;
+static bool complete_on_loose;
+bool colour_sensor_init(void) { ++colour_inits; return true; }
+bool colour_sensor_available(void) { return true; }
+void colour_arrival_reset(void) { ++colour_resets; }
+bool colour_arrival_check(void)
+{
+    assert(!motors_on && !scan_active);
+    ++colour_checks;
+    return colour_arrive_at_check && colour_checks >= colour_arrive_at_check;
+}
+const char *colour_zone_name(colour_zone_t zone) { return zone == COLOUR_RING4 ? "RING4" : "OTHER"; }
+void payload_client_set_close_threshold(int dbm) { assert(!motors_on); close_threshold = dbm; }
+int payload_client_close_threshold(void) { return close_threshold; }
+void payload_client_init(void) { }bool payload_client_ready(void) { return !ui_bt_failure && !ui_bt_timeout; }
 bool payload_client_start_failed(void) { return ui_bt_failure; }
 const uint8_t *payload_client_data(uint16_t *length) { *length = 0; return NULL; }
 payload_result_t payload_client_attempt(void)
@@ -184,6 +200,8 @@ payload_result_t payload_client_attempt(void)
     assert(!motors_on && !scan_active);
     sleep_ms(ble_delay_ms);
     ++ble_calls;
+    if (close_threshold == COLOUR_ARRIVAL_BLE_DBM) ++loose_attempts; else ++strict_attempts;
+    if (complete_on_loose && close_threshold == COLOUR_ARRIVAL_BLE_DBM) return PAYLOAD_COMPLETE;
     if (fail_at_ble_call == ble_calls) return PAYLOAD_FATAL;
     if (complete_first || complete_at_ble_call == ble_calls ||
         (complete_after_step > 0 && forwards_count >= complete_after_step) ||
@@ -270,6 +288,8 @@ static void reset(void)
     ble_delay_ms = stop_at_scan = stop_at_step = fail_at_step = checkpoint_calls = mock_duration = mock_elapsed = 0;
     scan_delay_ms = 200; // Ordinary control tests deliberately use stationary fallback.
     mock_pending = false;
+    colour_checks = colour_arrive_at_check = colour_inits = colour_resets = 0;
+    close_threshold = AP1_CLOSE_RSSI_DBM; strict_attempts = loose_attempts = 0; complete_on_loose = false;
     run_started_ms = now_ms(); translation_ms = profile_id = 0; wifi_quiescent = true;
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
@@ -876,11 +896,32 @@ static void check_startup(void)
     reset(); retry_mode=3; run_startup_test();
     assert(tone_starts==3 && !forwards_count && strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
 }
+static void check_colour_arrival(void)
+{
+    // On the mat after two steps: the loose BLE gate replaces -58 at once.
+    reset(); colour_arrive_at_check = 3; complete_on_loose = true;
+    assert(approach_beacon() && colour_resets == 1 && forwards_count == 2);
+    assert(strict_attempts == 2 && loose_attempts == 1 && colour_checks == 3);
+    assert(strstr(log_text, "ARRIVAL: colour sensor confirms RING4 or darker"));
+    // Never on the mat: every attempt keeps the strict gate, one colour check each.
+    reset(); complete_after_step = 3;
+    assert(approach_beacon() && !loose_attempts && strict_attempts == colour_checks);
+    assert(!strstr(log_text, "ARRIVAL: colour"));
+    // Stationary retries keep the loose gate and do not repeat the colour check.
+    reset(); colour_arrive_at_check = 1; retry_mode = 3;
+    assert(approach_beacon() && colour_checks == 1 && loose_attempts == 2 && !strict_attempts);
+    assert(retry_calls == 1 && !forwards_count);
+    // On the mat but AP1 too weak even for the loose gate: navigation continues
+    // and each later check uses whatever the colour sensor reports then.
+    reset(); colour_arrive_at_check = 2; complete_after_step = 3;
+    assert(approach_beacon() && loose_attempts >= 1 && strict_attempts == 1);
+}
+
 int main(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_two_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
-    check_forward_continuation(); check_radio_and_limits(); check_startup();
+    check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     buzzer_init(); tone_stops=0;
     uint64_t before=sim_time; completion_sound();
@@ -916,8 +957,8 @@ int main(void)
         if (!setjmp(ui_exit)) firmware_main();
         assert(ui_replays==1 && ui_begins==1 && ui_finished && !motors_on);
         if (fail) assert(!ble_calls && !forwards_count && fault_test(FAULT_REPORT));
-        else assert(strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
+        else assert(strstr(log_text,"RESULT: PAYLOAD CONFIRMED") && colour_inits == 1);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded 100 ms probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, perpendicular search, travel/run limits, radio fallback, BSSID, STOP, startup and arrival checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded 100 ms probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, perpendicular search, travel/run limits, radio fallback, BSSID, STOP, startup, arrival and colour-arrival BLE gate checks passed");
     return 0;
 }

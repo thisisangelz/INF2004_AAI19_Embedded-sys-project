@@ -363,6 +363,25 @@ int main(void)
     advertisement(entry_rssi-1,1);
     assert(filtered_rssi()==entry_rssi-1 && counters.close_count==0 && current_state()==BLE_SCANNING && !connect_calls);
 
+    // Colour arrival loosens the gate between attempts: on-mat readings around
+    // -70 dBm then qualify. The gate cannot change while an attempt is running.
+    reset(); flag_assign(F_ATTEMPT_RUNNING,false);
+    payload_client_set_close_threshold(COLOUR_ARRIVAL_BLE_DBM);
+    assert(payload_client_close_threshold()==COLOUR_ARRIVAL_BLE_DBM);
+    flag_assign(F_ATTEMPT_RUNNING,true);
+    payload_client_set_close_threshold(AP1_CLOSE_RSSI_DBM);
+    assert(payload_client_close_threshold()==COLOUR_ARRIVAL_BLE_DBM);
+    start_attempt_callback(NULL); scan_ack();
+    for (int i=0;i<20 && current_state()==BLE_SCANNING;++i) advertisement(-70,1);
+    assert(current_state()==BLE_STOPPING_FOR_CONNECT && counters.close_count==3);
+    // Even the loose gate rejects AP1 when it is weaker than the limit.
+    reset(); flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
+    for (int i=0;i<20;++i) advertisement(COLOUR_ARRIVAL_BLE_DBM-1,1);
+    assert(counters.close_count==0 && current_state()==BLE_SCANNING && !connect_calls);
+    flag_assign(F_ATTEMPT_RUNNING,false);
+    payload_client_set_close_threshold(AP1_CLOSE_RSSI_DBM);
+    assert(payload_client_close_threshold()==AP1_CLOSE_RSSI_DBM);
+
     reset(); flag_assign(F_ATTEMPT_RUNNING, true); start_attempt_callback(NULL); scan_ack();
     for (int i = 0; i < 20; ++i) advertisement(-40, 2);
     assert(!counters.sample_count && !connect_calls);
@@ -449,6 +468,6 @@ int main(void)
     fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_TRANSLATION_LIMIT));
     fault_clear(FAULT_TRANSLATION_LIMIT); assert(!fault_mask());
 
-    printf("BLE %d dBm gate, rejected v11 early-arrival readings, 12-reading filter, three consecutive confirmations, signed RSSI, payload CRC, early notifications, cleanup and faults: passed\n", AP1_CLOSE_RSSI_DBM);
+    printf("BLE %d dBm gate, rejected v11 early-arrival readings, 12-reading filter, three consecutive confirmations, colour-arrival loose gate, signed RSSI, payload CRC, early notifications, cleanup and faults: passed\n", AP1_CLOSE_RSSI_DBM);
     return 0;
 }
