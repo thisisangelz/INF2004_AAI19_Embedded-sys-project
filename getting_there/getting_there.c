@@ -6,6 +6,7 @@
 #include "pico/cyw43_arch.h"
 #include "pico/stdio_usb.h"
 #include "pico/stdlib.h"
+#include "colour_sensor.h"
 #include "faults.h"
 #include "motion.h"
 #include "line_search.h"
@@ -74,6 +75,16 @@ static payload_result_t check_payload(void)
     for (int attempt = 0; attempt < MAX_PAYLOAD_ATTEMPTS; ++attempt) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
         if (!save_checkpoint()) return PAYLOAD_FATAL;
+        if (!was_close) {
+            // Motors are stopped here. On the mat, the colour sensor decides
+            // arrival and BLE only has to show AP1 is in range; elsewhere the
+            // strict BLE proximity gate applies as before.
+            bool on_mat = colour_arrival_check();
+            payload_client_set_close_threshold(on_mat ? COLOUR_ARRIVAL_BLE_DBM : AP1_CLOSE_RSSI_DBM);
+            if (on_mat)
+                report_printf("ARRIVAL: colour sensor confirms %s or darker; BLE only needs AP1 >= %d dBm\n",
+                              colour_zone_name(COLOUR_ARRIVAL_ZONE), COLOUR_ARRIVAL_BLE_DBM);
+        }
         payload_result_t result = was_close ? payload_client_retry() : payload_client_attempt();
         // A fatal cleanup failure may leave the radio active. Persist its tail
         // only after main shuts the radio down.
@@ -439,6 +450,7 @@ static bool approach_beacon(void)
     translation_ms = profile_id = 0;
     wifi_quiescent = true;
     wifi_sampler_init(run_can_continue);
+    colour_arrival_reset();
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -529,10 +541,12 @@ int main(void)
     bool ready = motion_init();
     buzzer_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v16 dip-probes ble-minus58 | AP1 only\n");
+    report_printf("Getting there | line-search v16 dip-probes ble-minus58 colour-ring4 | AP1 only\n");
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
     report_printf("Move using Wi-Fi direction; receive payload only after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);
+    report_printf("On the mat: colour %s or darker after a lighter ring, then BLE >= %d dBm is enough\n",
+                  colour_zone_name(COLOUR_ARRIVAL_ZONE), COLOUR_ARRIVAL_BLE_DBM);
     // GP21 is not armed as STOP here. Boot/replay must not erase the old run,
     // start movement, initialise the radio, or prevent the later GP20 start.
     bool last_replay = false;
@@ -565,6 +579,8 @@ int main(void)
     // Calibrate immediately after the new run is safely logged. Radio startup
     // can take several seconds; it should not make the requested calibration
     // appear as if GP20 did nothing.
+    // Optional: without the sensor the robot keeps the BLE-only proximity gate.
+    if (ready) colour_sensor_init();
     if (ready) {
         report_printf("Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.\n");
         ready = motion_calibrate();

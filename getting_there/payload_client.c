@@ -11,6 +11,8 @@
 
 #define TARGET_BEACON_ID 1
 #define CLOSE_RSSI_DBM AP1_CLOSE_RSSI_DBM
+// Read by the BTstack advertisement callback; changed only between attempts.
+static volatile int close_rssi_dbm = CLOSE_RSSI_DBM;
 #define RSSI_SAMPLE_COUNT 12
 #define REQUIRED_CLOSE_AVERAGES 3
 #define SCAN_WINDOW_MS 5000
@@ -503,9 +505,9 @@ static void advertisement_received(uint8_t *packet)
     if (counters.sample_count < RSSI_SAMPLE_COUNT) ++counters.sample_count;
     if (counters.sample_count < RSSI_SAMPLE_COUNT) return;
     int average = filtered_rssi();
-    counters.close_count = average >= CLOSE_RSSI_DBM ? counters.close_count + 1 : 0;
+    counters.close_count = average >= close_rssi_dbm ? counters.close_count + 1 : 0;
     report_defer_printf("AP1 BLE: filtered %d dBm, need >= %d, close %d/%d\n",
-                  average, CLOSE_RSSI_DBM, counters.close_count, REQUIRED_CLOSE_AVERAGES);
+                  average, close_rssi_dbm, counters.close_count, REQUIRED_CLOSE_AVERAGES);
     if (counters.close_count < REQUIRED_CLOSE_AVERAGES) return;
     flag_assign(F_CLOSE_CONFIRMED, true);
     gap_event_advertising_report_get_address(packet, beacon_address);
@@ -619,7 +621,7 @@ static void start_attempt_callback(void *context)
     set_state(BLE_SCANNING);
     gap_set_scan_parameters(0, 0x0030, 0x0030);
     gap_start_scan();
-    report_defer_printf("BLE-only check: AP1, 12 readings, 3 averages >= %d dBm; Wi-Fi paused\n", CLOSE_RSSI_DBM);
+    report_defer_printf("BLE-only check: AP1, 12 readings, 3 averages >= %d dBm; Wi-Fi paused\n", close_rssi_dbm);
 }
 
 static void abort_attempt_callback(void *context)
@@ -672,6 +674,14 @@ void payload_client_init(void)
 
 bool payload_client_ready(void) { return flag(F_BLUETOOTH_READY); }
 bool payload_client_start_failed(void) { return flag(F_STARTUP_FAILED); }
+
+void payload_client_set_close_threshold(int dbm)
+{
+    // Never change the gate while an attempt's scan callback may be reading it.
+    if (!flag(F_ATTEMPT_RUNNING)) close_rssi_dbm = dbm;
+}
+
+int payload_client_close_threshold(void) { return close_rssi_dbm; }
 
 static payload_result_t run_attempt(bool reconnect)
 {

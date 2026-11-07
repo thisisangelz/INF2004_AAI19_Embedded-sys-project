@@ -13,9 +13,17 @@ typedef enum {
     PAYLOAD_COMPLETE,
     PAYLOAD_FATAL
 } payload_result_t;
+// Once the colour sensor confirms the robot is on the mat, BLE only has to show
+// that AP1 is in range. On-mat filtered readings were -64 to -73 dBm.
+#ifndef COLOUR_ARRIVAL_BLE_DBM
+#define COLOUR_ARRIVAL_BLE_DBM (-85)
+#endif
 void payload_client_init(void);
 bool payload_client_ready(void);
 bool payload_client_start_failed(void);
+// Filtered BLE average that counts as close. Ignored while an attempt runs.
+void payload_client_set_close_threshold(int dbm);
+int payload_client_close_threshold(void);
 // Call with motors stopped and no Wi-Fi scan running. Returns after BLE cleanup.
 payload_result_t payload_client_attempt(void);
 // Retry the same qualified AP without moving or repeating the RSSI gate.
