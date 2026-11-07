@@ -10,15 +10,19 @@ The older tracker and wheel tests are available through Git history.
 [Development history](docs/history.md) lists the earlier versions with links to
 their exact source snapshots and explains how to replace completed branches with tags.
 
-The current robot programme continues along its initial heading in 250 ms forward
-steps, including when AP1 RSSI changes are inconclusive. A median reference from
+The current robot programme (v18) continues along its initial heading in 500 ms
+forward steps on the floor and 250 ms steps once the colour sensor sees the mat,
+including when AP1 RSSI changes are inconclusive. A median reference from
 three positions reduces the effect of an isolated strong point. After three weak
-positions, it rechecks while stopped, then allows up to two 100 ms forward probes.
+positions, it rechecks while stopped, then allows up to two 250 ms forward probes.
 Recovery resumes the same heading. Persistent decline returns only to the retained
-best point, then checks only the two perpendicular directions.
-An inconsistent return or two unsuccessful side checks stops the run. See [the robot instructions](getting_there/README.md)
-for limits, sampling settings and the hardware test procedure. Flash
-`getting_there/build/getting_there.uf2` and confirm `line-search v16 dip-probes ble-minus58`.
+best point, then tries both perpendicular directions and then straight back.
+An inconsistent return no longer stops the run; three unsuccessful trials do.
+Once the colour sensor sees the mat, colour scans steer the robot to ring 4,
+and with a working sensor the payload transfers only there. See
+[the robot instructions](getting_there/README.md) for the v18 changes, limits,
+sampling settings and the hardware test procedure. Flash
+`getting_there/build/getting_there.uf2` and confirm `line-search v18 steps500-mat250 back-search mat-steer colour-gate`.
 Flat readings no longer end the initial forward trial or an improving line.
 The 60-second combined powered travel budget, reserved return travel, 15-minute
 run limit, GP21 STOP and fault checks still apply. BLE must still pass the

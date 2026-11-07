@@ -55,10 +55,12 @@ int i2c_read_timeout_us(i2c_inst_t *i2c, uint8_t addr, uint8_t *dst, size_t len,
     return 8;
 }
 
-// Builds a reading with the given brightness and G/R ratio (x1000).
+// Builds a reading with the given brightness and G/R ratio (x1000). The
+// 6 November calibration did not record blue, so B/R is set to 900, within
+// the 7 November white-edge and ring 1 ranges; it does not affect other zones.
 static colour_reading_t at(uint16_t c, uint16_t gr)
 {
-    return (colour_reading_t){.c = c, .r = 1000, .g = gr, .b = 800};
+    return (colour_reading_t){.c = c, .r = 1000, .g = gr, .b = 900};
 }
 
 static void queue3(colour_reading_t a, colour_reading_t b, colour_reading_t c)
@@ -100,6 +102,29 @@ static void check_calibration_data(void)
     }
     colour_reading_t covered = at(400, 900), no_red = {.c = 3000, .r = 0, .g = 500};
     assert(colour_classify(&covered) == COLOUR_UNKNOWN && colour_classify(&no_red) == COLOUR_UNKNOWN);
+
+    // Raw C/R/G/B readings from the 7 November logs. The first four are the
+    // floor stops that read RING1 in the side-on run (C above 4660 under
+    // brighter light); B/R now marks them, and a dim floor-like "white", as floor.
+    static const struct { colour_reading_t r; colour_zone_t zone; } raw[] = {
+        {{5012, 1749, 1680, 1414}, COLOUR_FLOOR}, {{4888, 1708, 1637, 1379}, COLOUR_FLOOR},
+        {{4686, 1637, 1569, 1321}, COLOUR_FLOOR}, {{4910, 1708, 1646, 1390}, COLOUR_FLOOR},
+        {{3652, 1253, 1230, 1041}, COLOUR_FLOOR}, {{3864, 1346, 1299, 1083}, COLOUR_FLOOR},
+        {{3073, 1110, 1023, 841}, COLOUR_FLOOR},
+        {{8245, 2900, 2551, 2550}, COLOUR_RING1}, {{11385, 3835, 3610, 3579}, COLOUR_RING1},
+        {{10863, 3728, 3388, 3401}, COLOUR_RING1}, {{14815, 4932, 4700, 4686}, COLOUR_RING1},
+        {{12347, 3966, 4080, 3855}, COLOUR_WHITE}, {{4717, 1585, 1592, 1382}, COLOUR_WHITE},
+        {{4509, 1485, 1528, 1331}, COLOUR_WHITE},
+        {{9035, 3314, 2705, 2767}, COLOUR_RING2}, {{5620, 2390, 1519, 1620}, COLOUR_RING3},
+        {{3673, 1841, 870, 943}, COLOUR_RING4}, {{3009, 1640, 660, 714}, COLOUR_RING5},
+    };
+    for (size_t i = 0; i < sizeof(raw) / sizeof(raw[0]); ++i) {
+        if (colour_classify(&raw[i].r) != raw[i].zone) {
+            fprintf(stderr, "raw C=%u classified %s, expected %s\n", raw[i].r.c,
+                    colour_zone_name(colour_classify(&raw[i].r)), colour_zone_name(raw[i].zone));
+            assert(false);
+        }
+    }
 }
 
 static void check_arrival_rules(void)
@@ -109,8 +134,13 @@ static void check_arrival_rules(void)
 
     assert(colour_sensor_init() && colour_sensor_available() && config_writes == 4);
     colour_arrival_reset();
+    assert(!colour_on_mat()); // no check yet
     // Dark readings with no lighter ring first: not arrival (a dark object on the floor).
     queue3(ring4, ring4, ring4); assert(!colour_arrival_check());
+    assert(colour_on_mat()); // small steps on any mat reading, even before arrival
+    queue3(floor, floor, floor); assert(!colour_arrival_check());
+    assert(!colour_on_mat());
+    queue3(floor, floor, ring2); assert(!colour_arrival_check() && colour_on_mat());
     queue3(floor, floor, floor); assert(!colour_arrival_check());
     // A lighter ring and dark readings in the same check do not count yet.
     queue3(ring3, ring4, ring4); assert(!colour_arrival_check());
@@ -127,13 +157,15 @@ static void check_arrival_rules(void)
     queue3(ring4, ring5, ring4); assert(colour_arrival_check());
     // Floor shadows never count as a lighter mat ring.
     colour_arrival_reset();
-    queue3(at(2379, 908), at(2813, 930), floor); assert(!colour_arrival_check());
+    queue3(at(2379, 908), at(2813, 930), floor); assert(!colour_arrival_check() && !colour_on_mat());
     queue3(ring4, ring4, ring4); assert(!colour_arrival_check());
 
     // Read failures: two are tolerated, the third disables arrival for the run.
+    // A failed read also clears "on the mat", so the robot uses floor steps.
     colour_arrival_reset();
+    queue3(ring2, ring2, ring2); assert(!colour_arrival_check() && colour_on_mat());
     bus_dead = true;
-    assert(!colour_arrival_check() && colour_sensor_available());
+    assert(!colour_arrival_check() && colour_sensor_available() && !colour_on_mat());
     assert(!colour_arrival_check() && colour_sensor_available());
     assert(!colour_arrival_check() && !colour_sensor_available());
     assert(strstr(log_text, "disabled, arrival uses the BLE proximity gate only"));
@@ -155,7 +187,7 @@ static void check_arrival_rules(void)
 static colour_reading_t surface_at(double x, double y)
 {
     static const colour_reading_t by_depth[7] = {
-        {2900, 1000, 922, 800}, {7800, 1000, 1015, 800}, {6450, 1000, 927, 800},
+        {2900, 1000, 922, 760}, {7800, 1000, 1015, 970}, {6450, 1000, 927, 910},
         {5150, 1000, 785, 800}, {3770, 1000, 628, 800}, {2700, 1000, 475, 800},
         {1930, 1000, 344, 800},
     };
@@ -223,6 +255,7 @@ int main(void)
 {
     check_calibration_data();
     check_arrival_rules();
-    check_scan_direction();    puts("Colour: all three calibration rounds classified, shadows, lighter-ring-first arrival, three-sample agreement, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
+    check_scan_direction();
+    puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
     return 0;
 }

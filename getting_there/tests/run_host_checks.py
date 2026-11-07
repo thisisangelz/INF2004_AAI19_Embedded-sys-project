@@ -28,9 +28,9 @@ for name in ['navigation', 'payload_client', 'report', 'motion', 'flash', 'colou
                     '-DPICO_FLASH_BANK_STORAGE_OFFSET=1564672']
     if name == 'navigation':
         command += ['-DLINE_SEARCH_MOVING_SAMPLES=1', str(tests.parent / 'line_search.c'),
-                    str(tests.parent / 'wifi_sampler.c')]
+                    str(tests.parent / 'wifi_sampler.c'), str(tests.parent / 'colour_mat.c')]
     if name == 'colour':
-        command += [str(tests.parent / 'colour_sensor.c')]
+        command += [str(tests.parent / 'colour_sensor.c'), str(tests.parent / 'colour_mat.c')]
     if name == 'payload_client':
         command += ['-DENABLE_BLE', '-I', str(btstack), '-I', str(repo / 'ble_transfer'),
                     str(btstack / 'ad_parser.c'), str(btstack / 'btstack_util.c')]
