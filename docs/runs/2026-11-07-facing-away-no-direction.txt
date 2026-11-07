@@ -1,0 +1,765 @@
+
+========== SAVED RUN ==========
+IMU WHO_AM_I=0x70 | gyro +/- 1000 dps | turns 25% (slow 20%), drive 35%
+IMU I2C: 100000 Hz, 5 ms transaction timeout, 2 stopped recovery attempts
+Getting there | line-search v16 dip-probes ble-minus58 colour-ring4 cues | AP1 only
+Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log
+Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.
+Move using Wi-Fi direction; receive payload only after BLE averages >= -58 dBm
+On the mat: colour RING4 or darker after a lighter ring, then BLE >= -85 dBm is enough
+Waiting for GP20: press to start; GP21 replays the previous run.
+GP20 START: preparing persistent log; motors remain stopped.
+Preparing persistent log: erasing 128 sectors in the reserved 512 KiB region
+Preparing persistent log: 16/128 flash sectors erased
+Preparing persistent log: 32/128 flash sectors erased
+Preparing persistent log: 48/128 flash sectors erased
+Preparing persistent log: 64/128 flash sectors erased
+Preparing persistent log: 80/128 flash sectors erased
+Preparing persistent log: 96/128 flash sectors erased
+Preparing persistent log: 112/128 flash sectors erased
+Preparing persistent log: 128/128 flash sectors erased
+Release GP20 to continue. Waiting at most 10 seconds; GP21 stops startup.
+GP20 released. Persistent log ready.
+COLOUR SENSOR: TCS34725 ID 0x44 ready on GP0/GP1; arrival at RING4 or darker after a lighter mat ring
+Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.
+Keep robot still: calibrating gyro for 2 seconds
+Gyro Z bias calibrated
+Starting Wi-Fi/Bluetooth hardware.
+Wi-Fi hardware initialised; starting Bluetooth.
+Bluetooth ready
+Bluetooth ready; beginning AP1 approach.
+RSSI sampling: stationary decisions; moving acquisition disabled pending hardware timing checks, qualification requires 3 full five-scan windows <= 750 ms
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3108,r=1116,g=1036,b=857,gr=928,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5004, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=1,t_ms=18109,powered_ms=0,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=2,t_ms=18793,powered_ms=0,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=3,t_ms=19586,powered_ms=0,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=4,t_ms=20302,powered_ms=0,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=5,t_ms=20928,powered_ms=0,heading=0,dbm=-64,stopped=1
+RSSI_SAMPLE,scan=5,valid=5,dbm=-64,spread=1,duration_ms=3587,moving=0,fallback=0
+Learning gyro direction: 15 degree turn, then return to original heading
+TURN OK: commanded 15 degrees, settled gyro rotation 15 degrees, error +0 degrees, elapsed 533 ms, peak gyro Z 90 dps, corrections 0
+TURN OK: commanded -15 degrees, settled gyro rotation -16 degrees, error +0 degrees, elapsed 527 ms, peak gyro Z 112 dps, corrections 0
+Gyro direction learnt: positive motor turn gives gyro Z sign +1
+APPROACH: follow current heading; after a confirmed decline return to best and check only perpendicular directions
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=6,t_ms=22703,powered_ms=0,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=7,t_ms=23441,powered_ms=0,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=8,t_ms=24159,powered_ms=0,heading=0,dbm=-67,stopped=1
+RSSI_RAW,scan=9,t_ms=24869,powered_ms=0,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=10,t_ms=25561,powered_ms=0,heading=0,dbm=-64,stopped=1
+RSSI_SAMPLE,scan=10,valid=5,dbm=-64,spread=1,duration_ms=3587,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=11,t_ms=26290,powered_ms=0,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=12,t_ms=27062,powered_ms=0,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=13,t_ms=27738,powered_ms=0,heading=0,dbm=-67,stopped=1
+RSSI_RAW,scan=14,t_ms=28433,powered_ms=0,heading=0,dbm=-67,stopped=1
+RSSI_RAW,scan=15,t_ms=29151,powered_ms=0,heading=0,dbm=-66,stopped=1
+RSSI_SAMPLE,scan=15,valid=5,dbm=-67,spread=1,duration_ms=3571,moving=0,fallback=0
+LINE_POINT,line=1,point=0,t_ms=29798,powered_ms=0,heading=0,scan=15,dbm1=-64,dbm2=-67
+FOLLOW: heading 0, blocks at most 250 ms; continue through inconclusive readings within run and travel limits
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 4 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3127,r=1121,g=1042,b=866,gr=929,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5003, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=16,t_ms=35931,powered_ms=252,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=17,t_ms=36576,powered_ms=252,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=18,t_ms=37284,powered_ms=252,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=19,t_ms=38010,powered_ms=252,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=20,t_ms=38836,powered_ms=252,heading=0,dbm=-62,stopped=1
+RSSI_SAMPLE,scan=20,valid=5,dbm=-62,spread=1,duration_ms=3632,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=21,t_ms=39434,powered_ms=252,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=22,t_ms=40231,powered_ms=252,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=23,t_ms=40948,powered_ms=252,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=24,t_ms=41661,powered_ms=252,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=25,t_ms=42380,powered_ms=252,heading=0,dbm=-61,stopped=1
+RSSI_SAMPLE,scan=25,valid=5,dbm=-62,spread=2,duration_ms=3577,moving=0,fallback=0
+LINE_POINT,line=1,point=1,t_ms=42962,powered_ms=252,heading=0,scan=25,dbm1=-62,dbm2=-62
+FOLLOW_POINT,powered_ms=252,best_ms=0,gain_db=2,margin_db=3,baseline_gain_db=2,baseline_margin_db=3,trend=0
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +1 degrees, heading error +1 degrees, peak correction 7 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3127,r=1137,g=1040,b=854,gr=914,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -68 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -68 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -68 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -68 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5008, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=26,t_ms=49000,powered_ms=504,heading=0,dbm=-60,stopped=1
+RSSI_RAW,scan=27,t_ms=49775,powered_ms=504,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=28,t_ms=50445,powered_ms=504,heading=0,dbm=-60,stopped=1
+RSSI_RAW,scan=29,t_ms=51239,powered_ms=504,heading=0,dbm=-60,stopped=1
+RSSI_RAW,scan=30,t_ms=51941,powered_ms=504,heading=0,dbm=-60,stopped=1
+RSSI_SAMPLE,scan=30,valid=5,dbm=-60,spread=0,duration_ms=3604,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=31,t_ms=52660,powered_ms=504,heading=0,dbm=-60,stopped=1
+RSSI_RAW,scan=32,t_ms=53274,powered_ms=504,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=33,t_ms=54011,powered_ms=504,heading=0,dbm=-59,stopped=1
+RSSI_RAW,scan=34,t_ms=54735,powered_ms=504,heading=0,dbm=-60,stopped=1
+RSSI_RAW,scan=35,t_ms=55417,powered_ms=504,heading=0,dbm=-60,stopped=1
+RSSI_SAMPLE,scan=35,valid=5,dbm=-60,spread=0,duration_ms=3572,moving=0,fallback=0
+LINE_POINT,line=1,point=2,t_ms=56087,powered_ms=504,heading=0,scan=35,dbm1=-60,dbm2=-60
+FOLLOW_POINT,powered_ms=504,best_ms=0,gain_db=4,margin_db=3,baseline_gain_db=4,baseline_margin_db=3,trend=1
+FOLLOW: first confirmed improvement; continuing without other direction probes
+FOLLOW: new confirmed best at 504 powered ms
+DIP: three-position reference strengthened to -62/-62 dBm
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 6 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3407,r=1216,g=1137,b=946,gr=935,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5009, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=36,t_ms=62230,powered_ms=756,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=37,t_ms=62935,powered_ms=756,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=38,t_ms=63643,powered_ms=756,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=39,t_ms=64340,powered_ms=756,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=40,t_ms=65002,powered_ms=756,heading=0,dbm=-63,stopped=1
+RSSI_SAMPLE,scan=40,valid=5,dbm=-63,spread=0,duration_ms=3602,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=41,t_ms=65761,powered_ms=756,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=42,t_ms=66525,powered_ms=756,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=43,t_ms=67156,powered_ms=756,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=44,t_ms=67870,powered_ms=756,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=45,t_ms=68634,powered_ms=756,heading=0,dbm=-64,stopped=1
+RSSI_SAMPLE,scan=45,valid=5,dbm=-64,spread=1,duration_ms=3547,moving=0,fallback=0
+LINE_POINT,line=1,point=3,t_ms=69197,powered_ms=756,heading=0,scan=45,dbm1=-63,dbm2=-64
+FOLLOW_POINT,powered_ms=756,best_ms=504,gain_db=-4,margin_db=3,baseline_gain_db=0,baseline_margin_db=3,trend=-1
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 8 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3467,r=1235,g=1159,b=962,gr=938,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5007, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=46,t_ms=75232,powered_ms=1008,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=47,t_ms=76069,powered_ms=1008,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=48,t_ms=76715,powered_ms=1008,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=49,t_ms=77494,powered_ms=1008,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=50,t_ms=78117,powered_ms=1008,heading=0,dbm=-64,stopped=1
+RSSI_SAMPLE,scan=50,valid=5,dbm=-64,spread=0,duration_ms=3609,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=51,t_ms=78926,powered_ms=1008,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=52,t_ms=79536,powered_ms=1008,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=53,t_ms=80268,powered_ms=1008,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=54,t_ms=81029,powered_ms=1008,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=55,t_ms=81770,powered_ms=1008,heading=0,dbm=-68,stopped=1
+RSSI_SAMPLE,scan=55,valid=5,dbm=-64,spread=1,duration_ms=3582,moving=0,fallback=0
+LINE_POINT,line=1,point=4,t_ms=82347,powered_ms=1008,heading=0,scan=55,dbm1=-64,dbm2=-64
+FOLLOW_POINT,powered_ms=1008,best_ms=504,gain_db=-4,margin_db=3,baseline_gain_db=0,baseline_margin_db=3,trend=-1
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 7 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3609,r=1284,g=1207,b=1003,gr=940,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5007, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=56,t_ms=88363,powered_ms=1260,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=57,t_ms=89110,powered_ms=1260,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=58,t_ms=89912,powered_ms=1260,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=59,t_ms=90593,powered_ms=1260,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=60,t_ms=91312,powered_ms=1260,heading=0,dbm=-63,stopped=1
+RSSI_SAMPLE,scan=60,valid=5,dbm=-61,spread=1,duration_ms=3621,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=61,t_ms=91994,powered_ms=1260,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=62,t_ms=92691,powered_ms=1260,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=63,t_ms=93518,powered_ms=1260,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=64,t_ms=94154,powered_ms=1260,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=65,t_ms=94849,powered_ms=1260,heading=0,dbm=-61,stopped=1
+RSSI_SAMPLE,scan=65,valid=5,dbm=-62,spread=2,duration_ms=3577,moving=0,fallback=0
+LINE_POINT,line=1,point=5,t_ms=95494,powered_ms=1260,heading=0,scan=65,dbm1=-61,dbm2=-62
+FOLLOW_POINT,powered_ms=1260,best_ms=504,gain_db=-2,margin_db=3,baseline_gain_db=2,baseline_margin_db=3,trend=0
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 5 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3629,r=1293,g=1213,b=1007,gr=938,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -80 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -80 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -80 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -81 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -81 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -81 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -81 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -80 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5005, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=66,t_ms=101619,powered_ms=1512,heading=0,dbm=-71,stopped=1
+RSSI_RAW,scan=67,t_ms=102337,powered_ms=1512,heading=0,dbm=-71,stopped=1
+RSSI_RAW,scan=68,t_ms=103058,powered_ms=1512,heading=0,dbm=-72,stopped=1
+RSSI_RAW,scan=69,t_ms=103748,powered_ms=1512,heading=0,dbm=-72,stopped=1
+RSSI_RAW,scan=70,t_ms=104486,powered_ms=1512,heading=0,dbm=-72,stopped=1
+RSSI_SAMPLE,scan=70,valid=5,dbm=-72,spread=1,duration_ms=3598,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=71,t_ms=105107,powered_ms=1512,heading=0,dbm=-73,stopped=1
+RSSI_RAW,scan=72,t_ms=105904,powered_ms=1512,heading=0,dbm=-71,stopped=1
+RSSI_RAW,scan=73,t_ms=106625,powered_ms=1512,heading=0,dbm=-71,stopped=1
+RSSI_RAW,scan=74,t_ms=107335,powered_ms=1512,heading=0,dbm=-73,stopped=1
+RSSI_RAW,scan=75,t_ms=108059,powered_ms=1512,heading=0,dbm=-73,stopped=1
+RSSI_SAMPLE,scan=75,valid=5,dbm=-72,spread=2,duration_ms=3588,moving=0,fallback=0
+LINE_POINT,line=1,point=6,t_ms=108618,powered_ms=1512,heading=0,scan=75,dbm1=-72,dbm2=-72
+FOLLOW_POINT,powered_ms=1512,best_ms=504,gain_db=-12,margin_db=3,baseline_gain_db=-8,baseline_margin_db=3,trend=-1
+DIP: freezing three-position reference at -62/-62 dBm; best return point 504 powered ms
+FOLLOW: decline position 1/3 at 1512 powered ms; two fresh batches below frozen reference
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 253 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 3 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3606,r=1287,g=1204,b=998,gr=935,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5004, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=76,t_ms=114711,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=77,t_ms=115467,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=78,t_ms=116175,powered_ms=1765,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=79,t_ms=116863,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=80,t_ms=117579,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_SAMPLE,scan=80,valid=5,dbm=-61,spread=0,duration_ms=3612,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=81,t_ms=118339,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=82,t_ms=119038,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=83,t_ms=119730,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_RAW,scan=84,t_ms=120373,powered_ms=1765,heading=0,dbm=-62,stopped=1
+RSSI_RAW,scan=85,t_ms=121167,powered_ms=1765,heading=0,dbm=-61,stopped=1
+RSSI_SAMPLE,scan=85,valid=5,dbm=-61,spread=0,duration_ms=3563,moving=0,fallback=0
+LINE_POINT,line=1,point=7,t_ms=121731,powered_ms=1765,heading=0,scan=85,dbm1=-61,dbm2=-61
+FOLLOW_POINT,powered_ms=1765,best_ms=504,gain_db=-1,margin_db=3,baseline_gain_db=3,baseline_margin_db=3,trend=0
+FOLLOW: decline sequence cleared at 1765 powered ms; signal recovered
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 6 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3489,r=1246,g=1166,b=964,gr=935,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5008, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=86,t_ms=127866,powered_ms=2017,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=87,t_ms=128604,powered_ms=2017,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=88,t_ms=129307,powered_ms=2017,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=89,t_ms=130026,powered_ms=2017,heading=0,dbm=-71,stopped=1
+RSSI_RAW,scan=90,t_ms=130627,powered_ms=2017,heading=0,dbm=-67,stopped=1
+RSSI_SAMPLE,scan=90,valid=5,dbm=-67,spread=3,duration_ms=3598,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=91,t_ms=131430,powered_ms=2017,heading=0,dbm=-67,stopped=1
+RSSI_RAW,scan=92,t_ms=132053,powered_ms=2017,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=93,t_ms=132761,powered_ms=2017,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=94,t_ms=133484,powered_ms=2017,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=95,t_ms=134270,powered_ms=2017,heading=0,dbm=-65,stopped=1
+RSSI_SAMPLE,scan=95,valid=5,dbm=-66,spread=2,duration_ms=3557,moving=0,fallback=0
+LINE_POINT,line=1,point=8,t_ms=134846,powered_ms=2017,heading=0,scan=95,dbm1=-67,dbm2=-66
+FOLLOW_POINT,powered_ms=2017,best_ms=504,gain_db=-7,margin_db=4,baseline_gain_db=-3,baseline_margin_db=4,trend=-1
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 4 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3461,r=1233,g=1157,b=958,gr=938,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5004, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=96,t_ms=140971,powered_ms=2269,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=97,t_ms=141680,powered_ms=2269,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=98,t_ms=142321,powered_ms=2269,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=99,t_ms=143079,powered_ms=2269,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=100,t_ms=143750,powered_ms=2269,heading=0,dbm=-66,stopped=1
+RSSI_SAMPLE,scan=100,valid=5,dbm=-66,spread=1,duration_ms=3612,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=101,t_ms=144544,powered_ms=2269,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=102,t_ms=145213,powered_ms=2269,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=103,t_ms=145980,powered_ms=2269,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=104,t_ms=146618,powered_ms=2269,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=105,t_ms=147311,powered_ms=2269,heading=0,dbm=-65,stopped=1
+RSSI_SAMPLE,scan=105,valid=5,dbm=-66,spread=1,duration_ms=3577,moving=0,fallback=0
+LINE_POINT,line=1,point=9,t_ms=147980,powered_ms=2269,heading=0,scan=105,dbm1=-66,dbm2=-66
+FOLLOW_POINT,powered_ms=2269,best_ms=504,gain_db=-6,margin_db=3,baseline_gain_db=-2,baseline_margin_db=3,trend=-1
+DIP: freezing three-position reference at -62/-62 dBm; best return point 504 powered ms
+FOLLOW: decline position 1/3 at 2269 powered ms; two fresh batches below frozen reference
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 4 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3645,r=1295,g=1220,b=1013,gr=942,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5006, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=106,t_ms=154090,powered_ms=2521,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=107,t_ms=154828,powered_ms=2521,heading=0,dbm=-67,stopped=1
+RSSI_RAW,scan=108,t_ms=155516,powered_ms=2521,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=109,t_ms=156275,powered_ms=2521,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=110,t_ms=157006,powered_ms=2521,heading=0,dbm=-67,stopped=1
+RSSI_SAMPLE,scan=110,valid=5,dbm=-68,spread=2,duration_ms=3621,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=111,t_ms=157614,powered_ms=2521,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=112,t_ms=158349,powered_ms=2521,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=113,t_ms=159106,powered_ms=2521,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=114,t_ms=159858,powered_ms=2521,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=115,t_ms=160501,powered_ms=2521,heading=0,dbm=-68,stopped=1
+RSSI_SAMPLE,scan=115,valid=5,dbm=-67,spread=2,duration_ms=3577,moving=0,fallback=0
+LINE_POINT,line=1,point=10,t_ms=161136,powered_ms=2521,heading=0,scan=115,dbm1=-68,dbm2=-67
+FOLLOW_POINT,powered_ms=2521,best_ms=504,gain_db=-8,margin_db=3,baseline_gain_db=-4,baseline_margin_db=3,trend=-1
+FOLLOW: decline position 2/3 at 2521 powered ms; two fresh batches below frozen reference
+DRIVE: forwards, base duty 35%, duration 250 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 252 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 3 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3503,r=1244,g=1171,b=976,gr=941,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5007, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=116,t_ms=167161,powered_ms=2773,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=117,t_ms=167963,powered_ms=2773,heading=0,dbm=-72,stopped=1
+RSSI_RAW,scan=118,t_ms=168670,powered_ms=2773,heading=0,dbm=-72,stopped=1
+RSSI_RAW,scan=119,t_ms=169353,powered_ms=2773,heading=0,dbm=-67,stopped=1
+RSSI_RAW,scan=120,t_ms=170104,powered_ms=2773,heading=0,dbm=-73,stopped=1
+RSSI_SAMPLE,scan=120,valid=5,dbm=-71,spread=2,duration_ms=3623,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=121,t_ms=170848,powered_ms=2773,heading=0,dbm=-72,stopped=1
+RSSI_RAW,scan=122,t_ms=171499,powered_ms=2773,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=123,t_ms=172218,powered_ms=2773,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=124,t_ms=172916,powered_ms=2773,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=125,t_ms=173630,powered_ms=2773,heading=0,dbm=-69,stopped=1
+RSSI_SAMPLE,scan=125,valid=5,dbm=-69,spread=1,duration_ms=3552,moving=0,fallback=0
+LINE_POINT,line=1,point=11,t_ms=174270,powered_ms=2773,heading=0,scan=125,dbm1=-71,dbm2=-69
+FOLLOW_POINT,powered_ms=2773,best_ms=504,gain_db=-11,margin_db=3,baseline_gain_db=-7,baseline_margin_db=3,trend=-1
+FOLLOW: decline position 3/3 at 2773 powered ms; two fresh batches below frozen reference
+DIP: three weak positions; stationary BLE check and two fresh Wi-Fi batches before any extra movement
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3457,r=1228,g=1156,b=963,gr=941,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5008, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=126,t_ms=179750,powered_ms=2773,heading=0,dbm=-71,stopped=1
+RSSI_RAW,scan=127,t_ms=180474,powered_ms=2773,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=128,t_ms=181174,powered_ms=2773,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=129,t_ms=181948,powered_ms=2773,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=130,t_ms=182607,powered_ms=2773,heading=0,dbm=-69,stopped=1
+RSSI_SAMPLE,scan=130,valid=5,dbm=-69,spread=1,duration_ms=3607,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=131,t_ms=183341,powered_ms=2773,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=132,t_ms=184052,powered_ms=2773,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=133,t_ms=184758,powered_ms=2773,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=134,t_ms=185471,powered_ms=2773,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=135,t_ms=186204,powered_ms=2773,heading=0,dbm=-72,stopped=1
+RSSI_SAMPLE,scan=135,valid=5,dbm=-69,spread=1,duration_ms=3567,moving=0,fallback=0
+DIP_CHECK,stage=recheck,probe=0,powered_ms=2773,reference_dbm1=-62,reference_dbm2=-62,dbm1=-69,dbm2=-69,recovered=0
+DIP: forward probe 1/2, at most 100 ms; frozen reference retained
+DRIVE: forwards, base duty 35%, duration 100 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 103 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 3 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3528,r=1253,g=1180,b=983,gr=941,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5004, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=136,t_ms=192746,powered_ms=2876,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=137,t_ms=193527,powered_ms=2876,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=138,t_ms=194169,powered_ms=2876,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=139,t_ms=194906,powered_ms=2876,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=140,t_ms=195611,powered_ms=2876,heading=0,dbm=-69,stopped=1
+RSSI_SAMPLE,scan=140,valid=5,dbm=-69,spread=1,duration_ms=3599,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=141,t_ms=196269,powered_ms=2876,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=142,t_ms=197071,powered_ms=2876,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=143,t_ms=197745,powered_ms=2876,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=144,t_ms=198411,powered_ms=2876,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=145,t_ms=199106,powered_ms=2876,heading=0,dbm=-69,stopped=1
+RSSI_SAMPLE,scan=145,valid=5,dbm=-69,spread=1,duration_ms=3562,moving=0,fallback=0
+DIP_CHECK,stage=probe,probe=1,powered_ms=2876,reference_dbm1=-62,reference_dbm2=-62,dbm1=-69,dbm2=-69,recovered=0
+DIP: forward probe 2/2, at most 100 ms; frozen reference retained
+DRIVE: forwards, base duty 35%, duration 100 ms, heading 0 degrees, gyro correction on
+DRIVE OK: forwards, powered 102 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 2 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3598,r=1277,g=1203,b=1003,gr=942,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5008, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=146,t_ms=205638,powered_ms=2978,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=147,t_ms=206364,powered_ms=2978,heading=0,dbm=-70,stopped=1
+RSSI_RAW,scan=148,t_ms=207178,powered_ms=2978,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=149,t_ms=207878,powered_ms=2978,heading=0,dbm=-68,stopped=1
+RSSI_RAW,scan=150,t_ms=208556,powered_ms=2978,heading=0,dbm=-69,stopped=1
+RSSI_SAMPLE,scan=150,valid=5,dbm=-69,spread=0,duration_ms=3583,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=151,t_ms=209245,powered_ms=2978,heading=0,dbm=-72,stopped=1
+RSSI_RAW,scan=152,t_ms=209975,powered_ms=2978,heading=0,dbm=-72,stopped=1
+RSSI_RAW,scan=153,t_ms=210708,powered_ms=2978,heading=0,dbm=-71,stopped=1
+RSSI_RAW,scan=154,t_ms=211329,powered_ms=2978,heading=0,dbm=-69,stopped=1
+RSSI_RAW,scan=155,t_ms=212124,powered_ms=2978,heading=0,dbm=-68,stopped=1
+RSSI_SAMPLE,scan=155,valid=5,dbm=-71,spread=3,duration_ms=3537,moving=0,fallback=0
+DIP_CHECK,stage=probe,probe=2,powered_ms=2978,reference_dbm1=-62,reference_dbm2=-62,dbm1=-69,dbm2=-71,recovered=0
+DIP: no recovery after 2 probes; returning to retained best point
+FOLLOW: decline persisted after recheck and probes; return only 2474 powered ms to best point 504
+RETURN: approximate reverse from 2978 to 504 powered ms, same heading 0
+DRIVE: backwards, base duty 35%, duration 750 ms, heading 0 degrees, gyro correction on
+DRIVE OK: backwards, powered 754 ms, settled rotation +1 degrees, heading error +0 degrees, peak correction 2 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3447,r=1234,g=1151,b=951,gr=932,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -78 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5002, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+DRIVE: backwards, base duty 35%, duration 750 ms, heading 0 degrees, gyro correction on
+DRIVE OK: backwards, powered 753 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 2 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3615,r=1286,g=1209,b=1004,gr=940,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -73 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -72 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5002, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+DRIVE: backwards, base duty 35%, duration 750 ms, heading 0 degrees, gyro correction on
+DRIVE OK: backwards, powered 754 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 2 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3193,r=1159,g=1061,b=874,gr=915,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -71 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -70 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -69 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5008, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+DRIVE: backwards, base duty 35%, duration 213 ms, heading 0 degrees, gyro correction on
+DRIVE OK: backwards, powered 216 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 2 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,c=3267,r=1167,g=1088,b=910,gr=932,lighter_seen=0,arrived=0
+BLE-only check: AP1, 12 readings, 3 averages >= -58 dBm; Wi-Fi paused
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -74 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -79 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -75 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -77 dBm, need >= -58, close 0/3
+AP1 BLE: filtered -76 dBm, need >= -58, close 0/3
+AP1 BLE TIMEOUT: phase=proximity scan, elapsed_ms=5010, phase_limit_ms=5000; closing radio operation
+BLE CHECK ENDED: 12/12 valid AP1 readings, close averages 0/3; proximity threshold not confirmed
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=156,t_ms=237999,powered_ms=504,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=157,t_ms=238807,powered_ms=504,heading=0,dbm=-65,stopped=1
+RSSI_RAW,scan=158,t_ms=239541,powered_ms=504,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=159,t_ms=240168,powered_ms=504,heading=0,dbm=-63,stopped=1
+RSSI_RAW,scan=160,t_ms=240884,powered_ms=504,heading=0,dbm=-65,stopped=1
+RSSI_SAMPLE,scan=160,valid=5,dbm=-65,spread=1,duration_ms=3619,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped
+RSSI_RAW,scan=161,t_ms=241589,powered_ms=504,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=162,t_ms=242401,powered_ms=504,heading=0,dbm=-64,stopped=1
+RSSI_RAW,scan=163,t_ms=243125,powered_ms=504,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=164,t_ms=243759,powered_ms=504,heading=0,dbm=-66,stopped=1
+RSSI_RAW,scan=165,t_ms=244558,powered_ms=504,heading=0,dbm=-65,stopped=1
+RSSI_SAMPLE,scan=165,valid=5,dbm=-65,spread=2,duration_ms=3601,moving=0,fallback=0
+RETURN: RSSI inconsistent with best point, stopping; timed position remains approximate
+FAILED: return RSSI inconsistent with best point; no further movement
+RESULT: STOPPED WITHOUT PAYLOAD
+FAULT MASK: 0x400
+FAULT: NO_DIRECTION
+Run ended. Log survives power-off. Next boot: open serial, press GP21 BEFORE GP20.
+
+[COMPLETE: all recorded run text saved]
+========== END OF SAVED RUN ==========
