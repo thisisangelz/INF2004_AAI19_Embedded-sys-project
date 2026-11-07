@@ -11,12 +11,14 @@ if (NOT PICO_BOARD STREQUAL "pico_w")
     message(FATAL_ERROR "The log flash layout is for the 2 MiB RP2040 Pico W only")
 endif()
 add_executable(getting_there
-    getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c
+    getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c robot_cues.c
+    ../common/buzzer.c
     imu_mpu9250.c
 )
 target_include_directories(getting_there PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer
+    ${CMAKE_CURRENT_LIST_DIR}/../common
 )
 target_compile_options(getting_there PRIVATE -Wall -Wextra)
 option(LINE_SEARCH_MOVING_SAMPLES "Enable moving acquisition after hardware timing checks and runtime qualification" OFF)

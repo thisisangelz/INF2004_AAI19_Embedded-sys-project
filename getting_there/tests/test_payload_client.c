@@ -35,10 +35,17 @@ static void scan_ack(void)
     hci_handler(HCI_EVENT_PACKET, 0, packet, sizeof(packet));
 }
 uint64_t time_us_64(void) { return sim_time; }
+static bool feed_close;
+static unsigned close_callbacks;
+static void advertisement(int rssi, uint8_t id);
+static void on_close(void) { ++close_callbacks; }
 void sleep_ms(uint32_t ms)
 {
     sim_time += (uint64_t)ms * 1000;
     if (auto_scan_ack && scan_ack_pending) scan_ack();
+    // AP1 close by: strong advertisements, then a failed connection.
+    if (feed_close && current_state() == BLE_SCANNING) advertisement(-40, 1);
+    if (feed_close && current_state() == BLE_CONNECTING) connection_complete(0x3e, HCI_CON_HANDLE_INVALID);
     advance_peer();
 }
 void report_printf(const char *format, ...) { (void)format; }
@@ -430,6 +437,15 @@ int main(void)
     reset(); auto_scan_ack = true;
     assert(payload_client_attempt() == PAYLOAD_NOT_CLOSE);
     assert(!flag(F_ATTEMPT_RUNNING) && current_state() == BLE_IDLE && sim_time >= 5000000 && !connect_calls);
+    // In-range callback: a close flag left from an earlier attempt must not
+    // fire it; passing the close-range check fires it exactly once.
+    payload_client_set_close_callback(on_close);
+    reset(); auto_scan_ack = true; close_callbacks = 0; flag_assign(F_CLOSE_CONFIRMED, true);
+    assert(payload_client_attempt() == PAYLOAD_NOT_CLOSE && !close_callbacks);
+    reset(); auto_scan_ack = true; feed_close = true; close_callbacks = 0;
+    assert(payload_client_attempt() == PAYLOAD_RETRY && close_callbacks == 1 && connect_calls == 1);
+    feed_close = false;
+    payload_client_set_close_callback(NULL);
     reset(); stopped = true;
     assert(payload_client_attempt() == PAYLOAD_FATAL && !flag(F_ATTEMPT_RUNNING));
     reset(); flag_assign(F_BLUETOOTH_READY, false);
@@ -468,6 +484,6 @@ int main(void)
     fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_TRANSLATION_LIMIT));
     fault_clear(FAULT_TRANSLATION_LIMIT); assert(!fault_mask());
 
-    printf("BLE %d dBm gate, rejected v11 early-arrival readings, 12-reading filter, three consecutive confirmations, colour-arrival loose gate, signed RSSI, payload CRC, early notifications, cleanup and faults: passed\n", AP1_CLOSE_RSSI_DBM);
+    printf("BLE %d dBm gate, rejected v11 early-arrival readings, 12-reading filter, three consecutive confirmations, colour-arrival loose gate, in-range callback, signed RSSI, payload CRC, early notifications, cleanup and faults: passed\n", AP1_CLOSE_RSSI_DBM);
     return 0;
 }

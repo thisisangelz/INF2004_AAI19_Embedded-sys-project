@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "btstack.h"
+#include "buzzer.h"
 #include "file_transfer.h"
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
@@ -20,6 +21,23 @@
 
 #define WIFI_PASSWORD "pico12345"
 #define APP_AD_FLAGS 0x06
+
+// Robo Pico onboard piezo buzzer.
+#ifndef BEACON_BUZZER_PIN
+#define BEACON_BUZZER_PIN 22
+#endif
+
+// Beacon sounds: one beep when advertising starts; continuous beeping while
+// the robot is connected (it passed its BLE range check); three rising beeps
+// when the transfer is complete on this beacon's side. The tones play from a
+// core 0 timer alarm and do not touch core 1's arithmetic load.
+static const buzzer_note_t cue_alive[] = {{2000, 60}};
+static const buzzer_note_t cue_connected[] = {{3000, 80}, {0, 120}};
+static const buzzer_note_t cue_complete[] = {
+    {1500, 200}, {0, 80}, {2000, 200}, {0, 80}, {2700, 350},
+};
+#define CUE(notes) (notes), sizeof(notes) / sizeof((notes)[0])
+static bool connected_cue_on;
 
 extern uint8_t const profile_data[];
 
@@ -284,6 +302,8 @@ static int att_write_callback(hci_con_handle_t con_handle,
         beacon_status = BEACON_STATUS_COMPLETE;
         printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
                BEACON_ID);
+        connected_cue_on = false;
+        buzzer_play(CUE(cue_complete), false);
         send_simple(MSG_COMPLETE_ACK, BEACON_ID);
         break;
 
@@ -316,6 +336,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             gap_advertisements_enable(1);
             beacon_status = BEACON_STATUS_ADVERTISING;
             printf("BLE beacon AP%d advertising\n", BEACON_ID);
+            buzzer_play(CUE(cue_alive), false);
         }
         break;
 
@@ -326,6 +347,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
                 hci_subevent_le_connection_complete_get_connection_handle(packet);
             beacon_status = BEACON_STATUS_CONNECTED;
             printf("BLE robot connected\n");
+            connected_cue_on = true;
+            buzzer_play(CUE(cue_connected), true);
         }
         break;
 
@@ -335,6 +358,12 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
         pending_notification_length = 0;
         reset_transfer();
         beacon_status = BEACON_STATUS_ADVERTISING;
+        // Disconnected before completing: stop the connected beeping. A
+        // completion tone, if playing, is left to finish.
+        if (connected_cue_on) {
+            connected_cue_on = false;
+            buzzer_stop();
+        }
         printf("BLE robot disconnected; ready for another transfer\n");
         break;
 
@@ -357,6 +386,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
 int main(void)
 {
     stdio_init_all();
+    buzzer_init(BEACON_BUZZER_PIN);
     // Start the additional load before the startup delay and before BTstack
     // can write flash. Core 0 continues to handle all Wi-Fi and BLE work.
     if (!powerbank_load_start()) {

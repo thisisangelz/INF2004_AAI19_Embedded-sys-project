@@ -18,12 +18,14 @@ endif()
 add_executable(picow_access_point_powerbank
     ../ble_transfer_powerbank/beacon_server.c
     ../ble_transfer_powerbank/powerbank_load.c
+    ../common/buzzer.c
 )
 
 target_include_directories(picow_access_point_powerbank PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer_powerbank
     ${CMAKE_CURRENT_LIST_DIR}/../ble_transfer
+    ${CMAKE_CURRENT_LIST_DIR}/../common
 )
 
 target_compile_definitions(picow_access_point_powerbank PRIVATE
@@ -38,6 +40,7 @@ target_link_libraries(picow_access_point_powerbank
     pico_cyw43_arch_lwip_threadsafe_background
     pico_btstack_cyw43
     pico_btstack_ble
+    hardware_pwm
 )
 
 pico_btstack_make_gatt_header(picow_access_point_powerbank PRIVATE

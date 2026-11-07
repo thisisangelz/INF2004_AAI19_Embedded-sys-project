@@ -82,18 +82,24 @@ bool report_ok(void) { return !storage_failed; }
 void stdio_init_all(void) { }
 bool stdio_usb_connected(void) { return false; }
 void gpio_set_function(uint pin, uint function) { (void)pin; (void)function; }
-uint32_t clock_get_hz(int clock) { (void)clock; return 125000000; }
-pwm_config pwm_get_default_config(void) { return (pwm_config){0}; }
-void pwm_config_set_clkdiv(pwm_config *config, float divider) { (void)config; (void)divider; }
-void pwm_config_set_wrap(pwm_config *config, uint16_t wrap) { config->wrap = wrap; }
-void pwm_init(uint slice, const pwm_config *config, bool enabled)
-{ (void)slice; (void)config; (void)enabled; }
-uint pwm_gpio_to_slice_num(uint pin) { return pin / 2; }
-void pwm_set_gpio_level(uint pin, uint16_t level)
+// Sound cues: tone_starts counts completion cues, tone_stops counts cue_stop().
+static unsigned cue_counts[CUE_FAULT + 1];
+static uint64_t cue_end;
+void cues_init(void) { }
+void cue_play(robot_cue_t cue)
 {
-    assert(pin == 22 && !motors_on);
-    if (level) ++tone_starts; else ++tone_stops;
+    assert(!motors_on);
+    ++cue_counts[cue];
+    if (cue == CUE_COLLECTED) ++tone_starts;
+    // The completion pattern lasts 910 ms; looping cues last until stopped.
+    uint64_t length = cue == CUE_COLLECTED ? 910000 :
+                      cue == CUE_CALIBRATING || cue == CUE_IN_RANGE ? UINT64_MAX / 2 : 100000;
+    cue_end = sim_time + length;
 }
+void cue_stop(void) { ++tone_stops; cue_end = sim_time; }
+bool cue_busy(void) { return sim_time < cue_end; }
+static void (*close_callback)(void);
+void payload_client_set_close_callback(void (*callback)(void)) { close_callback = callback; }
 bool motion_init(void)
 {
     if (ui_test && ++ui_init_calls <= ui_fail_init_count) { fault_raise(FAULT_IMU); return false; }
@@ -195,7 +201,7 @@ int payload_client_close_threshold(void) { return close_threshold; }
 void payload_client_init(void) { }bool payload_client_ready(void) { return !ui_bt_failure && !ui_bt_timeout; }
 bool payload_client_start_failed(void) { return ui_bt_failure; }
 const uint8_t *payload_client_data(uint16_t *length) { *length = 0; return NULL; }
-payload_result_t payload_client_attempt(void)
+static payload_result_t scripted_attempt(void)
 {
     assert(!motors_on && !scan_active);
     sleep_ms(ble_delay_ms);
@@ -211,6 +217,13 @@ payload_result_t payload_client_attempt(void)
     if (retry_mode == 3) return ble_calls == 1 ? PAYLOAD_RETRY : PAYLOAD_COMPLETE;
     if (retry_mode == 4 && forwards_count>=16) return retry_calls ? PAYLOAD_COMPLETE : PAYLOAD_RETRY;
     return PAYLOAD_NOT_CLOSE;
+}
+// Like the real client: once close range is confirmed the callback fires.
+payload_result_t payload_client_attempt(void)
+{
+    payload_result_t result = scripted_attempt();
+    if ((result == PAYLOAD_COMPLETE || result == PAYLOAD_RETRY) && close_callback) close_callback();
+    return result;
 }
 payload_result_t payload_client_retry(void)
 {
@@ -290,6 +303,7 @@ static void reset(void)
     mock_pending = false;
     colour_checks = colour_arrive_at_check = colour_inits = colour_resets = 0;
     close_threshold = AP1_CLOSE_RSSI_DBM; strict_attempts = loose_attempts = 0; complete_on_loose = false;
+    memset(cue_counts, 0, sizeof(cue_counts)); cue_end = 0; close_callback = NULL; in_range_cue_on = false;
     run_started_ms = now_ms(); translation_ms = profile_id = 0; wifi_quiescent = true;
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
@@ -894,10 +908,22 @@ static void check_startup(void)
     reset(); retry_mode=1; run_startup_test();
     assert(fault_test(FAULT_PAYLOAD) && !tone_starts && !forwards_count);
     reset(); retry_mode=3; run_startup_test();
-    assert(tone_starts==3 && !forwards_count && strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
+    assert(tone_starts==1 && !forwards_count && strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
 }
-static void check_colour_arrival(void)
+static void check_cues(void)
 {
+    // In range: the beeps start when close range is confirmed and stop when
+    // each attempt ends, including a stationary retry.
+    reset(); close_callback = on_in_range; retry_mode = 3;
+    assert(approach_beacon() && cue_counts[CUE_IN_RANGE] == 2 && tone_stops == 2 && !in_range_cue_on);
+    // Earlier attempts are not close, so only the final, completed one beeps.
+    reset(); close_callback = on_in_range; complete_after_step = 3;
+    assert(approach_beacon() && cue_counts[CUE_IN_RANGE] == 1 && !in_range_cue_on);
+    // One long beep per search direction: a single straight line here.
+    assert(cue_counts[CUE_PASS] == 1 && !cue_counts[CUE_COLLECTED] && !cue_counts[CUE_FAULT]);
+}
+
+static void check_colour_arrival(void){
     // On the mat after two steps: the loose BLE gate replaces -58 at once.
     reset(); colour_arrive_at_check = 3; complete_on_loose = true;
     assert(approach_beacon() && colour_resets == 1 && forwards_count == 2);
@@ -921,13 +947,13 @@ int main(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_two_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
-    check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival();
+    check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
-    buzzer_init(); tone_stops=0;
+    tone_stops=0;
     uint64_t before=sim_time; completion_sound();
-    assert(tone_starts==3 && tone_stops==4 && sim_time-before==900000);
+    assert(tone_starts==1 && tone_stops==0 && sim_time-before==910000);
     reset(); stopped=true; completion_sound(); assert(!tone_starts);
-    reset(); stop_during_pause=true; completion_sound(); assert(tone_starts==1 && tone_stops==2);
+    reset(); stop_during_pause=true; completion_sound(); assert(tone_starts==1 && tone_stops==1);
     reset(); fail_drive=true; assert(!approach_beacon() && forwards_count==1 && !backwards_count);
     reset(); fail_turn=true; assert(!approach_beacon() && !forwards_count);
     const double targets[4][2]={{2,0},{0,2},{-2,0},{0,-2}};
@@ -958,7 +984,12 @@ int main(void)
         assert(ui_replays==1 && ui_begins==1 && ui_finished && !motors_on);
         if (fail) assert(!ble_calls && !forwards_count && fault_test(FAULT_REPORT));
         else assert(strstr(log_text,"RESULT: PAYLOAD CONFIRMED") && colour_inits == 1);
+        // Start beep, calibration tone and completion cue on success; the
+        // falling fault cue when the log cannot be prepared.
+        if (fail) assert(cue_counts[CUE_FAULT] == 1 && !cue_counts[CUE_CALIBRATING] && !tone_starts);
+        else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
+                    cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded 100 ms probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, perpendicular search, travel/run limits, radio fallback, BSSID, STOP, startup, arrival and colour-arrival BLE gate checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded 100 ms probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, perpendicular search, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }
