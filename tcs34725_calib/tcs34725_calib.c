@@ -70,7 +70,7 @@ typedef struct {
 static const char *const LABELS[] = {
     "FLOOR",
     "WHITE EDGE",
-    "RING 1 (lightest pink)",
+    "RING 1 (lightest)",
     "RING 2",
     "RING 3",
     "RING 4",
@@ -238,11 +238,16 @@ static void capture(int label)
            st->saturated ? " | SATURATED" : "");
 }
 
-/* Reports the gap between [lo_a..hi_a] (lighter) and [lo_b..hi_b] (darker):
- * positive means every lighter reading was above every darker one. */
-static void print_gap(const char *what, int lighter_min, int darker_max)
+/* Gap between two ranges in either direction; positive means no overlap.
+ * Direction-free, so it works for any mat colour (pink rings lower G/R as
+ * they darken; other colours may change B/R instead). */
+static int range_gap(int a_min, int a_max, int b_min, int b_max)
 {
-    int gap = lighter_min - darker_max;
+    return a_min > b_max ? a_min - b_max : b_min - a_max;
+}
+
+static void print_gap(const char *what, int gap)
+{
     printf("  %-4s gap %+6d  %s\n", what, gap, gap > 0 ? "separate" : "OVERLAP");
 }
 
@@ -251,27 +256,23 @@ static void compare(int lighter, int darker)
     const stats_t *a = &results[lighter], *b = &results[darker];
     if (!a->n || !b->n) return;
     printf("%s -> %s\n", LABELS[lighter], LABELS[darker]);
-    print_gap("C", a->min_c, b->max_c);
-    print_gap("G/R", a->min_gr, b->max_gr);
-}
-
-/* Gap between two ranges in either direction; positive means no overlap. */
-static int range_gap(int a_min, int a_max, int b_min, int b_max)
-{
-    return a_min > b_max ? a_min - b_max : b_min - a_max;
+    print_gap("C", range_gap(a->min_c, a->max_c, b->min_c, b->max_c));
+    print_gap("G/R", range_gap(a->min_gr, a->max_gr, b->min_gr, b->max_gr));
+    print_gap("B/R", range_gap(a->min_br, a->max_br, b->min_br, b->max_br));
 }
 
 /* For surfaces with no expected order (floor, other): the two can be told
- * apart if C or G/R do not overlap. */
+ * apart if C, G/R or B/R do not overlap. */
 static void distinguish(int x, int y)
 {
     const stats_t *a = &results[x], *b = &results[y];
     if (!a->n || !b->n) return;
     int c_gap = range_gap(a->min_c, a->max_c, b->min_c, b->max_c);
     int gr_gap = range_gap(a->min_gr, a->max_gr, b->min_gr, b->max_gr);
-    printf("  %-6s vs %-36s C gap %+6d | G/R gap %+5d | %s\n",
-           x == 0 ? "FLOOR" : "OTHER", LABELS[y], c_gap, gr_gap,
-           c_gap > 0 || gr_gap > 0 ? "distinguishable" : "CONFUSABLE");
+    int br_gap = range_gap(a->min_br, a->max_br, b->min_br, b->max_br);
+    printf("  %-6s vs %-36s C gap %+6d | G/R gap %+5d | B/R gap %+5d | %s\n",
+           x == 0 ? "FLOOR" : "OTHER", LABELS[y], c_gap, gr_gap, br_gap,
+           c_gap > 0 || gr_gap > 0 || br_gap > 0 ? "distinguishable" : "CONFUSABLE");
 }
 
 static void print_summary(void)
@@ -293,10 +294,10 @@ static void print_summary(void)
                st->min_gr, st->max_gr, (unsigned long)(st->sum_br / st->n),
                st->min_br, st->max_br, st->saturated);
     }
-    printf("\nNeighbour check: each step inward should get darker (lower C) and\n"
-           "deeper pink (lower G/R). 'separate' means no reading overlapped.\n");
+    printf("\nNeighbour check: each step inward should differ in C, G/R or B/R.\n"
+           "'separate' means no reading overlapped; one separate value is enough.\n");
     for (int i = FIRST_MAT; i < LAST_MAT; ++i) compare(i, i + 1);
-    printf("\nFloor and other surfaces against every mat surface (either value apart\n"
+    printf("\nFloor and other surfaces against every mat surface (any value apart\n"
            "is enough). A CONFUSABLE target ring could cause a false arrival.\n");
     for (int i = FIRST_MAT; i <= LAST_MAT; ++i) distinguish(0, i);
     for (int i = FIRST_MAT; i <= LAST_MAT; ++i) distinguish(OTHER_LABEL, i);
