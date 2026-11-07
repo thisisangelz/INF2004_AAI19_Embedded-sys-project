@@ -1,6 +1,6 @@
 # Colour scan test on the mat (7 November)
 
-Firmware: `colour_scan` test build (feature/colour-guided-approach). After gyro
+Firmware: `colour_scan` test build (feature/colour-scan-mat-direction). After gyro
 calibration the robot turns on the spot through two full rounds, 12 stops of 30
 degrees each, and reads the TCS34725 at every stop. Radios and the approach are
 off. Angles are measured from the starting heading; in these runs a positive

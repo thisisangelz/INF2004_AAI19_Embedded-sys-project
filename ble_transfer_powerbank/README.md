@@ -16,7 +16,7 @@ identity at a time.
 
 ## Buzzer sounds (branch feature/buzzer-status-cues)
 
-Firmware: `build/picow_access_point*_powerbank_cues.uf2` in each AP folder.
+Firmware: `build/picow_access_point*_powerbank.uf2` in each AP folder.
 The Robo Pico buzzer on GP22 plays from a core 0 timer alarm; core 1's load,
 Wi-Fi and BLE behaviour are unchanged. Set the buzzer mute switch to sound.
 
