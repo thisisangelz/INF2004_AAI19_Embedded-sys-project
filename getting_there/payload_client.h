@@ -24,6 +24,9 @@ bool payload_client_start_failed(void);
 // Filtered BLE average that counts as close. Ignored while an attempt runs.
 void payload_client_set_close_threshold(int dbm);
 int payload_client_close_threshold(void);
+// Called from the main loop once per attempt when the close-range check has
+// passed (immediately for a retry of an already qualified beacon).
+void payload_client_set_close_callback(void (*callback)(void));
 // Call with motors stopped and no Wi-Fi scan running. Returns after BLE cleanup.
 payload_result_t payload_client_attempt(void);
 // Retry the same qualified AP without moving or repeating the RSSI gate.

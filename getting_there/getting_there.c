@@ -1,8 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "hardware/clocks.h"
-#include "hardware/pwm.h"
 #include "pico/cyw43_arch.h"
 #include "pico/stdio_usb.h"
 #include "pico/stdlib.h"
@@ -11,6 +9,7 @@
 #include "motion.h"
 #include "line_search.h"
 #include "payload_client.h"
+#include "robot_cues.h"
 #include "run_report.h"
 
 #define MAX_RUN_MS 900000u
@@ -20,16 +19,8 @@
 #define BLUETOOTH_START_TIMEOUT_MS 10000u
 // Reserve polling/I2C overrun for every translation block, including returns.
 #define BLOCK_RESERVE_MS 25u
-#ifndef BUZZER_PIN
-#define BUZZER_PIN 22
-#endif
-#define BUZZER_HZ 2000
-#define COMPLETION_BEEPS 3u
-#define COMPLETION_BEEP_MS 200u
-#define COMPLETION_GAP_MS 150u
 
 static uint32_t run_started_ms, translation_ms;
-static uint16_t buzzer_wrap;
 static bool wifi_quiescent = true;
 static uint32_t now_ms(void) { return (uint32_t)(time_us_64() / 1000); }
 
@@ -55,18 +46,13 @@ static bool save_checkpoint(void)
     return false;
 }
 
-static void buzzer_init(void)
+// Set while the in-range beeps play; they last until the BLE attempt ends.
+static bool in_range_cue_on;
+
+static void on_in_range(void)
 {
-    gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
-    uint slice = pwm_gpio_to_slice_num(BUZZER_PIN);
-    pwm_config config = pwm_get_default_config();
-    pwm_config_set_clkdiv(&config, 16.0f);
-    uint32_t wrap = clock_get_hz(clk_sys) / (16u * BUZZER_HZ) - 1u;
-    if (wrap > 65535) wrap = 65535;
-    buzzer_wrap = (uint16_t)wrap;
-    pwm_config_set_wrap(&config, buzzer_wrap);
-    pwm_init(slice, &config, true);
-    pwm_set_gpio_level(BUZZER_PIN, 0);
+    in_range_cue_on = true;
+    cue_play(CUE_IN_RANGE);
 }
 
 static payload_result_t check_payload(void)
@@ -86,6 +72,10 @@ static payload_result_t check_payload(void)
                               colour_zone_name(COLOUR_ARRIVAL_ZONE), COLOUR_ARRIVAL_BLE_DBM);
         }
         payload_result_t result = was_close ? payload_client_retry() : payload_client_attempt();
+        if (in_range_cue_on) {
+            cue_stop();
+            in_range_cue_on = false;
+        }
         // A fatal cleanup failure may leave the radio active. Persist its tail
         // only after main shuts the radio down.
         if (result != PAYLOAD_FATAL && !save_checkpoint()) return PAYLOAD_FATAL;
@@ -279,6 +269,8 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     *followed = (follow_result_t){.heading = line_normalise_heading(heading)};
     profile_count = 0;
     ++profile_id;
+    // One long beep each time a new search direction starts.
+    cue_play(CUE_PASS);
     if (!motion_turn_to_heading(heading)) return PAYLOAD_FATAL;
     wifi_sampler_set_position(heading, 0, true);
     line_pair_t best;
@@ -497,17 +489,13 @@ static void completion_sound(void)
         report_printf("Completion tone cancelled by GP21\n");
         return;
     }
-    report_printf("COMPLETION BEEPS: GP%d, %u beeps at 2000 Hz, %u ms on / %u ms gap\n",
-                  BUZZER_PIN, COMPLETION_BEEPS, COMPLETION_BEEP_MS, COMPLETION_GAP_MS);
-    for (unsigned i = 0; i < COMPLETION_BEEPS; ++i) {
-        if (motion_stop_requested()) break;
-        pwm_set_gpio_level(BUZZER_PIN, buzzer_wrap / 2);
-        bool finished = motion_pause_ms(COMPLETION_BEEP_MS);
-        pwm_set_gpio_level(BUZZER_PIN, 0);
-        if (!finished) break;
-        if (i + 1 < COMPLETION_BEEPS && !motion_pause_ms(COMPLETION_GAP_MS)) break;
+    report_printf("COMPLETION BEEPS: GP22, three rising beeps\n");
+    // Wait for the beeps to finish so the RESULT line follows them; GP21
+    // still cuts them short.
+    cue_play(CUE_COLLECTED);
+    while (cue_busy()) {
+        if (!motion_pause_ms(10)) { cue_stop(); break; }
     }
-    pwm_set_gpio_level(BUZZER_PIN, 0);
     report_printf("Completion beeps %s; motors stopped\n", motion_stop_requested() ? "stopped by GP21" : "finished");
 }
 
@@ -539,9 +527,9 @@ int main(void)
     stdio_init_all();
     report_init();
     bool ready = motion_init();
-    buzzer_init();
+    cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v16 dip-probes ble-minus58 colour-ring4 | AP1 only\n");
+    report_printf("Getting there | line-search v16 dip-probes ble-minus58 colour-ring4 cues | AP1 only\n");
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
     report_printf("Move using Wi-Fi direction; receive payload only after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);
@@ -563,6 +551,7 @@ int main(void)
     motion_arm_stop();
     bool recording = false;
     if (!motion_stop_requested()) {
+        cue_play(CUE_START);
         report_printf("GP20 START: preparing persistent log; motors remain stopped.\n");
         recording = report_begin();
         if (!recording) fault_raise(FAULT_REPORT);
@@ -583,7 +572,10 @@ int main(void)
     if (ready) colour_sensor_init();
     if (ready) {
         report_printf("Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.\n");
+        // A steady tone for as long as the robot must stay still.
+        cue_play(CUE_CALIBRATING);
         ready = motion_calibrate();
+        cue_stop();
         if (!ready) report_printf("FAILED: gyro calibration; check IMU wiring and keep the robot still\n");
     }
     bool radio_initialised = false;
@@ -598,6 +590,7 @@ int main(void)
             radio_initialised = true;
             report_printf("Wi-Fi hardware initialised; starting Bluetooth.\n");
             cyw43_arch_enable_sta_mode();
+            payload_client_set_close_callback(on_in_range);
             payload_client_init();
             uint32_t start = now_ms();
             uint32_t last_progress = start;
@@ -625,12 +618,13 @@ int main(void)
         bool completed = approach_beacon();
         motion_stop();
         if (completed) completion_sound();
+        else cue_play(CUE_FAULT);
         report_printf("RESULT: %s\n", completed ? "PAYLOAD CONFIRMED" : "STOPPED WITHOUT PAYLOAD");
     } else {
+        cue_play(CUE_FAULT);
         report_printf("RESULT: STARTUP FAILED OR STOPPED\n");
     }
     motion_stop();
-    pwm_set_gpio_level(BUZZER_PIN, 0);
     // Also quiesces any scan/cleanup still pending after a fatal radio failure.
     if (radio_initialised) cyw43_arch_deinit();
     report_faults();

@@ -14,6 +14,17 @@ files; their source is linked from the [development history](../docs/history.md)
 The `getting_there` robot uses these beacons. Run only one board for each beacon
 identity at a time.
 
+## Buzzer sounds (branch feature/buzzer-status-cues)
+
+Firmware: `build/picow_access_point*_powerbank_cues.uf2` in each AP folder.
+The Robo Pico buzzer on GP22 plays from a core 0 timer alarm; core 1's load,
+Wi-Fi and BLE behaviour are unchanged. Set the buzzer mute switch to sound.
+
+| When | Sound |
+|---|---|
+| BLE advertising started | One short beep |
+| Robot connected (it passed its range check) | Continuous beeping; stops if the robot disconnects before finishing |
+| Transfer complete on the beacon's side | Three beeps, each higher |
 ## Changes
 
 - Version 2 keeps the second processor core (core 1) busy with continuous

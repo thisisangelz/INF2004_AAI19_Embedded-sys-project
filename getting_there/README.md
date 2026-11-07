@@ -4,6 +4,23 @@ This AP1 programme developed from `Alvin_2` at `2012e7b` through the archived
 `line-search` branch. Flash `getting_there/build/getting_there.uf2` onto the robot.
 It approaches AP1, receives and verifies AP1's reply payload over BLE, then plays three short completion beeps.
 
+## Buzzer sounds (branch feature/buzzer-status-cues)
+
+Firmware: `build/getting_there_colour_ring4_cues.uf2`, banner ending
+`colour-ring4 cues`. Navigation and colour arrival are unchanged. The sounds
+come from the archived `robot-buzzer-cues-flash-log` design and play from a
+timer alarm on GP22, so they never pause driving, scanning or BLE.
+
+| When | Sound |
+|---|---|
+| GP20 accepted | One short beep |
+| Gyro calibrating (keep still) | Steady tone; it stops when calibration is done |
+| A new search direction starts (first line and each perpendicular trial) | One long beep (0.6 s) |
+| BLE close-range check passed, transfer running | High beeps that speed up, then stay fast until the attempt ends |
+| Payload verified | Three beeps, each higher (replaces the three same-pitch beeps) |
+| Stopped without a payload, start-up failed or GP21 | Three beeps, each lower |
+
+The beacons have matching sounds; see `ble_transfer_powerbank/README.md`.
 ## Colour-ring arrival (branch feature/colour-ring-sensing)
 
 Firmware: `build/getting_there_colour_ring4.uf2`. Boot banner:
