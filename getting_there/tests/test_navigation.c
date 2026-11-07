@@ -30,6 +30,12 @@ static double dead_from, dead_to;
 // Closest the colour sensor came to the mat centre while driving (model).
 static double model_min_sensor_d;
 static double model_sensor_d(void);
+// 7 November run conditions: inner rings read one ring lighter, so arrival
+// never shows; and the beacon box is solid, so the robot cannot drive the
+// sensor closer than MODEL_BOX_BLOCK to the centre (it pushes in place).
+static bool model_dim_inner, model_box_solid;
+static unsigned model_blocked_blocks;
+#define MODEL_BOX_BLOCK 0.045
 static struct { bool forwards; float heading; uint32_t ms; unsigned scans_before; } moves[512];
 static unsigned move_count;
 static uint32_t mock_duration, mock_elapsed;
@@ -166,7 +172,12 @@ bool motion_drive_update(void)
     if (model) {
         double distance = (mock_forwards ? 1 : -1) * 0.20 * delta / 750.0;
         double radians = current_heading * 3.141592653589793 / 180.0;
+        double old_x = robot_x, old_y = robot_y;
         robot_x += distance * cos(radians); robot_y += distance * sin(radians);
+        if (model_box_solid && model_sensor_d() < MODEL_BOX_BLOCK) {
+            robot_x = old_x; robot_y = old_y; // against the box: wheels slip
+            if (mock_elapsed + delta >= mock_duration) ++model_blocked_blocks;
+        }
         if (model_sensor_d() < model_min_sensor_d) model_min_sensor_d = model_sensor_d();
     }
     if (mock_elapsed >= mock_duration) motors_on = false;
@@ -222,7 +233,9 @@ static int model_depth(void)
     if (d > MODEL_MAT_RADIUS) return 0;
     int bands = model_bands();
     int depth = bands - (int)(d / (MODEL_MAT_RADIUS / bands));
-    return depth < 1 ? 1 : depth > bands ? bands : depth;
+    depth = depth < 1 ? 1 : depth > bands ? bands : depth;
+    if (model_dim_inner && depth >= model_arrival_depth()) depth = model_arrival_depth() - 1;
+    return depth;
 }
 void colour_note_lighter_mats(unsigned mask)
 {
@@ -392,6 +405,7 @@ static void reset(void)
     colour_present = model_lighter_seen = colour_arrived = false; colour_reads = mat_scans_used = 0;
     model_last_depth = -1; ble_never = false;
     model_blue = false; model_min_sensor_d = 1e9; mat_near_block_ms = LINE_MAT_NEAR_BLOCK_MS;
+    model_dim_inner = model_box_solid = false; model_blocked_blocks = 0;
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
 }
@@ -1191,10 +1205,50 @@ static void check_near_centre_steps(void)
                 assert(false);
             }
             assert(model_min_sensor_d>MODEL_BOX_RADIUS && !strict_attempts);
+            // Normal readings arrive by colour; the centre stop rules stay out of it.
+            assert(!strstr(log_text,"at the mat centre"));
         }
         // The old 250 ms steps reach the innermost ring on the blue mat.
         if (blue) assert(old_overshoots>=3);
     }
+
+    // 7 November blue and purple runs: the inner rings read one ring lighter
+    // than calibrated, so arrival never triggered and the robot pushed into
+    // the beacon box. With a solid box and no arrival reading, the robot must
+    // stop at the box on its own within a few blocked steps, transfer, and
+    // never resume Wi-Fi driving there.
+    for (unsigned i=0;i<sizeof(starts)/sizeof(*starts);++i) {
+        reset(); shipped_steps(); model=true; colour_present=true; model_blue=true;
+        model_dim_inner=model_box_solid=true;
+        robot_x=starts[i].x; robot_y=starts[i].y; current_heading=starts[i].heading;
+        bool arrived=approach_beacon();
+        if (!arrived || model_blocked_blocks>MAT_STALL_STEPS || !strstr(log_text,"at the mat centre")) {
+            fprintf(stderr,"Dim blue '%s': arrived %d, blocked steps %u, scans %u, robot (%.3f, %.3f)\n",
+                    starts[i].name,arrived,model_blocked_blocks,mat_scans_used,robot_x,robot_y);
+            for (char *row=strtok(log_text,"\n");row;row=strtok(NULL,"\n"))
+                if (!strncmp(row,"MAT",3) || !strncmp(row,"COLOUR_SCAN_RESULT",18) || !strncmp(row,"APPROACH",8))
+                    fprintf(stderr,"%s\n",row);
+            assert(false);
+        }
+        assert(!strict_attempts && !strstr(log_text,"resuming the Wi-Fi line search"));
+        assert(strstr(log_text,"read no darker; the robot is against the beacon box"));
+    }
+    // Already surrounded by inner rings (every scan direction within two rings
+    // of arrival, like the all-ring-3 scan in the blue run): stop without moving.
+    reset(); shipped_steps(); model=true; colour_present=true; model_blue=true; model_dim_inner=true;
+    robot_x=0.02;
+    assert(approach_beacon() && !move_count && strstr(log_text,"every scan direction is within two rings"));
+    // The same stop rules without a solid box: arrival still never reads, so
+    // the robot must stop once nothing around it is darker, not drive on.
+    reset(); shipped_steps(); model=true; colour_present=true; model_blue=true; model_dim_inner=true;
+    robot_y=-0.26;
+    assert(approach_beacon() && strstr(log_text,"at the mat centre") && !strict_attempts);
+    // BLE never in range at the centre: retries in place, then stops for good.
+    reset(); shipped_steps(); model=true; colour_present=true; model_blue=true;
+    model_dim_inner=model_box_solid=true; ble_never=true; robot_y=-0.26;
+    assert(!approach_beacon() && fault_test(FAULT_PAYLOAD) && strstr(log_text,"stationary retry 3/3"));
+    unsigned moves_at_stop=move_count;
+    assert(strstr(log_text,"at the mat centre") && moves_at_stop>0);
 }
 
 int main(void)

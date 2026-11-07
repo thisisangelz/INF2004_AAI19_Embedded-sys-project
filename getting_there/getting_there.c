@@ -58,6 +58,9 @@ static void on_in_range(void)
 
 // Set when the latest check_payload passed colour arrival (ring 4 or darker).
 static bool colour_arrived;
+// Set by mat steering when the robot is at the mat centre although no reading
+// reached the arrival ring (see mat_centre_reached). Counts as colour arrival.
+static bool mat_centre_override;
 
 static payload_result_t check_payload(void)
 {
@@ -69,7 +72,7 @@ static payload_result_t check_payload(void)
         if (!was_close) {
             // Motors are stopped here. On the mat, the colour sensor decides
             // arrival and BLE only has to show AP1 is in range.
-            bool on_mat = colour_arrival_check();
+            bool on_mat = colour_arrival_check() || mat_centre_override;
             colour_arrived = on_mat;
             // With a working colour sensor, only the mat allows a transfer:
             // the -58 dBm BLE gate alone passed on ring 1 when the robot
@@ -293,12 +296,17 @@ static bool scan_read(colour_reading_t *out)
 // Turns on the spot through a full circle from origin, logging the colour
 // under the sensor (which sits ahead of the wheels) at each 30-degree step,
 // then estimates the direction of the mat centre. Ends facing origin + 330.
+// farthest_rings: the most rings any reading was from its own mat's arrival
+// ring (SCAN_OFF_MAT if a reading was not on a mat). Small means every
+// direction around the robot is inner rings: the robot is at the centre.
+#define SCAN_OFF_MAT 1000
 static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_result_t *est,
-                                      unsigned *lighter_mats)
+                                      unsigned *lighter_mats, int *farthest_rings)
 {
     int angles[SCAN_STEPS];
     colour_reading_t readings[SCAN_STEPS];
     *lighter_mats = 0;
+    *farthest_rings = 0;
     *est = (colour_scan_result_t){.valid = false, .max_depth = -1};
     for (unsigned i = 0; i < SCAN_STEPS; ++i) {
         if (!run_can_continue()) return SCAN_STOPPED;
@@ -311,6 +319,9 @@ static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_
         colour_mat_t mat;
         colour_zone_t zone = colour_classify_mat(&readings[i], &mat);
         if (colour_lighter_zone(mat, zone)) *lighter_mats |= 1u << mat;
+        int rings = mat == COLOUR_MAT_NONE ? SCAN_OFF_MAT :
+            colour_zone_depth(colour_arrival_zone(mat)) - colour_zone_depth(zone);
+        if (rings > *farthest_rings) *farthest_rings = rings;
         report_printf("COLOUR_SCAN,round=%u,angle=%d,heading=%d,zone=%s,mat=%s,depth=%d,c=%u,r=%u,g=%u,b=%u,gr=%u,br=%u\n",
                       round, angles[i], (int)line_normalise_heading(motion_heading()),
                       colour_zone_name(zone), colour_mat_name(mat), colour_zone_depth(zone),
@@ -336,6 +347,11 @@ static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_
 // steps, or ten near the centre, so small steps do not cause extra scans.
 #define MAT_TRAVEL_PER_SCAN_MS 1000u
 #define MAT_ARRIVED_RETRIES 3u    // stationary BLE retries when arrived but AP1 not in range
+// Small steps within one ring of arrival that read no darker: the robot is
+// pushing against the beacon box (7 November blue run: seven 100 ms steps on
+// the same reading, heading error growing). A ring took two or three such
+// steps in the purple run, so three flat steps means the robot is not moving.
+#define MAT_STALL_STEPS 3u
 static unsigned mat_scans_used;
 
 static bool mat_steering_ready(void)
@@ -360,6 +376,21 @@ static payload_result_t mat_wait_on_arrival(void)
     return PAYLOAD_FATAL;
 }
 
+// The robot is at the mat centre although no check reached the arrival ring.
+// On 7 November the inner rings of the blue and purple mats read about one
+// ring lighter than calibrated (the sensor saw roughly half the calibration
+// brightness), so arrival never triggered and the robot inched on into the
+// beacon box. Stop here for good: transfer with the loose BLE gate, retry in
+// place if AP1 is not in range, and never move again from this point.
+static payload_result_t mat_centre_reached(const char *why)
+{
+    report_printf("MAT: %s; at the mat centre, treating as arrived with no further movement\n", why);
+    mat_centre_override = true;
+    payload_result_t result = check_payload();
+    if (result != PAYLOAD_NOT_CLOSE) return result;
+    return mat_wait_on_arrival(); // FATAL after its retries: never drives again
+}
+
 // Motors stopped, latest colour check on the mat but not arrived. Returns
 // COMPLETE or FATAL, or NOT_CLOSE when the mat is lost or the scans run out,
 // so the caller resumes the Wi-Fi search.
@@ -374,7 +405,8 @@ static payload_result_t mat_approach(void)
         float origin = motion_heading();
         colour_scan_result_t est;
         unsigned lighter_mats;
-        scan_status_t status = colour_scan_turn(origin, scan, &est, &lighter_mats);
+        int farthest_rings;
+        scan_status_t status = colour_scan_turn(origin, scan, &est, &lighter_mats, &farthest_rings);
         if (status == SCAN_STOPPED) return PAYLOAD_FATAL;
         if (status == SCAN_READ_FAILED) {
             report_printf("MAT: scan %u could not read the colour sensor; resuming the Wi-Fi search\n", scan);
@@ -383,6 +415,11 @@ static payload_result_t mat_approach(void)
         // The scan saw the ring pattern, so a robot started on the arrival
         // ring can arrive.
         colour_note_lighter_mats(lighter_mats);
+        // Inner rings in every direction: there is nowhere darker to go. On
+        // 7 November this scan (all blue ring 3 readings) instead resumed the
+        // Wi-Fi search, which drove the robot into the beacon box.
+        if (farthest_rings <= (int)LINE_MAT_NEAR_RINGS)
+            return mat_centre_reached("every scan direction is within two rings of arrival");
         if (!est.valid || est.max_depth < colour_zone_depth(COLOUR_RING1)) {
             report_printf("MAT: scan %u found no ring to steer toward; resuming the Wi-Fi search\n", scan);
             return PAYLOAD_NOT_CLOSE;
@@ -400,6 +437,7 @@ static payload_result_t mat_approach(void)
         }
         int previous = colour_last_depth();
         uint32_t travelled = 0;
+        unsigned flat_steps = 0;
         for (unsigned step = 1; travelled < MAT_TRAVEL_PER_SCAN_MS; ++step) {
             uint32_t actual, block = mat_step_ms();
             result = translate_block(true, block, heading, 0, 0, false, &actual);
@@ -415,9 +453,15 @@ static payload_result_t mat_approach(void)
             }
             // Lighter (or unreadable): off the line to the centre, so scan again.
             if (depth < previous) break;
+            if (depth > previous || !colour_near_arrival(1)) flat_steps = 0;
+            else if (++flat_steps >= MAT_STALL_STEPS)
+                return mat_centre_reached("three small steps one ring from arrival read no darker; the robot is against the beacon box");
             previous = depth;
         }
     }
+    // Out of scans close to the centre: never hand back to Wi-Fi driving here.
+    if (colour_near_arrival(LINE_MAT_NEAR_RINGS))
+        return mat_centre_reached("colour scans used up within two rings of arrival");
     report_printf("MAT: %u colour scans used without arrival; resuming the Wi-Fi search\n", MAT_MAX_SCANS);
     return PAYLOAD_NOT_CLOSE;
 }
@@ -654,6 +698,7 @@ static bool approach_beacon(void)
     colour_arrival_reset();
     step_on_mat = false;
     mat_scans_used = 0;
+    mat_centre_override = false;
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -747,7 +792,8 @@ static bool colour_scan_run(void)
         cue_play(CUE_PASS);
         colour_scan_result_t est;
         unsigned lighter_mats;
-        scan_status_t status = colour_scan_turn(origin, round, &est, &lighter_mats);
+        int farthest_rings;
+        scan_status_t status = colour_scan_turn(origin, round, &est, &lighter_mats, &farthest_rings);
         if (status == SCAN_READ_FAILED) report_printf("COLOUR SCAN FAILED: sensor read error\n");
         if (status != SCAN_DONE) return false;
         if (!est.valid) all_valid = false;
