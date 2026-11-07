@@ -5,8 +5,8 @@
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
 #include <string.h>
+#include "target_beacon.h"
 
-#define AP1_SSID "I AM PICO W"
 #define QUALIFICATION_WINDOWS 3u
 #define SCAN_START_LIMIT_MS 5u
 
@@ -65,9 +65,9 @@ wifi_sample_t wifi_filter(const uint8_t *codes, unsigned count)
 static int sampler_result(void *unused, const cyw43_ev_scan_result_t *result)
 {
     (void)unused;
-    if (!result || result->ssid_len != sizeof(AP1_SSID) - 1u ||
+    if (!result || result->ssid_len != sizeof(TARGET_SSID) - 1u ||
         result->rssi >= 0 || result->rssi <= -127 ||
-        memcmp(result->ssid, AP1_SSID, sizeof(AP1_SSID) - 1u) != 0 ||
+        memcmp(result->ssid, TARGET_SSID, sizeof(TARGET_SSID) - 1u) != 0 ||
         (identity_locked && memcmp(result->bssid, target_bssid, 6) != 0)) return 0;
     uint8_t code = (uint8_t)rssi_encode(result->rssi);
     if (code >= pending_result.code) return 0;
@@ -238,7 +238,7 @@ bool wifi_sampler_poll_moving(void)
 bool wifi_sampler_sample(wifi_sample_t *sample)
 {
     if (!wifi_sampler_quiesce()) return false;
-    report_printf("AP1 Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped\n");
+    report_printf(TARGET_NAME " Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped\n");
     uint8_t readings[SCANS_PER_SAMPLE];
     unsigned valid = 0;
     uint32_t start = sampler_now_ms();

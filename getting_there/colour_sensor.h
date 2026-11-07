@@ -4,31 +4,50 @@
 #include <stdint.h>
 
 // TCS34725 on Robo Pico Grove 1 (I2C0, SDA GP0, SCL GP1). Thresholds come from
-// docs/calibration/2026-11-06-tcs34725-mat.md (three rounds, gain 4x, 103 ms).
+// docs/calibration/ (gain 4x, 103 ms): the 5-ring pink mat (6 November) and the
+// 6-ring blue and purple mats (7 November). Each reading identifies its mat,
+// so any beacon can sit on any of the three mats.
 typedef enum {
     COLOUR_UNKNOWN, // no reading, sensor error or unusable value
     COLOUR_FLOOR,
     COLOUR_WHITE,   // white mat edge
-    COLOUR_RING1,   // lightest pink
+    COLOUR_RING1,   // lightest ring
     COLOUR_RING2,
     COLOUR_RING3,
     COLOUR_RING4,
-    COLOUR_RING5,   // darkest, under and beside the beacon box
+    COLOUR_RING5,   // darkest on the pink mat
+    COLOUR_RING6,   // darkest on the blue and purple mats
 } colour_zone_t;
 
-// Arrival: this ring or darker in every reading of one stationary check, after
-// a lighter mat surface (white edge or rings 1-3) was seen earlier in the run.
-#define COLOUR_ARRIVAL_ZONE COLOUR_RING4
+typedef enum {
+    COLOUR_MAT_NONE,   // floor or unknown
+    COLOUR_MAT_PINK,   // 5 rings
+    COLOUR_MAT_BLUE,   // 6 rings
+    COLOUR_MAT_PURPLE, // 6 rings
+    COLOUR_MAT_COUNT
+} colour_mat_t;
+
+// Arrival: one ring short of the darkest (pink ring 4, blue and purple ring 5)
+// or darker, on the same mat, in every reading of one stationary check, after
+// a lighter surface of that mat (white edge or an outer ring) was seen earlier.
 #define COLOUR_ARRIVAL_SAMPLES 3
+#define COLOUR_ARRIVAL_TEXT "the arrival ring (pink ring 4, blue or purple ring 5)"
 
 typedef struct {
     uint16_t c, r, g, b;
 } colour_reading_t;
 
 // Pure helpers, no hardware access (colour_mat.c).
+colour_zone_t colour_classify_mat(const colour_reading_t *reading, colour_mat_t *mat);
 colour_zone_t colour_classify(const colour_reading_t *reading);
 const char *colour_zone_name(colour_zone_t zone);
+const char *colour_mat_name(colour_mat_t mat);
+colour_zone_t colour_arrival_zone(colour_mat_t mat);
+bool colour_zone_arrived(colour_mat_t mat, colour_zone_t zone);
+// White edge or an outer ring of that mat: must be seen before arrival.
+bool colour_lighter_zone(colour_mat_t mat, colour_zone_t zone);
 uint16_t colour_gr_x1000(const colour_reading_t *reading);
+uint16_t colour_br_x1000(const colour_reading_t *reading);
 
 // Probes and configures the sensor. False leaves arrival disabled, so the
 // robot keeps the BLE-only proximity gate.
@@ -46,16 +65,15 @@ bool colour_on_mat(void);
 // Mat depth (see colour_zone_depth) of the latest check's last reading;
 // -1 before a check, after a failed read or without a sensor.
 int colour_last_depth(void);
-// Records that a lighter mat surface was seen outside an arrival check, for
-// example during a colour scan, so a robot started on ring 4 can arrive.
-void colour_note_lighter_mat(void);
-// White edge or rings 1-3: the surfaces that must be seen before arrival.
-bool colour_lighter_mat_zone(colour_zone_t zone);
+// Records that lighter surfaces of these mats (bit 1u << colour_mat_t) were
+// seen outside an arrival check, for example during a colour scan, so a robot
+// started on the arrival ring can arrive.
+void colour_note_lighter_mats(unsigned mat_mask);
 // One fresh reading (about 115 ms). False on an I2C error or missing sensor.
 bool colour_sensor_read(colour_reading_t *reading);
 
-// Mat depth: 0 floor, 1 white edge, 2-6 rings 1-5; -1 unknown. Unlike G/R, it
-// orders the floor below the mat (floor G/R lies between white and ring 1).
+// Mat depth: 0 floor, 1 white edge, 2-7 rings 1-6; -1 unknown. It orders the
+// surfaces inward on every mat, whichever ratio the mat's colour changes.
 int colour_zone_depth(colour_zone_t zone);
 
 // Direction to the mat centre from readings taken while turning on the spot:

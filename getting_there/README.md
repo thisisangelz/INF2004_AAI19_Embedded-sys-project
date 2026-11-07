@@ -8,10 +8,43 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 
 | Board | File | What it is |
 |---|---|---|
-| Robot | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer and buzzer sounds. Banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate ble-minus58 colour-ring4 cues` |
+| Robot, going to AP1 | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, any colour mat, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate multi-mat ble-minus58 cues \| AP1 only` |
+| Robot, going to AP2 | `build/getting_there_ap2.uf2` | The same firmware aimed at AP2 (`I AM PICO W 2`, beacon ID 2); banner ends `AP2 only` |
+| Robot, going to AP3 | `build/getting_there_ap3.uf2` | The same firmware aimed at AP3 (`I AM PICO W 3`, beacon ID 3); banner ends `AP3 only` |
 | Robot (test) | `build/getting_there_colour_scan.uf2` | Colour scan test only: turns on the spot, no Wi-Fi, BLE or driving |
-| Robot (tool) | `../tcs34725_calib/build/tcs34725_calib.uf2` | Colour sensor calibration tool |
+| Robot (tool) | `../tcs34725_calib/build/tcs34725_calib.uf2`, `tcs34725_calib6.uf2` | Colour sensor calibration tool: pink 5-ring mat, blue and purple 6-ring mats |
 | AP1-AP3 | `../picow_access_point*_powerbank/build/picow_access_point*_powerbank.uf2` | Current beacon firmware with buzzer sounds |
+
+## Any beacon on any colour mat (branch feature/colour-ring-sensing)
+
+Each colour reading now identifies its mat as well as its ring, from the
+calibrations of the pink mat (6 November, 5 rings) and the blue and purple
+mats ([7 November](../docs/calibration/2026-11-07-tcs34725-blue-purple-mats.md),
+6 rings each). The three mats do not overlap in colour: blue/red splits the
+floor and pink from blue and purple, and green/red splits blue from purple.
+So a beacon can sit on any of the three mats and the robot needs no setting
+for it.
+
+| Mat | Rings | Ring cue | Arrival |
+|---|---|---|---|
+| Pink | 5 | G/R falls inward (C and B/R separate the floor) | ring 4 or darker |
+| Blue | 6 | B/R rises inward (G/R splits rings 5 and 6) | ring 5 or darker |
+| Purple | 6 | B/R rises inward (G/R splits white edge and ring 1) | ring 5 or darker |
+
+Arrival is one ring short of the darkest on every mat, so the robot's front
+stays clear of the beacon box. All three readings of a check must be on the
+same mat, and a lighter ring of that same mat must have been seen first (by
+an earlier check or a colour scan). `COLOUR` lines now show `mats=` and `br=`,
+and `COLOUR_SCAN` lines show `mat=` and `br=`. Floor-like shadows, including a
+person's shadow at G/R 975 and B/R 842, read as floor: the pink white edge now
+needs B/R of at least 857 (ring 1 still 842).
+
+One firmware per target beacon: `getting_there.uf2` (AP1),
+`getting_there_ap2.uf2` and `getting_there_ap3.uf2` (CMake targets
+`getting_there`, `robot_ap2`, `robot_ap3`, set by `TARGET_BEACON_ID` in
+`target_beacon.h`). A host check reads each beacon's `CMakeLists.txt` and
+confirms the robot build looks for the same Wi-Fi SSID and beacon ID. Visiting
+all three beacons in one run is not implemented yet.
 
 ## v18: bigger steps and searching behind (branch feature/bigger-steps-and-back-search)
 

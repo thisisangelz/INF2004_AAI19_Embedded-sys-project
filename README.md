@@ -22,7 +22,9 @@ Once the colour sensor sees the mat, colour scans steer the robot to ring 4,
 and with a working sensor the payload transfers only there. See
 [the robot instructions](getting_there/README.md) for the v18 changes, limits,
 sampling settings and the hardware test procedure. Flash
-`getting_there/build/getting_there.uf2` and confirm `line-search v18 steps500-mat250 back-search mat-steer colour-gate`.
+`getting_there/build/getting_there.uf2` (or `getting_there_ap2.uf2` / `getting_there_ap3.uf2`
+for the other beacons) and confirm `line-search v18 steps500-mat250 back-search mat-steer colour-gate multi-mat`.
+The colour sensor recognises the pink, blue and purple mats itself, so any beacon can sit on any mat.
 Flat readings no longer end the initial forward trial or an improving line.
 The 60-second combined powered travel budget, reserved return travel, 15-minute
 run limit, GP21 STOP and fault checks still apply. BLE must still pass the

@@ -11,6 +11,7 @@
 #include "payload_client.h"
 #include "robot_cues.h"
 #include "run_report.h"
+#include "target_beacon.h"
 
 #define MAX_RUN_MS 900000u
 #define MAX_MISSING_SAMPLES 3
@@ -78,13 +79,13 @@ static payload_result_t check_payload(void)
             // BLE gate below still applies.
             if (!on_mat && colour_sensor_available()) {
                 report_printf("ARRIVAL: not on %s or darker yet; BLE transfer waits for the colour mat\n",
-                              colour_zone_name(COLOUR_ARRIVAL_ZONE));
+                              COLOUR_ARRIVAL_TEXT);
                 return PAYLOAD_NOT_CLOSE;
             }
             payload_client_set_close_threshold(on_mat ? COLOUR_ARRIVAL_BLE_DBM : AP1_CLOSE_RSSI_DBM);
             if (on_mat)
-                report_printf("ARRIVAL: colour sensor confirms %s or darker; BLE only needs AP1 >= %d dBm\n",
-                              colour_zone_name(COLOUR_ARRIVAL_ZONE), COLOUR_ARRIVAL_BLE_DBM);
+                report_printf("ARRIVAL: colour sensor confirms %s or darker; BLE only needs " TARGET_NAME " >= %d dBm\n",
+                              COLOUR_ARRIVAL_TEXT, COLOUR_ARRIVAL_BLE_DBM);
         }
         payload_result_t result = was_close ? payload_client_retry() : payload_client_attempt();
         if (in_range_cue_on) {
@@ -98,7 +99,7 @@ static payload_result_t check_payload(void)
         if (result == PAYLOAD_NOT_CLOSE && !was_close) return result;
         was_close = true;
         if (attempt + 1 < MAX_PAYLOAD_ATTEMPTS) {
-            report_printf("AP1 transfer not confirmed; stationary connection attempt %d/%d, proximity retained\n",
+            report_printf(TARGET_NAME " transfer not confirmed; stationary connection attempt %d/%d, proximity retained\n",
                           attempt + 2, MAX_PAYLOAD_ATTEMPTS);
             if (!motion_pause_ms(200)) return PAYLOAD_FATAL;
         }
@@ -113,12 +114,12 @@ static payload_result_t wait_for_wifi(wifi_sample_t *sample)
     for (int attempt = 0; attempt < MAX_MISSING_SAMPLES; ++attempt) {
         if (!wifi_sampler_sample(sample) || !save_checkpoint()) return PAYLOAD_FATAL;
         if (sample->code != RSSI_MISSING_CODE) return PAYLOAD_NOT_CLOSE;
-        report_printf("AP1 Wi-Fi missing; checking BLE while remaining stopped\n");
+        report_printf(TARGET_NAME " Wi-Fi missing; checking BLE while remaining stopped\n");
         payload_result_t result = check_payload();
         if (result == PAYLOAD_COMPLETE || result == PAYLOAD_FATAL) return result;
         if (!motion_pause_ms(500)) return PAYLOAD_FATAL;
     }
-    report_printf("FAILED: AP1 missing from three fresh Wi-Fi samples; no blind movement\n");
+    report_printf("FAILED: " TARGET_NAME " missing from three fresh Wi-Fi samples; no blind movement\n");
     return PAYLOAD_FATAL;
 }
 
@@ -285,11 +286,11 @@ static bool scan_read(colour_reading_t *out)
 // under the sensor (which sits ahead of the wheels) at each 30-degree step,
 // then estimates the direction of the mat centre. Ends facing origin + 330.
 static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_result_t *est,
-                                      bool *saw_lighter)
+                                      unsigned *lighter_mats)
 {
     int angles[SCAN_STEPS];
     colour_reading_t readings[SCAN_STEPS];
-    *saw_lighter = false;
+    *lighter_mats = 0;
     *est = (colour_scan_result_t){.valid = false, .max_depth = -1};
     for (unsigned i = 0; i < SCAN_STEPS; ++i) {
         if (!run_can_continue()) return SCAN_STOPPED;
@@ -299,12 +300,14 @@ static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_
             report_printf("COLOUR SCAN: sensor read error at %d degrees\n", angles[i]);
             return SCAN_READ_FAILED;
         }
-        colour_zone_t zone = colour_classify(&readings[i]);
-        if (colour_lighter_mat_zone(zone)) *saw_lighter = true;
-        report_printf("COLOUR_SCAN,round=%u,angle=%d,heading=%d,zone=%s,depth=%d,c=%u,r=%u,g=%u,b=%u,gr=%u\n",
+        colour_mat_t mat;
+        colour_zone_t zone = colour_classify_mat(&readings[i], &mat);
+        if (colour_lighter_zone(mat, zone)) *lighter_mats |= 1u << mat;
+        report_printf("COLOUR_SCAN,round=%u,angle=%d,heading=%d,zone=%s,mat=%s,depth=%d,c=%u,r=%u,g=%u,b=%u,gr=%u,br=%u\n",
                       round, angles[i], (int)line_normalise_heading(motion_heading()),
-                      colour_zone_name(zone), colour_zone_depth(zone), readings[i].c, readings[i].r,
-                      readings[i].g, readings[i].b, colour_gr_x1000(&readings[i]));
+                      colour_zone_name(zone), colour_mat_name(mat), colour_zone_depth(zone),
+                      readings[i].c, readings[i].r, readings[i].g, readings[i].b,
+                      colour_gr_x1000(&readings[i]), colour_br_x1000(&readings[i]));
         if (!report_checkpoint()) { fault_raise(FAULT_REPORT); return SCAN_STOPPED; }
     }
     *est = colour_scan_estimate(angles, readings, SCAN_STEPS);
@@ -322,7 +325,7 @@ static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_
 // stop, until arrival or until the surface gets lighter, then scans again.
 #define MAT_MAX_SCANS 6u          // per run; then the Wi-Fi search resumes
 #define MAT_STEPS_PER_SCAN 4u     // small steps before checking the direction again
-#define MAT_ARRIVED_RETRIES 3u    // stationary BLE retries when on ring 4 but AP1 not in range
+#define MAT_ARRIVED_RETRIES 3u    // stationary BLE retries when arrived but AP1 not in range
 static unsigned mat_scans_used;
 
 static bool mat_steering_ready(void)
@@ -330,20 +333,20 @@ static bool mat_steering_ready(void)
     return colour_on_mat() && mat_scans_used < MAT_MAX_SCANS;
 }
 
-// Ring 4 or darker but AP1 failed even the loose BLE gate: never drive on
+// On the arrival ring but AP1 failed even the loose BLE gate: never drive on
 // into the beacon box. Retry while stopped, then stop the run.
 static payload_result_t mat_wait_on_arrival(void)
 {
     for (unsigned retry = 1; retry <= MAT_ARRIVED_RETRIES; ++retry) {
-        report_printf("MAT: on %s or darker but AP1 BLE not in range; stationary retry %u/%u\n",
-                      colour_zone_name(COLOUR_ARRIVAL_ZONE), retry, MAT_ARRIVED_RETRIES);
+        report_printf("MAT: on %s or darker but " TARGET_NAME " BLE not in range; stationary retry %u/%u\n",
+                      COLOUR_ARRIVAL_TEXT, retry, MAT_ARRIVED_RETRIES);
         if (!motion_pause_ms(1000)) return PAYLOAD_FATAL;
         payload_result_t result = check_payload();
         if (result != PAYLOAD_NOT_CLOSE) return result;
         if (!colour_arrived) return PAYLOAD_NOT_CLOSE; // reading changed: keep steering
     }
     fault_raise(FAULT_PAYLOAD);
-    report_printf("FAILED: on the mat centre but AP1 BLE never came in range; no further movement\n");
+    report_printf("FAILED: on the mat centre but " TARGET_NAME " BLE never came in range; no further movement\n");
     return PAYLOAD_FATAL;
 }
 
@@ -360,15 +363,16 @@ static payload_result_t mat_approach(void)
         unsigned scan = ++mat_scans_used;
         float origin = motion_heading();
         colour_scan_result_t est;
-        bool saw_lighter;
-        scan_status_t status = colour_scan_turn(origin, scan, &est, &saw_lighter);
+        unsigned lighter_mats;
+        scan_status_t status = colour_scan_turn(origin, scan, &est, &lighter_mats);
         if (status == SCAN_STOPPED) return PAYLOAD_FATAL;
         if (status == SCAN_READ_FAILED) {
             report_printf("MAT: scan %u could not read the colour sensor; resuming the Wi-Fi search\n", scan);
             return PAYLOAD_NOT_CLOSE;
         }
-        // The scan saw the ring pattern, so a robot started on ring 4 can arrive.
-        if (saw_lighter) colour_note_lighter_mat();
+        // The scan saw the ring pattern, so a robot started on the arrival
+        // ring can arrive.
+        colour_note_lighter_mats(lighter_mats);
         if (!est.valid || est.max_depth < colour_zone_depth(COLOUR_RING1)) {
             report_printf("MAT: scan %u found no ring to steer toward; resuming the Wi-Fi search\n", scan);
             return PAYLOAD_NOT_CLOSE;
@@ -377,7 +381,7 @@ static payload_result_t mat_approach(void)
         report_printf("MAT: scan %u points %d degrees from its start, heading %d\n",
                       scan, est.vector_angle, (int)heading);
         if (!motion_turn_to_heading(heading)) return PAYLOAD_FATAL;
-        // The sensor may already be over ring 4 after turning.
+        // The sensor may already be over the arrival ring after turning.
         payload_result_t result = check_payload();
         if (result != PAYLOAD_NOT_CLOSE) return result;
         if (colour_arrived) {
@@ -729,8 +733,8 @@ static bool colour_scan_run(void)
     for (unsigned round = 1; round <= SCAN_ROUNDS; ++round) {
         cue_play(CUE_PASS);
         colour_scan_result_t est;
-        bool saw_lighter;
-        scan_status_t status = colour_scan_turn(origin, round, &est, &saw_lighter);
+        unsigned lighter_mats;
+        scan_status_t status = colour_scan_turn(origin, round, &est, &lighter_mats);
         if (status == SCAN_READ_FAILED) report_printf("COLOUR SCAN FAILED: sensor read error\n");
         if (status != SCAN_DONE) return false;
         if (!est.valid) all_valid = false;
@@ -763,15 +767,15 @@ int main(void)
     bool ready = motion_init();
     cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v18 steps500-mat250 back-search mat-steer colour-gate ble-minus58 colour-ring4 cues | AP1 only\n");
+    report_printf("Getting there | line-search v18 steps500-mat250 back-search mat-steer colour-gate multi-mat ble-minus58 cues | " TARGET_NAME " only\n");
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
 #endif
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
     report_printf("Move using Wi-Fi direction; on the mat, steer by colour scans\n");
-    report_printf("Transfer only on colour %s or darker after a lighter ring, with BLE >= %d dBm\n",
-                  colour_zone_name(COLOUR_ARRIVAL_ZONE), COLOUR_ARRIVAL_BLE_DBM);
+    report_printf("Transfer only on %s or darker after a lighter ring, with BLE >= %d dBm\n",
+                  COLOUR_ARRIVAL_TEXT, COLOUR_ARRIVAL_BLE_DBM);
     report_printf("Without a working colour sensor: transfer after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);
     // GP21 is not armed as STOP here. Boot/replay must not erase the old run,
     // start movement, initialise the radio, or prevent the later GP20 start.
@@ -862,7 +866,7 @@ int main(void)
                 report_printf("FAILED: Bluetooth startup %s\n", motion_stop_requested() ? "stopped by GP21" :
                               payload_client_start_failed() ? "controller power-on failed" : "timed out after 10 seconds");
             }
-            else report_printf("Bluetooth ready; beginning AP1 approach.\n");
+            else report_printf("Bluetooth ready; beginning " TARGET_NAME " approach.\n");
         }
     }
     // approach_beacon initialises the sampler before its first checkpoint.

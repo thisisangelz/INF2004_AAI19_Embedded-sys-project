@@ -197,8 +197,8 @@ static int model_last_depth;
 bool colour_sensor_init(void) { ++colour_inits; return true; }
 bool colour_sensor_available(void) { return colour_present; }
 void colour_arrival_reset(void) { ++colour_resets; model_lighter_seen = false; model_last_depth = -1; }
-void colour_note_lighter_mat(void) { model_lighter_seen = true; }
-bool colour_lighter_mat_zone(colour_zone_t zone) { return zone >= COLOUR_WHITE && zone < COLOUR_ARRIVAL_ZONE; }
+// The model mat is pink, so only the pink bit counts.
+void colour_note_lighter_mats(unsigned mask) { if (mask & (1u << COLOUR_MAT_PINK)) model_lighter_seen = true; }
 
 // Model mat: radius 0.35 m around AP1, white edge plus five equal rings, the
 // sensor 0.08 m ahead of the wheel axis. Readings are calibrated means.
@@ -998,7 +998,7 @@ static void check_colour_arrival(void){
     reset(); colour_arrive_at_check = 3; complete_on_loose = true;
     assert(approach_beacon() && colour_resets == 1 && forwards_count == 2);
     assert(strict_attempts == 2 && loose_attempts == 1 && colour_checks == 3);
-    assert(strstr(log_text, "ARRIVAL: colour sensor confirms RING4 or darker"));
+    assert(strstr(log_text, "ARRIVAL: colour sensor confirms the arrival ring (pink ring 4, blue or purple ring 5) or darker"));
     // Never on the mat: every attempt keeps the strict gate, one colour check each.
     reset(); complete_after_step = 3;
     assert(approach_beacon() && !loose_attempts && strict_attempts == colour_checks);

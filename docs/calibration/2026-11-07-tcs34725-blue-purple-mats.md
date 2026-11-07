@@ -109,16 +109,22 @@ Smallest margins: 10 in G/R (white edge against ring 1), 20 in B/R (ring 1
 against ring 2), 26-27 (rings 2-4). Tighter than the blue mat; a third round
 at another spot would confirm them.
 
-## Arrival ring (to decide)
+## Arrival ring (decided: ring 5)
 
 The pink mat arrives on ring 4 of 5: one ring short of the darkest, so the
 robot's front stays clear of the beacon box. The same position on a 6-ring mat
-is **ring 5 or darker**: blue B/R >= 2283, purple B/R >= 1353. Ring 4 or darker
-would be one ring earlier (blue 1993, purple 1280), with larger margins.
+is **ring 5 or darker**: blue B/R >= 2283, purple B/R >= 1353. This is what the
+robot uses.
+
+## Which mat for which beacon
+
+Any. Each reading also identifies its mat (pink B/R at most 987, blue and
+purple at least 1082; blue G/R at least 1202, purple at most 1124), so the
+robot does not need to know where each beacon is placed. Planned layout: blue
+for AP2, purple for AP3.
 
 ## Still to check
 
-- Which beacon each mat belongs to (blue AP2, purple AP3 assumed).
 - Whether the mats are the same size as the pink mat (ring widths affect how
   far the robot stops from the box).
 - The demo room's lighting.
