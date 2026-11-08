@@ -22,6 +22,7 @@ typedef enum {
     FAULT_REPORT,         // persistent report full, truncated or write failed
     FAULT_PROFILE,        // bounded RSSI/profile record storage exhausted
     FAULT_START_BUTTON,   // GP20 did not release before the startup deadline
+    FAULT_COLOUR_SENSOR, // route needs trustworthy colour arrival/departure
     FAULT_COUNT
 } fault_t;
 

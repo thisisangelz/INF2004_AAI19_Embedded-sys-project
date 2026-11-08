@@ -96,6 +96,7 @@ int i2c_read_timeout_us(i2c_inst_t *i2c, uint8_t addr, uint8_t *dst,
 }
 static void reset(void)
 {
+    motion_set_run_limit(0,0);
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     motion_state.turn_sign = motion_state.stop_armed = 0;
     gp21 = write_failure = read_failure = change_range_on_reset = short_gyro_read = false;
@@ -112,6 +113,12 @@ static void reset(void)
 }
 int main(void)
 {
+    reset(); motion_arm_stop(); set_turn_sign(1);
+    motion_set_run_limit(now_ms(), 20);
+    assert(motion_drive_start(true,250,0)); sleep_ms(25);
+    assert(!motion_drive_update() && !powered() && fault_test(FAULT_RUN_LIMIT));
+    assert(!motion_stop_requested()); // deadline does not masquerade as GP21
+
     reset(); read_failure=true;
     assert(!motion_init() && fault_test(FAULT_IMU));
     read_failure=false; assert(motion_init() && !fault_test(FAULT_IMU));

@@ -65,9 +65,9 @@ wifi_sample_t wifi_filter(const uint8_t *codes, unsigned count)
 static int sampler_result(void *unused, const cyw43_ev_scan_result_t *result)
 {
     (void)unused;
-    if (!result || result->ssid_len != sizeof(TARGET_SSID) - 1u ||
+    if (!result || result->ssid_len != target_beacon_ssid_length() ||
         result->rssi >= 0 || result->rssi <= -127 ||
-        memcmp(result->ssid, TARGET_SSID, sizeof(TARGET_SSID) - 1u) != 0 ||
+        memcmp(result->ssid, target_beacon_ssid(), target_beacon_ssid_length()) != 0 ||
         (identity_locked && memcmp(result->bssid, target_bssid, 6) != 0)) return 0;
     uint8_t code = (uint8_t)rssi_encode(result->rssi);
     if (code >= pending_result.code) return 0;
@@ -87,6 +87,9 @@ void wifi_sampler_init(bool (*can_continue)(void))
     position_heading = 0;
     position_forwards = true;
     identity_locked = scan_open = moving_scan = fallback = sampler_failed = false;
+    memset(target_bssid, 0, sizeof(target_bssid));
+    memset(pending_bssid, 0, sizeof(pending_bssid));
+    pending_result = (wifi_record_t){.code = RSSI_MISSING_CODE};
     moving_reference = (wifi_sample_t){.code = RSSI_MISSING_CODE};
     report_printf("RSSI sampling: stationary decisions; moving acquisition %s, qualification requires 3 full five-scan windows <= 750 ms\n",
                   LINE_SEARCH_MOVING_SAMPLES ? "awaiting timing qualification" : "disabled pending hardware timing checks");
@@ -238,7 +241,7 @@ bool wifi_sampler_poll_moving(void)
 bool wifi_sampler_sample(wifi_sample_t *sample)
 {
     if (!wifi_sampler_quiesce()) return false;
-    report_printf(TARGET_NAME " Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped\n");
+    report_printf("%s Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped\n", target_beacon_name());
     uint8_t readings[SCANS_PER_SAMPLE];
     unsigned valid = 0;
     uint32_t start = sampler_now_ms();

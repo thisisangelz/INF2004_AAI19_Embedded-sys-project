@@ -91,10 +91,27 @@ static uint32_t now_ms(void)
     return (uint32_t)(time_us_64() / 1000);
 }
 
+static uint32_t mission_started_ms, mission_duration_ms;
+void motion_set_run_limit(uint32_t started_ms, uint32_t duration_ms)
+{
+    mission_started_ms = started_ms;
+    mission_duration_ms = duration_ms;
+}
+
 static bool stop_pressed(void)
 {
     if (motion_state.stop_armed && !gpio_get(STOP_BUTTON)) fault_raise(FAULT_STOP_LATCHED);
     return fault_test(FAULT_STOP_LATCHED);
+}
+
+static bool motion_allowed(void)
+{
+    if (stop_pressed()) return false;
+    if (mission_duration_ms && (uint32_t)(now_ms() - mission_started_ms) >= mission_duration_ms) {
+        fault_raise(FAULT_RUN_LIMIT);
+        return false;
+    }
+    return true;
 }
 
 static void motor_write(uint pin_a, uint pin_b, int speed, bool forward_uses_a)
@@ -109,7 +126,7 @@ static void motor_write(uint pin_a, uint pin_b, int speed, bool forward_uses_a)
 
 static void motors_set(int left, int right)
 {
-    if (!motion_state.stop_armed || stop_pressed()) left = right = 0;
+    if (!motion_state.stop_armed || !motion_allowed()) left = right = 0;
     motor_write(M1_A, M1_B, left, M1_FORWARD_USES_A);
     motor_write(M2_A, M2_B, right, M2_FORWARD_USES_A);
     motors_powered = left != 0 || right != 0;
@@ -147,7 +164,7 @@ static bool pause_checked(uint32_t duration_ms)
 {
     uint32_t start = now_ms();
     while ((uint32_t)(now_ms() - start) < duration_ms) {
-        if (stop_pressed()) {
+        if (!motion_allowed()) {
             motors_stop();
             return false;
         }
@@ -181,18 +198,18 @@ static int steering_adjustment(int speed, float yaw_error, float yaw_rate,
 static bool recover_gyro_stopped(float gyro[3], mpu9250_io_status_t *status, uint64_t *sample_us)
 {
     for (unsigned attempt = 0; attempt < IMU_RECOVERY_ATTEMPTS; ++attempt) {
-        if (stop_pressed()) return false;
+        if (!motion_allowed()) return false;
         // Reset the controller's FIFO/repeated-start state without resetting
         // the sensor, its range or its calibrated bias.
         i2c_deinit(imu.i2c);
         i2c_init(imu.i2c, IMU_BUS_HZ);
         bool verified = mpu9250_verify_config(&imu, status);
-        if (stop_pressed()) return false;
+        if (!motion_allowed()) return false;
         if (verified && mpu9250_read_gyro_dps_status(&imu, gyro, status)) {
             if (sample_us) *sample_us = time_us_64();
             report_defer_printf("IMU RECOVERED: stopped retry %u/%u, identity/wake/range verified, I2C %u Hz\n",
                                 attempt + 1u, IMU_RECOVERY_ATTEMPTS, IMU_BUS_HZ);
-            return !stop_pressed();
+            return motion_allowed();
         }
         report_defer_printf("IMU RETRY: %u/%u failed, reg 0x%02x, select %d, read %d; config must match\n",
                             attempt + 1u, IMU_RECOVERY_ATTEMPTS, status->reg,
@@ -204,7 +221,7 @@ static bool recover_gyro_stopped(float gyro[3], mpu9250_io_status_t *status, uin
 static bool read_motion_gyro(float gyro[3], uint64_t *previous_us,
                              const char *motion)
 {
-    if (stop_pressed()) {
+    if (!motion_allowed()) {
         motors_stop();
         return false;
     }
@@ -284,7 +301,7 @@ static void stop_drive(void)
 
 bool motion_drive_start(bool forwards, uint32_t duration_ms, float heading_degrees)
 {
-    if (drive.pending || !motion_state.stop_armed || stop_pressed() ||
+    if (drive.pending || !motion_state.stop_armed || !motion_allowed() ||
         turn_sign() == 0.0f || duration_ms == 0) {
         stop_drive();
         return false;
@@ -359,7 +376,7 @@ bool motion_drive_finish(void)
     stop_drive();
     if (!drive.pending) return !drive.failed;
     drive.pending = false;
-    if (drive.failed || stop_pressed()) return false;
+    if (drive.failed || !motion_allowed()) return false;
     if (!settle_motion("DRIVE", &drive.previous_us)) return false;
     float yaw_error = normalise_degrees(gyro_heading_degrees - drive.target_heading);
     float yaw_magnitude = yaw_error < 0 ? -yaw_error : yaw_error;
@@ -378,7 +395,7 @@ bool motion_drive_finish(void)
 // Relative heading only: the Z gyro controls a turn, but gives no distance.
 static bool turn_degrees(float degrees)
 {
-    if (stop_pressed()) { motors_stop(); return false; }
+    if (!motion_allowed()) { motors_stop(); return false; }
     if (degrees == 0.0f) return true;
     float preflight[3];
     uint64_t preflight_us = time_us_64();

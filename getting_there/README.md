@@ -1,8 +1,78 @@
-# AP1 approach and payload transfer
+# Pico approach and payload transfer
 
-This AP1 programme developed from `Alvin_2` at `2012e7b` through the archived
-`line-search` branch. Flash `getting_there/build/getting_there.uf2` onto the robot.
-It approaches AP1, receives and verifies AP1's reply payload over BLE, then plays three short completion beeps.
+This programme developed from `Alvin_2` at `2012e7b` through the archived
+`line-search` branch. This branch adds the AP1 → AP2 → AP3 route below.
+The tracked files under `build/` are earlier main's prebuilt images; they do not
+contain this branch's new changes. Build this branch and use its fresh output.
+
+
+## Current route build: AP1 → AP2 → AP3
+
+CMake target `getting_there_route` defines `THREE_BEACON_ROUTE=1` and produces
+`getting_there_route.uf2`. Existing `getting_there`, `robot_ap2`, `robot_ap3`
+and `colour_scan` targets remain available. The common navigation fixes below
+also apply to the single-target builds.
+
+The locally built route image is copied to
+`getting_there/build-v2/getting_there_route.uf2` (generated and ignored by Git).
+The firmware-files table later in this document records the older main images;
+use the route image for this branch's three-target mission.
+
+- Every heading, including the initial heading, has a 2400 ms powered no-gain
+  trial. Positive but unconfirmed improvement permits one extension to 4800 ms.
+  No gain returns approximately to that trial's start before testing −90°,
+  +90° and 180°. Each trial measures a fresh same-heading baseline; the
+  spread-aware minimum 3 dB margin is unchanged. No coordinates are used.
+- After progress, 6000 powered ms or 120 seconds without a supported new best
+  triggers a timed return to the retained best and direction reacquisition.
+  This watchdog is logged separately from a confirmed signal decline.
+  Invalid/read-failed mat scans restore their entry heading before fallback.
+- The route shares one 900000 ms mission deadline and one persistent 512 KiB
+  journal. Each leg has 60000 ms powered translation, including returns and its
+  departure; the first two legs reserve departure time. The gyro is calibrated
+  and its turn sign learnt once. Heading, STOP latch and mission clock persist.
+- Route builds require a working colour sensor and genuine colour arrival.
+  An inferred centre stops with a colour fault. Single-target builds retain
+  their labelled inferred-centre override and missing-sensor BLE fallback.
+- After CRC and final ACK verification **and successful BLE cleanup**, log and
+  checkpoint the reply and `ROUTE: confirmed=1,mask=1` (then masks 3 and 7).
+  `ROUTE: target=1`, `2`, `3` mark the active leg. Only mask 7 may produce
+  `RESULT: ROUTE COMPLETE`; intermediate legs produce no overall payload result.
+- Departure keeps the previous target active. It drives opposite the last
+  successful approach block, including a reverse approach. A fresh valid
+  colour gradient followed by a successful inward turn also supplies an
+  observed departure heading for arrival by rotation. It makes no extra turn
+  beside the box. Missing evidence or >5° misalignment stops the route.
+  This is an observed approach direction, not exact physical path replay.
+- Departure uses at most 3000 powered ms, with STOP polling, no BLE calls,
+  three fresh all-mat floor readings and another 250 powered ms clearance
+  followed by another floor check. White edges and other mats are not floor.
+  Failure stops with the completed mask retained and the old target unchanged.
+- Only after departure and Wi-Fi quiescence does main atomically select/reset
+  under the CYW43 async-context lock. BLE must be idle/disconnected, with no
+  listener, queued callback, unacknowledged scan command or uncertain cleanup.
+  Wi-Fi reinitialisation drops the old BSSID lock; arrival/lighter-ring memory,
+  centre override, mat scan count, profiles and translation budget reset per leg.
+  Log exhaustion remains a stopped failure; no leg erases or restarts the log.
+
+The runtime API is in `target_beacon.h`: ID (`uint8_t`), name/SSID (`const char *`),
+SSID length (`size_t`, excluding NUL), mat (`colour_mat_t`) and select (`bool`,
+ID 1–3). Single-target builds reject another ID. On hardware use
+`payload_client_reset_target_qualification(uint8_t id)`, after draining Wi-Fi,
+for the guarded atomic selection. `payload_client_quiescent()` is synchronised
+with BTstack callbacks. The wire file text remains target-specific and unchanged.
+
+Compile/link host fixtures without executing them:
+
+```sh
+python3 tests/run_host_checks.py --sdk /path/to/pico-sdk --build-only --output /tmp/route-host-build
+```
+
+This change was validated by compile/link only. No host fixture, firmware run,
+flash operation or physical three-beacon route experiment was performed. Scalar
+RSSI, colour inference and timed returns do not guarantee a hardware bearing,
+collision clearance or arrival. The sections below retain earlier run history;
+this section supersedes their former unlimited initial/plateau policy.
 
 ## Firmware files
 
@@ -24,7 +94,7 @@ mats ([7 November](../docs/calibration/2026-11-07-tcs34725-blue-purple-mats.md),
 floor and pink from blue and purple, and green/red splits blue from purple.
 
 Each beacon has its own mat: **AP1 pink (red), AP2 blue, AP3 purple**
-(`TARGET_MAT` in `target_beacon.h`). The robot build for a beacon treats the
+(`target_beacon_mat()` in `target_beacon.h`). The robot build for a beacon treats the
 rings of the other two mats as floor, so they never start colour steering or
 count toward arrival. A white edge always counts as the beacon's own edge,
 because the edges differ only slightly (on 7 November the purple edge read as
@@ -49,8 +119,8 @@ One firmware per target beacon: `getting_there.uf2` (AP1),
 `getting_there_ap2.uf2` and `getting_there_ap3.uf2` (CMake targets
 `getting_there`, `robot_ap2`, `robot_ap3`, set by `TARGET_BEACON_ID` in
 `target_beacon.h`). A host check reads each beacon's `CMakeLists.txt` and
-confirms the robot build looks for the same Wi-Fi SSID and beacon ID. Visiting
-all three beacons in one run is not implemented yet.
+confirms the robot build looks for the same Wi-Fi SSID and beacon ID. The additional `getting_there_route` target visits all three in one run, subject
+to the stopped-failure conditions described above.
 
 ## v18: bigger steps and searching behind (branch feature/bigger-steps-and-back-search)
 

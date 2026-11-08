@@ -21,7 +21,7 @@ endif()
 # Every robot firmware target shares the sources, flash layout and settings.
 function(getting_there_firmware target)
     add_executable(${target}
-        getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c colour_mat.c robot_cues.c
+        getting_there.c target_beacon.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c colour_mat.c robot_cues.c
         ../common/buzzer.c
         imu_mpu9250.c
     )
@@ -54,6 +54,8 @@ endfunction()
 getting_there_firmware(getting_there)
 # The same robot firmware aimed at AP2 or AP3 (Wi-Fi SSID, BLE beacon ID and
 # log names). Any beacon may sit on any colour mat.
+getting_there_firmware(getting_there_route)
+target_compile_definitions(getting_there_route PRIVATE THREE_BEACON_ROUTE=1)
 getting_there_firmware(robot_ap2)
 target_compile_definitions(robot_ap2 PRIVATE TARGET_BEACON_ID=2)
 getting_there_firmware(robot_ap3)

@@ -59,6 +59,9 @@ uint16_t colour_br_x1000(const colour_reading_t *reading);
 // robot keeps the BLE-only proximity gate.
 bool colour_sensor_init(void);
 bool colour_sensor_available(void);
+// Departure only, stopped: classify three fresh readings with ALL mats visible.
+// Returns false on sensor error/STOP; *floor is true only for three floor reads.
+bool colour_floor_check(bool *floor);
 // Clears the "lighter mat surface seen" memory at the start of a run.
 void colour_arrival_reset(void);
 // Call with motors stopped. Takes COLOUR_ARRIVAL_SAMPLES fresh readings

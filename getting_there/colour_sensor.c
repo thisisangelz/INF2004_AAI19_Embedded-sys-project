@@ -5,6 +5,7 @@
 #include "hardware/i2c.h"
 #include "pico/stdlib.h"
 #include "run_report.h"
+#include "motion.h"
 
 #define TCS_I2C i2c0
 #define TCS_SDA_PIN 0
@@ -116,6 +117,25 @@ static bool read_fresh(colour_reading_t *reading)
     reading->r = (uint16_t)(d[2] | d[3] << 8);
     reading->g = (uint16_t)(d[4] | d[5] << 8);
     reading->b = (uint16_t)(d[6] | d[7] << 8);
+    return true;
+}
+
+bool colour_floor_check(bool *floor)
+{
+    *floor = false;
+    if (!available) return false;
+    bool clear = true;
+    colour_mat_t previous = colour_target_mat();
+    for (unsigned i = 0; i < COLOUR_ARRIVAL_SAMPLES; ++i) {
+        colour_reading_t reading;
+        if (motion_stop_requested() || !read_fresh(&reading)) return false;
+        colour_set_target_mat(COLOUR_MAT_NONE);
+        colour_zone_t zone = colour_classify(&reading);
+        colour_set_target_mat(previous);
+        if (zone == COLOUR_UNKNOWN) return false;
+        if (zone != COLOUR_FLOOR) clear = false;
+    }
+    *floor = clear;
     return true;
 }
 

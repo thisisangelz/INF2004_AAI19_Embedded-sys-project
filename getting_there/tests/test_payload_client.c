@@ -3,6 +3,12 @@
 #include "../payload_client.c"
 
 static uint64_t sim_time;
+int cyw43_state;
+static unsigned radio_lock_depth;
+static bool wifi_active;
+void cyw43_arch_lwip_begin(void) { ++radio_lock_depth; }
+void cyw43_arch_lwip_end(void) { assert(radio_lock_depth); --radio_lock_depth; }
+bool cyw43_wifi_scan_active(int *state) { (void)state; assert(radio_lock_depth); return wifi_active; }
 static bool stopped;
 static bool scan_ack_pending;
 static bool auto_scan_ack;
@@ -129,6 +135,9 @@ void gatt_client_deserialize_characteristic(const uint8_t *packet, int offset,
 
 static void reset(void)
 {
+    assert(target_beacon_select(1));
+    flag_assign(F_RADIO_UNCERTAIN | F_SCAN_START_PENDING | F_SCAN_STOP_PENDING | F_ABORT_QUEUED, false);
+    wifi_active = false; radio_lock_depth = 0; continue_callback = NULL;
     sim_time = 0; stopped = scan_ack_pending = auto_scan_ack = false;
     stop_scan_calls = connect_calls = cancel_calls = disconnect_calls = write_calls = 0;
     write_status = connect_status = 0;
@@ -218,14 +227,17 @@ static void start_connected(ble_state_t state)
     connection_handle = 42; characteristic.value_handle = 7; set_state(state);
 }
 
-static void successful_exchange(bool early_notifications)
+static void successful_exchange_target(bool early_notifications, uint8_t id)
 {
-    static const uint8_t peer_reply[] = "Reply file from beacon AP1";
+    uint8_t peer_reply[] = "Reply file from beacon AP1";
+    peer_reply[sizeof(peer_reply)-2u] = (uint8_t)('0' + id);
     uint8_t received_robot[96] = {0};
     uint16_t received_length = 0, announced_length = 0, peer_offset = 0;
     uint32_t announced_crc = 0;
     uint8_t peer_sequence = 0;
     start_connected(BLE_CONNECTING);
+    assert(target_beacon_select(id));
+    robot_file[sizeof(robot_file)-2u] = (uint8_t)('0' + id);
     connection_handle=HCI_CON_HANDLE_INVALID;
     connection_complete(0,42);
     discovery_result(GATT_EVENT_SERVICE_QUERY_RESULT,41);
@@ -244,12 +256,12 @@ static void successful_exchange(bool early_notifications)
         uint8_t response[20] = {0}; uint16_t length = 0;
         switch (request[0]) {
         case MSG_HELLO:
-            assert(request[1] == 1 && request[2] == 1);
-            response[0] = MSG_HELLO_ACK; response[1] = 1; length = 2; break;
+            assert(request[1] == 1 && request[2] == id);
+            response[0] = MSG_HELLO_ACK; response[1] = id; length = 2; break;
         case MSG_FILE_START:
             announced_length = transfer_read_u16(request + 1);
             announced_crc = transfer_read_u32(request + 3);
-            response[0] = MSG_FILE_READY; response[1] = 1; length = 2; break;
+            response[0] = MSG_FILE_READY; response[1] = id; length = 2; break;
         case MSG_FILE_DATA:
             memcpy(received_robot + received_length, request + 3, request[2]);
             received_length += request[2]; break;
@@ -278,7 +290,7 @@ static void successful_exchange(bool early_notifications)
             break;
         case MSG_COMPLETE:
             assert(!flag(F_PAYLOAD_VERIFIED));
-            response[0] = MSG_COMPLETE_ACK; response[1] = 1; length = 2; break;
+            response[0] = MSG_COMPLETE_ACK; response[1] = id; length = 2; break;
         default: assert(false);
         }
         if (early_notifications && length) {
@@ -292,10 +304,72 @@ static void successful_exchange(bool early_notifications)
     uint16_t length;
     const uint8_t *data = payload_client_data(&length);
     assert(length == sizeof(peer_reply) - 1 && memcmp(data, peer_reply, length) == 0);
+    char expected[] = "Robot test file delivered to beacon AP1";
+    expected[sizeof(expected)-2u] = (char)('0' + id);
+    assert(received_length == sizeof(expected)-1u && memcmp(received_robot, expected, received_length)==0);
+    assert(payload_client_quiescent());
+}
+static void successful_exchange(bool early_notifications)
+{ successful_exchange_target(early_notifications, 1); }
+
+static void check_target_handover(void)
+{
+    reset(); assert(payload_client_quiescent());
+    stopped=true; assert(!payload_client_reset_target_qualification(1)); stopped=false;
+    const uint32_t busy[] = {F_ATTEMPT_RUNNING, F_LISTENING, F_RADIO_UNCERTAIN,
+        F_SCAN_START_PENDING, F_SCAN_STOP_PENDING, F_SCAN_CONFIRMED, F_ABORT_QUEUED};
+    for (unsigned i=0; i<sizeof(busy)/sizeof(*busy); ++i) {
+        flag_assign(busy[i], true);
+        assert(!payload_client_quiescent() && !payload_client_reset_target_qualification(1));
+        flag_assign(busy[i], false);
+    }
+    connection_handle=42;
+    assert(!payload_client_reset_target_qualification(1)); connection_handle=HCI_CON_HANDLE_INVALID;
+    wifi_active=true; assert(!payload_client_reset_target_qualification(1)); wifi_active=false;
+    assert(!payload_client_reset_target_qualification(0) && target_beacon_id()==1);
+    flag_assign(F_CLOSE_CONFIRMED | F_PAYLOAD_VERIFIED | F_RECONNECT_REQUESTED, true);
+    counters.reply_length=12; counters.close_count=3; memset(beacon_address, 9, sizeof(beacon_address));
+#if THREE_BEACON_ROUTE
+    const uint8_t next=2;
+#else
+    const uint8_t next=1;
+#endif
+    assert(payload_client_reset_target_qualification(next) && target_beacon_id()==next);
+    assert(!counters.reply_length && !counters.close_count && !flag(F_CLOSE_CONFIRMED | F_PAYLOAD_VERIFIED));
+    assert(beacon_address[0]==0 && !radio_lock_depth);
+    start_connected(BLE_CLOSING);
+    uint8_t rejected_disconnect[]={HCI_EVENT_DISCONNECTION_COMPLETE,4,0x0c,42,0,0x13};
+    hci_handler(HCI_EVENT_PACKET,0,rejected_disconnect,sizeof(rejected_disconnect));
+    assert(connection_handle==42 && flag(F_RADIO_UNCERTAIN) && !payload_client_quiescent());
+    assert(!payload_client_reset_target_qualification(1));
+    reset(); flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL);
+    close_attempt(PAYLOAD_NOT_CLOSE); // STOP requested before START acknowledgement.
+    assert(!payload_client_quiescent());
+    scan_ack(); assert(current_state()==BLE_STOPPING_SCAN && flag(F_ATTEMPT_RUNNING));
+    scan_ack(); assert(payload_client_quiescent() && result_get(ST_RESULT_SHIFT)==PAYLOAD_NOT_CLOSE);
+#if THREE_BEACON_ROUTE
+    reset(); assert(payload_client_reset_target_qualification(2));
+    flag_assign(F_ATTEMPT_RUNNING,true); start_attempt_callback(NULL); scan_ack();
+    for (unsigned i=0;i<20;++i) advertisement(-40,1);
+    assert(counters.sample_count==0 && !connect_calls); // stale AP1 cannot qualify AP2
+    for (unsigned i=0;i<14;++i) advertisement(-40,2);
+    assert(current_state()==BLE_STOPPING_FOR_CONNECT);
+    scan_ack(); assert(current_state()==BLE_CONNECTING);
+    connection_complete(0x3e,HCI_CON_HANDLE_INVALID); assert(payload_client_quiescent());
+    start_connected(BLE_WAIT_COMPLETE_ACK); assert(target_beacon_select(2));
+    const uint8_t old_ack[]={MSG_COMPLETE_ACK,1}; notification(old_ack,sizeof(old_ack));
+    assert(!flag(F_PAYLOAD_VERIFIED) && result_get(ST_RESULT_SHIFT)!=PAYLOAD_COMPLETE);
+    for (uint8_t id=1;id<=3;++id) {
+        successful_exchange_target(false,id);
+        successful_exchange_target(true,id);
+    }
+#endif
+    reset();
 }
 
 int main(void)
 {
+    check_target_handover();
     reset(); defer_context_callback=true; payload_client_init();
     assert(!payload_client_ready() && !payload_client_start_failed() && power_calls==0 && queued_context_callback);
     queued_context_callback->callback(queued_context_callback->context);

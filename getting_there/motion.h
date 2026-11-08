@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 bool motion_init(void);
+// Set once at mission start. Zero duration disables; never reset between legs.
+void motion_set_run_limit(uint32_t started_ms, uint32_t duration_ms);
 bool motion_calibrate(void);
 bool motion_learn_direction(void);
 bool motion_drive(bool forwards, uint32_t duration_ms, float heading_degrees);

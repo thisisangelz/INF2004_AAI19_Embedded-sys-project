@@ -53,6 +53,31 @@ static int (*scan_callback)(void *, const cyw43_ev_scan_result_t *);
 static void *scan_context;
 static int scan_rssi;
 int cyw43_state;
+static bool payload_idle = true;
+static bool (*attempt_continue)(void);
+static payload_result_t (*attempt_override)(void);
+static uint32_t mock_limit_start, mock_limit_duration;
+static unsigned radio_lock_depth;
+void cyw43_arch_lwip_begin(void) { ++radio_lock_depth; }
+void cyw43_arch_lwip_end(void) { assert(radio_lock_depth); --radio_lock_depth; }
+void motion_set_run_limit(uint32_t start, uint32_t duration)
+{ mock_limit_start = start; mock_limit_duration = duration; }
+void payload_client_set_continue_callback(bool (*callback)(void)) { attempt_continue = callback; }
+bool payload_client_quiescent(void) { return payload_idle; }
+bool payload_client_reset_target_qualification(uint8_t id)
+{
+    assert(!motors_on && !scan_active);
+    return payload_idle && target_beacon_select(id);
+}
+static bool floor_read_error, floor_always_mat;
+static unsigned departure_floor_checks;
+bool colour_floor_check(bool *floor)
+{
+    assert(!motors_on && !scan_active);
+    ++departure_floor_checks;
+    *floor = !floor_always_mat;
+    return colour_sensor_available() && !floor_read_error && !stopped;
+}
 
 uint64_t time_us_64(void) { return sim_time; }
 void sleep_ms(uint32_t ms)
@@ -207,7 +232,7 @@ static bool complete_on_loose;
 // Off by default: the v16 regressions use the BLE-only gate, as before.
 static bool colour_present;
 static bool mat_stub, model_lighter_seen;
-static unsigned mat_from_check, colour_reads;
+static unsigned mat_from_check, colour_reads, fail_colour_read_at;
 static int model_last_depth;
 bool colour_sensor_init(void) { ++colour_inits; return true; }
 bool colour_sensor_available(void) { return colour_present; }
@@ -260,6 +285,7 @@ bool colour_sensor_read(colour_reading_t *reading)
     static const colour_reading_t floor_reading = {2900, 1000, 922, 760};
     assert(!motors_on);
     ++colour_reads;
+    if (fail_colour_read_at && colour_reads == fail_colour_read_at) return false;
     int depth = model ? model_depth() : 0;
     *reading = depth == 0 ? floor_reading : model_blue ? blue[depth - 1] : pink[depth - 1];
     return colour_present;
@@ -301,6 +327,8 @@ static payload_result_t scripted_attempt(void)
     assert(!motors_on && !scan_active);
     sleep_ms(ble_delay_ms);
     ++ble_calls;
+    if (attempt_continue && !attempt_continue()) return PAYLOAD_FATAL;
+    if (attempt_override) return attempt_override();
     if (ble_never) return PAYLOAD_NOT_CLOSE;
     if (close_threshold == COLOUR_ARRIVAL_BLE_DBM) ++loose_attempts; else ++strict_attempts;
     if (complete_on_loose && close_threshold == COLOUR_ARRIVAL_BLE_DBM) return PAYLOAD_COMPLETE;
@@ -345,8 +373,10 @@ static void deliver_scan(void)
         rssi = (int)lround(-50 - 20 * log10(distance) + bias);
         if (robot_x >= dead_from && robot_x < dead_to) rssi -= 12;
     }
-    cyw43_ev_scan_result_t result = {.rssi = (int16_t)rssi, .ssid_len = 11, .bssid = {1,2,3,4,5,6}};
-    memcpy(result.ssid, "I AM PICO W", 11);
+    cyw43_ev_scan_result_t result = {.rssi = (int16_t)rssi,
+        .ssid_len = (uint8_t)target_beacon_ssid_length(), .bssid = {1,2,3,4,5,6}};
+    result.bssid[5] = target_beacon_id();
+    memcpy(result.ssid, target_beacon_ssid(), target_beacon_ssid_length());
     // A stronger network with the same SSID must not replace a locked target.
     scan_callback(scan_context, &result);
     memset(result.bssid, 9, 6); result.rssi = -10;
@@ -385,6 +415,14 @@ static void reset(void)
     ui_bt_failure = ui_bt_timeout = false;
     ui_radio_error = 0;
     sim_time = scan_finish_us = 0;
+    direction.learned = false;
+    payload_idle = true; attempt_continue = NULL; attempt_override = NULL;
+    mock_limit_start = mock_limit_duration = radio_lock_depth = 0;
+    floor_read_error = floor_always_mat = false; departure_floor_checks = 0;
+    assert(target_beacon_select(1));
+#if THREE_BEACON_ROUTE
+    memset(&route, 0, sizeof(route)); incoming_heading = 0;
+#endif
     stopped = motors_on = wifi_missing = fail_drive = fail_turn = stop_during_pause = false;
     complete_first = fail_scan = model = scan_active = storage_failed = false;
     irregular_scans = stop_on_reverse = raw_script_mode = false;
@@ -406,7 +444,7 @@ static void reset(void)
     // shipped_steps() selects the robot's v18 sizes.
     floor_block_ms = 250; dip_probe_ms = 100; step_on_mat = mat_stub = false; mat_from_check = 0;
     colour_present = model_lighter_seen = colour_arrived = false; colour_reads = mat_scans_used = 0;
-    model_last_depth = -1; ble_never = false;
+    model_last_depth = -1; ble_never = false; fail_colour_read_at = 0;
     model_blue = false; model_min_sensor_d = 1e9; mat_near_block_ms = LINE_MAT_NEAR_BLOCK_MS;
     model_dim_inner = model_box_solid = false; model_blocked_blocks = 0;
     // Any mat, unless a test sets one (firmware_main sets AP1's pink mat).
@@ -516,13 +554,14 @@ static void check_profiles(void)
     assert(!followed.progress && followed.end==FOLLOW_NO_GAIN && !backwards_count);
     assert(forwards_count==10 && translation_ms==2400 && moves[9].ms==150);
     assert(strstr(log_text,"trial ended at current position"));
-    // After progress, a plateau continues beyond six powered seconds to BLE.
+    // A supported best followed by a plateau is bounded, then returns to best.
     static const int plateau[] = {-70,-70,-65,-65};
     reset(); script=plateau; script_length=sizeof(plateau)/sizeof(*plateau); default_rssi=-65;
     complete_after_step=30;
-    assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_COMPLETE);
-    assert(followed.progress && !backwards_count);
-    assert(translation_ms==7500 && strstr(log_text,"six-second profile interval complete"));
+    assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(followed.progress && backwards_count && followed.end==FOLLOW_DECLINE);
+    assert(translation_ms==12250 && followed.position==250);
+    assert(strstr(log_text,"no-new-best watchdog") && !strstr(log_text,"decline persisted"));
     // A weak decline below the margin should keep being sampled until it is
     // confirmed, rather than changing direction because a profile timer ended.
     int gradual[66];
@@ -534,8 +573,8 @@ static void check_profiles(void)
     gradual[64]=gradual[65]=-65;
     reset(); script=gradual; script_length=sizeof(gradual)/sizeof(*gradual);
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
-    assert(followed.end==FOLLOW_DECLINE && followed.consistent && forwards_count==30);
-    assert(translation_ms==14150 && strstr(log_text,"return only 6950 powered ms to best point 250"));
+    assert(followed.end==FOLLOW_DECLINE && forwards_count==25 && backwards_count);
+    assert(translation_ms==12250 && strstr(log_text,"no-new-best watchdog"));
     static const int bad_return[] = {-70,-70,-65,-65,-65,-65,-72,-72,-73,-73,-74,-74,
                                     -75,-75,-76,-76,-77,-77,-80,-80};
     reset(); script=bad_return; script_length=sizeof(bad_return)/sizeof(*bad_return);
@@ -702,14 +741,14 @@ static void check_decline_positions(void)
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE && followed.consistent);
     assert(forwards_count==10 && backwards_count==2 && moves[10].ms==750 && moves[11].ms==150);
     assert(strstr(log_text,"1/3 at 200") && strstr(log_text,"2/3 at 500") && strstr(log_text,"3/3 at 800"));
-    // A first decline at the trial limit must still get two more positions.
+    // An unqualified heading cannot extend acquisition just because decline starts at its limit.
     int boundary[34];
     for (unsigned i=0;i<34;++i) boundary[i]=-70;
     boundary[20]=boundary[21]=-75; boundary[22]=boundary[23]=-76; boundary[24]=boundary[25]=-77;
     boundary[26]=boundary[27]=-77; boundary[28]=boundary[29]=-78; boundary[30]=boundary[31]=-79;
     reset(); script=boundary; script_length=34;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
-    assert(followed.end==FOLLOW_DECLINE && !followed.progress && forwards_count==14 && translation_ms==6200);
+    assert(followed.end==FOLLOW_NO_GAIN && !followed.progress && forwards_count==10 && translation_ms==2400);
     // No return time is spent if the next confirming position cannot be reserved.
     reset(); script=patch; script_length=sizeof(patch)/sizeof(*patch); translation_ms=LINE_TRANSLATION_MS-800;
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_FATAL && !backwards_count);
@@ -875,13 +914,14 @@ static void check_dip_safety(void)
 
 static void check_forward_continuation(void)
 {
-    // A valid but flat initial signal must pass both former stopping points.
-    reset(); complete_after_step=30;
-    assert(approach_beacon() && forwards_count==30 && !backwards_count);
-    assert(translation_ms==7500 && !fault_mask() && !motors_on);
-    assert(ble_calls==31 && strstr(log_text,"six-second profile interval complete"));
-    assert(!strstr(log_text,"first confirmed improvement") && !strstr(log_text,"DIRECTION SEARCH"));
-    for (unsigned i=0;i<move_count;++i) assert(moves[i].forwards && moves[i].ms==250);
+    // Flat initial readings now return and try the other three headings.
+    reset();
+    assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
+    assert(forwards_count==40 && backwards_count==16 && translation_ms==19200);
+    assert(!motors_on && strstr(log_text,"initial/current no-gain heading returns to start"));
+    assert(strstr(log_text,"DIRECTION SEARCH") && !strstr(log_text,"first confirmed improvement"));
+    assert(moves[10].heading==0 && !moves[10].forwards);
+    assert(moves[14].heading==270 && moves[14].forwards);
 
     // Replay all 115 raw Wi-Fi readings and ten powered durations from the
     // user's 3 November v7 run. BLE completion on step 11 is synthetic: it
@@ -910,27 +950,17 @@ static void check_forward_continuation(void)
     assert(strstr(log_text,"new confirmed best at 2264 powered ms"));
     assert(!strstr(log_text,"trial ended") && !strstr(log_text,"DIRECTION SEARCH"));
 
-    // With no BLE success, continuation still reserves the entire possible
-    // return. It must stop before combined outward/return travel exceeds 60 s.
-    reset(); assert(!approach_beacon() && fault_test(FAULT_TRANSLATION_LIMIT));
-    assert(forwards_count>30 && !backwards_count && !motors_on);
-    assert(translation_ms+translation_cost(translation_ms)<=LINE_TRANSLATION_MS);
-    assert(!fault_test(FAULT_NO_DIRECTION) && !fault_test(FAULT_PROFILE));
-
-    // Realistic stationary scan/BLE delays reach the wall limit first.
-    reset(); scan_delay_ms=720; ble_delay_ms=5000;
+    // Flat readings now exhaust four finite trials, not the 60 s budget.
+    reset(); assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
+    assert(translation_ms==19200 && !fault_test(FAULT_TRANSLATION_LIMIT) && !motors_on);
+    // Deadline remains mission-wide and can interrupt a finite trial/return.
+    reset(); run_started_ms=0; sim_time=(uint64_t)(MAX_RUN_MS-5000u)*1000;
     assert(!approach_beacon() && fault_test(FAULT_RUN_LIMIT) && !motors_on);
-    assert(translation_ms>6000 && translation_ms<LINE_TRANSLATION_MS && !backwards_count);
-    assert(!fault_test(FAULT_PROFILE));
-
-    // STOP and an IMU fault after prolonged inconclusive travel prevent any
-    // later movement or BLE attempt, just as they do during the first step.
+    // STOP and IMU failure during a later heading still forbid further motion.
     reset(); stop_at_step=31;
     assert(!approach_beacon() && stopped && !motors_on && forwards_count==31);
-    assert(translation_ms==7500 && ble_calls==31 && !backwards_count);
     reset(); fail_at_step=31;
     assert(!approach_beacon() && fault_test(FAULT_IMU) && !motors_on && forwards_count==31);
-    assert(translation_ms==7500 && ble_calls==31 && !backwards_count);
 }
 
 static void check_radio_and_limits(void)
@@ -1211,7 +1241,7 @@ static void check_near_centre_steps(void)
             }
             assert(model_min_sensor_d>MODEL_BOX_RADIUS && !strict_attempts);
             // Normal readings arrive by colour; the centre stop rules stay out of it.
-            assert(!strstr(log_text,"at the mat centre"));
+            assert(!strstr(log_text,"inferred centre"));
         }
         // The old 250 ms steps reach the innermost ring on the blue mat.
         if (blue) assert(old_overshoots>=3);
@@ -1227,7 +1257,7 @@ static void check_near_centre_steps(void)
         model_dim_inner=model_box_solid=true;
         robot_x=starts[i].x; robot_y=starts[i].y; current_heading=starts[i].heading;
         bool arrived=approach_beacon();
-        if (!arrived || model_blocked_blocks>MAT_STALL_STEPS || !strstr(log_text,"at the mat centre")) {
+        if (!arrived || model_blocked_blocks>MAT_STALL_STEPS || !strstr(log_text,"inferred centre")) {
             fprintf(stderr,"Dim blue '%s': arrived %d, blocked steps %u, scans %u, robot (%.3f, %.3f)\n",
                     starts[i].name,arrived,model_blocked_blocks,mat_scans_used,robot_x,robot_y);
             for (char *row=strtok(log_text,"\n");row;row=strtok(NULL,"\n"))
@@ -1257,16 +1287,19 @@ static void check_near_centre_steps(void)
     // the robot must stop once nothing around it is darker, not drive on.
     reset(); shipped_steps(); model=true; colour_present=true; model_blue=true; model_dim_inner=true;
     robot_y=-0.26;
-    assert(approach_beacon() && strstr(log_text,"at the mat centre") && !strict_attempts);
+    assert(approach_beacon() && strstr(log_text,"inferred centre") && !strict_attempts);
     // BLE never in range at the centre: retries in place, then stops for good.
     reset(); shipped_steps(); model=true; colour_present=true; model_blue=true;
     model_dim_inner=model_box_solid=true; ble_never=true; robot_y=-0.26;
     assert(!approach_beacon() && fault_test(FAULT_PAYLOAD) && strstr(log_text,"stationary retry 3/3"));
     unsigned moves_at_stop=move_count;
-    assert(strstr(log_text,"at the mat centre") && moves_at_stop>0);
+    assert(strstr(log_text,"inferred centre") && moves_at_stop>0);
 }
 
-int main(void)
+#ifndef NAVIGATION_TEST_MAIN
+#define NAVIGATION_TEST_MAIN main
+#endif
+int NAVIGATION_TEST_MAIN(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();

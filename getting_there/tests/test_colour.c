@@ -12,7 +12,7 @@ i2c_inst_t *i2c0 = &bus0;
 static uint8_t selected_reg, sensor_id = 0x44;
 static colour_reading_t script[32];
 static unsigned script_length, script_next;
-static bool bus_dead;
+static bool bus_dead, stopped;
 static unsigned config_writes, reads;
 static char log_text[8192];
 static size_t log_length;
@@ -391,12 +391,30 @@ static void check_scan_direction(void)
     assert(est.valid && est.darkest_angle == 90 && est.depth_range == 2);
 }
 
+bool motion_stop_requested(void) { return stopped; }
+static void check_departure_floor(void)
+{
+    assert(colour_sensor_init()); colour_set_target_mat(COLOUR_MAT_PINK);
+    const colour_reading_t floor=at(2900,922), white=at(7800,1015);
+    const colour_reading_t blue=rgb(7100,1365,1530);
+    bool clear=true;
+    queue3(floor,floor,floor); assert(colour_floor_check(&clear) && clear);
+    queue3(floor,white,floor); assert(colour_floor_check(&clear) && !clear);
+    // Blue rings classify as floor for AP1 approach, but never for departure.
+    assert(colour_classify(&blue)==COLOUR_FLOOR);
+    queue3(floor,blue,floor); assert(colour_floor_check(&clear) && !clear);
+    assert(colour_target_mat()==COLOUR_MAT_PINK);
+    bus_dead=true; assert(!colour_floor_check(&clear) && !clear); bus_dead=false;
+    stopped=true; assert(!colour_floor_check(&clear) && !clear); stopped=false;
+    colour_set_target_mat(COLOUR_MAT_NONE);
+}
 int main(void)
 {
     check_calibration_data();
     check_arrival_rules();
     check_blue_purple();
     check_scan_direction();
+    check_departure_floor();
     puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, blue and purple mats with per-mat arrival, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
     return 0;
 }
