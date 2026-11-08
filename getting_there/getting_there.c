@@ -265,8 +265,9 @@ static bool record_point(float heading, uint32_t powered, line_pair_t readings)
     return save_checkpoint();
 }
 
-// FOLLOW_MAT: a stop saw the mat, so colour steering takes over from Wi-Fi.
-typedef enum { FOLLOW_NO_GAIN, FOLLOW_DECLINE, FOLLOW_MAT } follow_end_t;
+// A foreign mat rejects this trial; it is not evidence that the target signal
+// declined. Its caller retreats before choosing a different heading.
+typedef enum { FOLLOW_NO_GAIN, FOLLOW_DECLINE, FOLLOW_MAT, FOLLOW_FOREIGN_MAT } follow_end_t;
 typedef struct {
     float heading;
     bool progress, consistent;
@@ -395,7 +396,9 @@ static unsigned mat_scans_used;
 
 static bool mat_steering_ready(void)
 {
-    return colour_on_mat() && mat_scans_used < MAT_MAX_SCANS;
+    // White edges are deliberately ambiguous in the classifier. Require a
+    // coloured ring of the active target before steering toward a mat centre.
+    return colour_target_ring_seen() && !colour_foreign_mat_seen() && mat_scans_used < MAT_MAX_SCANS;
 }
 
 // On the arrival ring but AP1 failed even the loose BLE gate: never drive on
@@ -530,6 +533,10 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
     report_printf("DIP: three weak positions; stationary BLE check and two fresh Wi-Fi batches before any extra movement\n");
     payload_result_t result = check_payload();
     if (result != PAYLOAD_NOT_CLOSE) return result;
+    if (colour_foreign_mat_seen()) {
+        report_printf("DIP: foreign coloured mat at stopped recheck; no forward probes, returning to retained best\n");
+        return PAYLOAD_NOT_CLOSE;
+    }
     result = measure_pair(current);
     if (result != PAYLOAD_NOT_CLOSE) return result;
     *recovered = line_return_consistent(reference, *current);
@@ -545,6 +552,12 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
             false, &actual);
         *position += actual;
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (colour_foreign_mat_seen()) {
+            // This dip already requires a return unless recovery is proven.
+            // Do not spend the second forward probe entering another mat.
+            report_printf("DIP: foreign coloured mat during probe; no further probing, returning to retained best\n");
+            return PAYLOAD_NOT_CLOSE;
+        }
         wifi_sampler_set_position(heading, *position, true);
         result = measure_pair(current);
         if (result != PAYLOAD_NOT_CLOSE) return result;
@@ -567,6 +580,12 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     // One long beep each time a new search direction starts.
     cue_play(CUE_PASS);
     if (!motion_turn_to_heading(heading)) return PAYLOAD_FATAL;
+#if THREE_BEACON_ROUTE
+    // The front sensor moved during the turn. Refresh its evidence before
+    // driving; a previous heading's colour reading is not a clearance check.
+    payload_result_t turned = check_payload();
+    if (turned != PAYLOAD_NOT_CLOSE) return turned;
+#endif
     wifi_sampler_set_position(heading, 0, true);
     line_pair_t best;
     payload_result_t result = measure_pair(&best);
@@ -574,6 +593,11 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     const line_pair_t baseline = best;
     followed->baseline = baseline;
     if (!record_point(heading, 0, best)) return PAYLOAD_FATAL;
+    if (colour_foreign_mat_seen()) {
+        followed->end = FOLLOW_FOREIGN_MAT;
+        report_printf("FOLLOW: foreign coloured mat under sensor; rejecting heading without forward movement\n");
+        return PAYLOAD_NOT_CLOSE;
+    }
     uint32_t position = 0, best_position = 0, segment_start = 0;
     uint32_t last_decline_position = 0, best_wall_ms = now_ms();
     unsigned decline_positions = 0;
@@ -611,6 +635,12 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
         position += actual;
         followed->position = position;
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (colour_foreign_mat_seen()) {
+            followed->end = FOLLOW_FOREIGN_MAT;
+            report_printf("FOLLOW: foreign coloured mat at %lu powered ms; stop and retreat before trying another heading\n",
+                          (unsigned long)position);
+            return PAYLOAD_NOT_CLOSE;
+        }
         if (mat_steering_ready()) {
             followed->end = FOLLOW_MAT;
             report_printf("FOLLOW: colour sensor sees the mat at %lu powered ms; colour steering takes over\n",
@@ -728,27 +758,30 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     return PAYLOAD_FATAL;
 }
 
-// Both perpendiculars, then straight back (v16 tried only the two sides, so a
-// robot started facing away from AP1 could never turn round). A return whose
-// RSSI disagrees with the best point no longer stops the search: the next
-// trial measures its own starting baseline, so it does not depend on it.
-#define SEARCH_DIRECTIONS 3u
+// Complete the cardinal search, then try the four intervening diagonals. The
+// same short displacement can show <3 dB gain on both axes while showing a
+// supported gain toward a diagonal. Do not lower the confirmation margin.
+// Every candidate has its own measured baseline and reserves return travel.
+#define SEARCH_DIRECTIONS 7u
 static payload_result_t check_directions(float origin, follow_result_t *followed, bool *found)
 {
-    static const float offsets[SEARCH_DIRECTIONS] = {-90.0f, 90.0f, 180.0f};
+    static const float offsets[SEARCH_DIRECTIONS] = {-90.0f, 90.0f, 180.0f, 45.0f, -45.0f, 135.0f, -135.0f};
     *found = false;
-    report_printf("DIRECTION SEARCH: both perpendiculars, then straight back, origin %d degrees; follow first confirmed improvement\n",
+    report_printf("DIRECTION SEARCH: both perpendiculars, straight back, then four diagonals; origin %d degrees; unchanged confirmation margin\n",
                   (int)origin);
     for (unsigned i = 0; i < SEARCH_DIRECTIONS; ++i) {
         float heading = line_normalise_heading(origin + offsets[i]);
+        report_printf("DIRECTION TRIAL: %u/%u, offset=%d, heading=%d\n",
+                      i + 1u, SEARCH_DIRECTIONS, (int)offsets[i], (int)heading);
         payload_result_t result = follow_direction(heading, LINE_DIRECTION_TEST_MS, followed);
         if (result != PAYLOAD_NOT_CLOSE) return result;
-        if (followed->progress || followed->end == FOLLOW_MAT) {
+        if ((followed->progress && followed->end != FOLLOW_FOREIGN_MAT) || followed->end == FOLLOW_MAT) {
             *found = true;
             return PAYLOAD_NOT_CLOSE;
         }
-        if (followed->end == FOLLOW_NO_GAIN) {
-            report_printf("TRIAL: no confirmed gain; return to its starting best point before the next direction\n");
+        if (followed->end == FOLLOW_NO_GAIN || followed->end == FOLLOW_FOREIGN_MAT) {
+            report_printf("TRIAL: %s; return to its starting point before the next direction\n",
+                          followed->end == FOLLOW_FOREIGN_MAT ? "foreign mat rejected" : "no confirmed gain");
             result = return_along_line(followed->position, 0, heading);
             if (result != PAYLOAD_NOT_CLOSE) return result;
             line_pair_t returned;
@@ -788,7 +821,7 @@ static bool approach_beacon(void)
         direction.learned = true;
     }
     follow_result_t followed = {.end = FOLLOW_MAT};
-    report_printf("APPROACH: bounded initial heading, then both perpendiculars and straight back; return before each new baseline; on the mat, steer by colour\n");
+    report_printf("APPROACH: bounded initial heading, cardinal then diagonal trials; reject foreign mats, return before each new baseline; steer only on the target's coloured rings\n");
     // Started on the mat: colour steering first, without any Wi-Fi line.
     if (!mat_steering_ready()) {
         result = follow_direction(motion_heading(), 0, &followed);
@@ -807,8 +840,9 @@ static bool approach_beacon(void)
             if (result == PAYLOAD_FATAL) return false;
             continue;
         }
-        if (followed.end == FOLLOW_NO_GAIN) {
-            report_printf("TRIAL: initial/current no-gain heading returns to start before trying others\n");
+        if (followed.end == FOLLOW_NO_GAIN || followed.end == FOLLOW_FOREIGN_MAT) {
+            report_printf("TRIAL: %s heading returns to start before trying others\n",
+                          followed.end == FOLLOW_FOREIGN_MAT ? "foreign-mat" : "initial/current no-gain");
             result = return_along_line(followed.position, 0, followed.heading);
             if (result == PAYLOAD_COMPLETE) return true;
             if (result == PAYLOAD_FATAL) return false;
@@ -831,7 +865,7 @@ static bool approach_beacon(void)
         if (result == PAYLOAD_FATAL) return false;
         if (!found) {
             fault_raise(FAULT_NO_DIRECTION);
-            report_printf("FAILED: no direction confirmed improvement (both perpendiculars and straight back)\n");
+            report_printf("FAILED: no direction confirmed improvement after cardinal and diagonal trials within the travel/run limits\n");
             return false;
         }
     }
@@ -1012,7 +1046,7 @@ int main(void)
     bool ready = motion_init();
     cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | bounded four-heading acquisition, no-new-best watchdog | %s\n",
+    report_printf("Getting there | bounded eight-heading acquisition, foreign-mat guard, no-new-best watchdog | %s\n",
                   THREE_BEACON_ROUTE ? "AP1 -> AP2 -> AP3 route" : target_beacon_name());
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");

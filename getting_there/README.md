@@ -21,7 +21,9 @@ use the route image for this branch's three-target mission.
 - Every heading, including the initial heading, has a 2400 ms powered no-gain
   trial. Positive but unconfirmed improvement permits one extension to 4800 ms.
   No gain returns approximately to that trial's start before testing −90°,
-  +90° and 180°. Each trial measures a fresh same-heading baseline; the
+  +90° and 180°, then the intermediate +45°, −45°, +135° and −135° directions.
+  All eight headings together still share the existing travel/run budgets.
+  Each trial measures a fresh same-heading baseline; the
   spread-aware minimum 3 dB margin is unchanged. No coordinates are used.
 - After progress, 6000 powered ms or 120 seconds without a supported new best
   triggers a timed return to the retained best and direction reacquisition.
@@ -54,6 +56,32 @@ use the route image for this branch's three-target mission.
   Wi-Fi reinitialisation drops the old BSSID lock; arrival/lighter-ring memory,
   centre override, mat scan count, profiles and translation budget reset per leg.
   Log exhaustion remains a stopped failure; no leg erases or restarts the log.
+
+### AP3 search correction after the 8 November trace
+
+The supplied [failed route trace analysis](../docs/runs/2026-11-08-route-ap3-no-direction.md)
+records two verified transfers and a later `NO_DIRECTION`, with AP3 still visible
+at -60 dBm. A white edge on AP2's blue mat was accepted as the new target's
+white edge. After the inconclusive colour scan, blue rings read as floor in
+the purple-only profile, so the robot continued into the previous beacon box.
+Its timed return then overestimated actual motion. A later improving heading
+only gained 2 dB within its trial; the four original headings exhausted.
+
+Colour steering now requires an actual coloured ring of the active mat, not
+white alone. The stationary check also records raw foreign coloured rings;
+encountering one rejects the trial and returns before the next heading. Dip
+probes stop on that evidence too. New `target_ring` and `foreign_mat` log fields
+share the one-byte colour-observation container. White still selects small
+steps but is not itself a bearing or foreign-mat proof. After cardinal trials,
+the four diagonals use exactly the same confidence margin and bounded travel.
+
+These changes use only physical sensor readings. They do not read simulator
+positions or a collision flag, and do not make timed reversing into measured
+odometry. Unmarked obstacles, sensor errors, slip and ambiguous colours remain
+hardware limitations. No beacon protocol change or simulator range, signal,
+geometry, colour calibration or success-rule change was made for this fix.
+Build-only checks are not evidence that the submitted arrangement now succeeds;
+assess a new, explicitly requested run from its own trace.
 
 The runtime API is in `target_beacon.h`: ID (`uint8_t`), name/SSID (`const char *`),
 SSID length (`size_t`, excluding NUL), mat (`colour_mat_t`) and select (`bool`,

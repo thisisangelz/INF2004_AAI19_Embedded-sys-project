@@ -3,12 +3,14 @@
 #define NAVIGATION_TEST_MAIN legacy_navigation_checks
 #include "test_navigation.c"
 
-static unsigned leg_steps[3], seen_target, confirms;
+static unsigned leg_steps[3], leg_checks[3], seen_target, confirms;
 static bool fail_second, lose_cleanup;
 static payload_result_t route_peer(void)
 {
     unsigned id = target_beacon_id();
     if (route.departing) assert(false); // no BLE calls are permitted here
+    assert(colour_arrived && close_threshold==COLOUR_ARRIVAL_BLE_DBM);
+    ++leg_checks[id-1u];
     if (id != seen_target) { seen_target=id; leg_steps[id-1u]=(unsigned)forwards_count; }
     if ((unsigned)forwards_count == leg_steps[id-1u]) return PAYLOAD_NOT_CLOSE;
     if (id==2 && fail_second) return PAYLOAD_FATAL;
@@ -20,7 +22,7 @@ static void route_reset(void)
 {
     reset(); shipped_steps(); colour_present=true; colour_arrive_at_check=1;
     attempt_override=route_peer;
-    memset(leg_steps,0,sizeof(leg_steps)); seen_target=confirms=0;
+    memset(leg_steps,0,sizeof(leg_steps)); memset(leg_checks,0,sizeof(leg_checks)); seen_target=confirms=0;
     fail_second=lose_cleanup=false; route.incoming_forwards=true;
 }
 static void check_full_route(void)
@@ -30,6 +32,9 @@ static void check_full_route(void)
     assert(route.completed_mask==7 && target_beacon_id()==3 && confirms==3);
     assert(forwards_count==3 && backwards_count==4 && departure_floor_checks==4);
     assert(sign_checks==1 && !motors_on && colour_resets==3);
+    // Initial check, fresh check after turning, then arrival after the first step.
+    assert(colour_checks==9 && ble_calls==9);
+    for (unsigned i=0; i<3; ++i) assert(leg_checks[i]==3);
     assert(strstr(log_text,"ROUTE: target=1") && strstr(log_text,"ROUTE: target=2") &&
            strstr(log_text,"ROUTE: target=3"));
     assert(strstr(log_text,"ROUTE: confirmed=1,mask=1") &&
@@ -124,9 +129,68 @@ static void check_bounded_trials_and_watchdog(void)
     assert(backwards_count && strstr(log_text,"no-new-best watchdog"));
     assert(!strstr(log_text,"decline persisted"));
 }
+static void check_route_colour_trials(void)
+{
+    follow_result_t followed; bool found;
+    static const unsigned foreign_at_turn[] = {OBS_FOREIGN_RING};
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0;
+    // Stale target-ring evidence must be replaced after the turn, before driving.
+    last_colour_observations=OBS_TARGET_RING;
+    colour_observation_script=foreign_at_turn; colour_observation_count=1;
+    assert(follow_direction(90,0,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(colour_checks==1 && followed.end==FOLLOW_FOREIGN_MAT && !followed.position);
+    assert(!followed.progress && !move_count && !translation_ms && !ble_calls);
+    assert(colour_foreign_mat_seen() && !colour_target_ring_seen());
+    assert(!colour_reads && !mat_scans_used && !strstr(log_text,"MAT:"));
+
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0; default_rssi=-75;
+    colour_observation_script=foreign_at_turn; colour_observation_count=1;
+    uint32_t stopped_position=1500; line_pair_t stopped_current=pair(-75,-75); bool stopped_recovered;
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&stopped_position,&stopped_current,&stopped_recovered)==PAYLOAD_NOT_CLOSE);
+    assert(!stopped_recovered && stopped_position==1500 && !forwards_count && !move_count);
+    assert(colour_foreign_mat_seen() && colour_checks==1 && !translation_ms && !ble_calls);
+
+    static const unsigned foreign_after_step[] = {0,OBS_FOREIGN_RING};
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0;
+    colour_observation_script=foreign_after_step; colour_observation_count=2;
+    assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found);
+    // One step reaches the foreign mat; undo exactly that step before heading 90.
+    assert(moves[0].forwards && moves[0].heading==270 && moves[0].ms==500);
+    assert(!moves[1].forwards && moves[1].heading==270 && moves[1].ms==500);
+    assert(moves[2].forwards && moves[2].heading==90);
+    assert(forwards_count==31 && backwards_count==25 && move_count==56 && translation_ms==29800);
+    assert(colour_checks==63 && profile_id==7 && current_heading==225);
+    assert(strstr(log_text,"foreign coloured mat at 500 powered ms") && strstr(log_text,"foreign mat rejected"));
+    assert(!colour_reads && !mat_scans_used && !ble_calls && !fault_mask());
+    assert(!strstr(log_text,"colour steering takes over") && !strstr(log_text,"MAT:"));
+
+    // The first DIP probe can also cross into a foreign mat: never issue probe 2.
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0; default_rssi=-75;
+    colour_observation_script=foreign_after_step; colour_observation_count=2;
+    uint32_t position=1500; line_pair_t current; bool recovered;
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_NOT_CLOSE);
+    assert(!recovered && position==1750 && forwards_count==1 && !backwards_count);
+    assert(moves[0].ms==250 && translation_ms==250 && colour_checks==2 && wifi_calls==10);
+    assert(colour_foreign_mat_seen() && !colour_reads && !mat_scans_used && !ble_calls);
+    assert(strstr(log_text,"foreign coloured mat during probe") && !strstr(log_text,"forward probe 2/2"));
+    assert(return_along_line(position,500,0)==PAYLOAD_NOT_CLOSE);
+    assert(forwards_count==1 && backwards_count==2 && translation_ms==1500);
+
+    unsigned white[11];
+    for (unsigned i=0; i<11; ++i) white[i]=OBS_WHITE;
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0;
+    colour_observation_script=white; colour_observation_count=11;
+    assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(followed.end==FOLLOW_NO_GAIN && followed.position==2400 && !followed.progress);
+    assert(colour_checks==11 && forwards_count==10 && !backwards_count && translation_ms==2400);
+    assert(colour_on_mat() && !colour_target_ring_seen() && !colour_foreign_mat_seen());
+    assert(!mat_steering_ready() && !colour_reads && !mat_scans_used && !ble_calls);
+    assert(!strstr(log_text,"MAT:") && !fault_mask());
+}
 int main(void)
 {
     check_full_route(); check_partial_and_gates(); check_departure_heading_and_budget();
     check_bounded_trials_and_watchdog(); check_mat_fallback_and_inference();
+    check_route_colour_trials();
     return 0;
 }

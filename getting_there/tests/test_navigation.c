@@ -233,10 +233,19 @@ static bool complete_on_loose;
 static bool colour_present;
 static bool mat_stub, model_lighter_seen;
 static unsigned mat_from_check, colour_reads, fail_colour_read_at;
+// Per stationary check: white is on-mat but cannot authorize colour steering.
+enum { OBS_WHITE = 1u, OBS_TARGET_RING = 2u, OBS_FOREIGN_RING = 4u };
+static const unsigned *colour_observation_script;
+static size_t colour_observation_count;
+static unsigned last_colour_observations;
 static int model_last_depth;
 bool colour_sensor_init(void) { ++colour_inits; return true; }
 bool colour_sensor_available(void) { return colour_present; }
-void colour_arrival_reset(void) { ++colour_resets; model_lighter_seen = false; model_last_depth = -1; }
+void colour_arrival_reset(void)
+{
+    ++colour_resets; model_lighter_seen = false; model_last_depth = -1;
+    last_colour_observations = 0;
+}
 // Model mat: pink (white edge plus five rings) by default, or blue (white edge
 // plus six rings), radius 0.35 m around the beacon, so blue rings are narrower.
 // The sensor is 0.08 m ahead of the wheel axis; readings are calibrated means.
@@ -252,18 +261,22 @@ static double model_sensor_d(void)
     return hypot(robot_x + MODEL_SENSOR_AHEAD * cos(radians) - beacon_x,
                  robot_y + MODEL_SENSOR_AHEAD * sin(radians) - beacon_y);
 }
-static int model_depth(void)
+static int model_raw_depth(void)
 {
     double d = model_sensor_d();
     if (d > MODEL_MAT_RADIUS) return 0;
-    // Another beacon's mat reads as floor once the robot's own mat is set.
-    colour_mat_t model_mat = model_blue ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK;
-    if (colour_target_mat() != COLOUR_MAT_NONE && colour_target_mat() != model_mat) return 0;
     int bands = model_bands();
     int depth = bands - (int)(d / (MODEL_MAT_RADIUS / bands));
     depth = depth < 1 ? 1 : depth > bands ? bands : depth;
     if (model_dim_inner && depth >= model_arrival_depth()) depth = model_arrival_depth() - 1;
     return depth;
+}
+static int model_depth(void)
+{
+    // Filtered arrival still treats another beacon's coloured mat as floor.
+    colour_mat_t model_mat = model_blue ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK;
+    if (colour_target_mat() != COLOUR_MAT_NONE && colour_target_mat() != model_mat) return 0;
+    return model_raw_depth();
 }
 void colour_note_lighter_mats(unsigned mask)
 {
@@ -296,9 +309,15 @@ bool colour_arrival_check(void)
 {
     assert(!motors_on && !scan_active);
     ++colour_checks;
+    last_colour_observations = colour_checks <= colour_observation_count ?
+        colour_observation_script[colour_checks - 1u] :
+        mat_stub || (mat_from_check && colour_checks >= mat_from_check) ? OBS_TARGET_RING : 0;
     if (!model) return colour_arrive_at_check && colour_checks >= colour_arrive_at_check;
     if (!colour_present) return false;
     int depth = model_depth();
+    int raw_depth = model_raw_depth();
+    last_colour_observations = raw_depth >= 2 ?
+        (depth >= 2 ? OBS_TARGET_RING : OBS_FOREIGN_RING) : raw_depth == 1 ? OBS_WHITE : 0;
     bool seen_before = model_lighter_seen;
     if (depth >= 1 && depth < model_arrival_depth()) model_lighter_seen = true;
     model_last_depth = depth;
@@ -314,7 +333,19 @@ bool colour_near_arrival(unsigned rings)
 bool colour_on_mat(void)
 {
     if (model) return colour_present && model_last_depth >= 1;
-    return mat_stub || (mat_from_check && colour_checks >= mat_from_check);
+    return mat_stub || (mat_from_check && colour_checks >= mat_from_check) ||
+        (last_colour_observations & (OBS_WHITE | OBS_TARGET_RING));
+}
+bool colour_target_ring_seen(void)
+{
+    if (!colour_present) return false;
+    if (model) return model_last_depth >= 2;
+    return (last_colour_observations & OBS_TARGET_RING) != 0;
+}
+bool colour_foreign_mat_seen(void)
+{
+    if (!colour_present) return false;
+    return (last_colour_observations & OBS_FOREIGN_RING) != 0;
 }
 void payload_client_set_close_threshold(int dbm) { assert(!motors_on); close_threshold = dbm; }
 int payload_client_close_threshold(void) { return close_threshold; }
@@ -437,6 +468,7 @@ static void reset(void)
     scan_delay_ms = 200; // Ordinary control tests deliberately use stationary fallback.
     mock_pending = false;
     colour_checks = colour_arrive_at_check = colour_inits = colour_resets = 0;
+    colour_observation_script = NULL; colour_observation_count = last_colour_observations = 0;
     close_threshold = AP1_CLOSE_RSSI_DBM; strict_attempts = loose_attempts = 0; complete_on_loose = false;
     memset(cue_counts, 0, sizeof(cue_counts)); cue_end = 0; close_callback = NULL; in_range_cue_on = false;
     run_started_ms = now_ms(); translation_ms = profile_id = 0; wifi_quiescent = true;
@@ -598,7 +630,7 @@ static void check_follow_first(void)
     assert(strstr(log_text,"first confirmed improvement") && strstr(log_text,"continuing same heading"));
     for (unsigned i=0;i<move_count;++i) assert(moves[i].forwards && moves[i].heading==0 && moves[i].ms==250);
 
-    // Only the two perpendicular headings are available. Try the other side
+    // The perpendiculars are tried first. Try the other side
     // after a consistent failed first trial, and follow its confirmed gain.
     static const int failed_side[] = {
         -70,-70,-74,-74,-75,-75,-76,-76,-76,-76,-77,-77,-78,-78,-70,-70,
@@ -623,7 +655,7 @@ static void check_direction_policy(void)
 {
     // An improving forward line ends on sustained decline. Both sides then
     // decline without improving, and the flat trial straight back finds no
-    // gain either: stop after these three checks, with no recovery pass.
+    // gain either; all four subsequent diagonals are flat and must return too.
     static const int no_side[] = {
         -70, -70,-70,-65,-65,-65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65,
         -65,-65,-71,-71,-72,-72,-73,-73,-73,-73,-74,-74,-75,-75,-65,-65,
@@ -631,22 +663,23 @@ static void check_direction_policy(void)
     };
     reset(); script=no_side; script_length=sizeof(no_side)/sizeof(*no_side);
     assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
-    // v16's 17 forward/6 reverse blocks, plus a 2400 ms back trial and its return.
-    assert(forwards_count==27 && backwards_count==10 && translation_ms==11250);
-    assert(strstr(log_text,"no direction confirmed improvement (both perpendiculars and straight back)"));
+    // Original cardinal totals, plus four 2400 ms diagonal trials and returns.
+    assert(forwards_count==67 && backwards_count==26 && translation_ms==30450);
+    assert(strstr(log_text,"no direction confirmed improvement after cardinal and diagonal trials"));
     assert(!strstr(log_text,"FALLBACK:") && !strstr(log_text,"four fallback"));
     bool went_back=false;
     for (unsigned i=0;i<move_count;++i) {
-        assert(moves[i].heading==0 || moves[i].heading==270 || moves[i].heading==90 || moves[i].heading==180);
+        assert(moves[i].heading==0 || moves[i].heading==270 || moves[i].heading==90 || moves[i].heading==180 ||
+               moves[i].heading==45 || moves[i].heading==315 || moves[i].heading==135 || moves[i].heading==225);
         if (moves[i].heading==180 && moves[i].forwards) went_back=true;
     }
     assert(went_back);
     // A return that disagrees with the best point no longer ends the run: the
-    // same three-direction search follows from where the robot stopped.
+    // same seven-direction search follows from where the robot stopped.
     int inconsistent[sizeof(no_side)/sizeof(*no_side)];
     memcpy(inconsistent,no_side,sizeof(no_side)); inconsistent[19]=inconsistent[20]=-90;
     reset(); script=inconsistent; script_length=sizeof(inconsistent)/sizeof(*inconsistent);
-    assert(!approach_beacon() && forwards_count==27 && backwards_count==10);
+    assert(!approach_beacon() && forwards_count==67 && backwards_count==26 && translation_ms==30450);
     assert(strstr(log_text,"inconsistent with best point; searching from here") && strstr(log_text,"DIRECTION SEARCH"));
     // Even if the initial direction never improved, a consistent decline return
     // checks the other directions, starting with the first perpendicular.
@@ -659,18 +692,106 @@ static void check_direction_policy(void)
     // the next direction. This differs from ending an improving line.
     reset(); follow_result_t followed; bool found;
     assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found);
-    assert(forwards_count==30 && backwards_count==12 && translation_ms==14400 && move_count==42);
+    assert(forwards_count==70 && backwards_count==28 && translation_ms==33600 && move_count==98);
     assert(moves[10].heading==270 && !moves[10].forwards);
     assert(moves[14].heading==90 && moves[14].forwards);
     assert(moves[28].heading==180 && moves[28].forwards && followed.consistent);
+    static const float headings[] = {270, 90, 180, 45, 315, 135, 225};
+    for (unsigned trial=0; trial<7; ++trial) {
+        for (unsigned block=0; block<14; ++block) {
+            unsigned index = trial * 14u + block;
+            assert(moves[index].heading==headings[trial]);
+            assert(moves[index].forwards==(block<10));
+        }
+    }
+    assert(profile_id==7 && followed.heading==225 && current_heading==225);
     assert(strstr(log_text,"TRIAL RETURN: RSSI consistent"));
-    // An inconsistent return after the first side still tries the other two.
+    // An inconsistent return after the first side still tries the remaining six.
     int bad_flat[24];
     for (unsigned i=0;i<24;++i) bad_flat[i]=i<22 ? -70 : -90;
     reset(); script=bad_flat; script_length=24;
     assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found);
     assert(strstr(log_text,"inconsistent with starting best point, continuing from here"));
-    assert(forwards_count==30 && backwards_count==12 && current_heading==180);
+    assert(forwards_count==70 && backwards_count==28 && translation_ms==33600 && current_heading==225);
+}
+
+static void check_diagonal_fallback(void)
+{
+    // Each flat cardinal consumes baseline + ten positions + return (24 batches).
+    // Only the first diagonal has two-batch gain, followed by a confirmed dip.
+    static const int diagonal_curve[] = {
+        -70,-70,-65,-65,-65,-65,-71,-71,-72,-72,-73,-73,
+        -73,-73,-74,-74,-75,-75,-65,-65
+    };
+    int readings[72 + sizeof(diagonal_curve)/sizeof(*diagonal_curve)];
+    for (unsigned i=0; i<72; ++i) readings[i]=-70;
+    memcpy(readings+72, diagonal_curve, sizeof(diagonal_curve));
+    reset(); script=readings; script_length=sizeof(readings)/sizeof(*readings);
+    follow_result_t followed; bool found=false;
+    assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && found);
+    assert(followed.heading==45 && followed.progress && followed.consistent && followed.end==FOLLOW_DECLINE);
+    assert(profile_id==4 && current_heading==45);
+    assert(forwards_count==37 && backwards_count==14 && translation_ms==17050);
+    static const float cardinals[] = {270,90,180};
+    for (unsigned trial=0; trial<3; ++trial)
+        for (unsigned block=0; block<14; ++block) {
+            unsigned index=trial*14u+block;
+            assert(moves[index].heading==cardinals[trial] && moves[index].forwards==(block<10));
+        }
+    assert(moves[42].forwards && moves[42].heading==45);
+    assert(strstr(log_text,"DIRECTION TRIAL: 4/7, offset=45, heading=45"));
+    assert(!strstr(log_text,"DIRECTION TRIAL: 5/7"));
+}
+
+static void check_colour_trial_policy(void)
+{
+    follow_result_t followed;
+    static const unsigned foreign[] = {OBS_FOREIGN_RING};
+    reset(); colour_present=true;
+    colour_observation_script=foreign; colour_observation_count=1;
+    assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(followed.end==FOLLOW_FOREIGN_MAT && !followed.progress && followed.position==250);
+    assert(forwards_count==1 && !backwards_count && translation_ms==250);
+    assert(colour_foreign_mat_seen() && !colour_target_ring_seen());
+    assert(!colour_reads && !mat_scans_used && !ble_calls);
+    assert(strstr(log_text,"foreign coloured mat at 250 powered ms"));
+    assert(!strstr(log_text,"colour steering takes over") && !strstr(log_text,"MAT:"));
+    assert(return_along_line(followed.position,0,followed.heading)==PAYLOAD_NOT_CLOSE);
+    assert(forwards_count==1 && backwards_count==1 && translation_ms==500);
+    assert(!colour_foreign_mat_seen()); // the return's fresh floor check replaces it
+
+    unsigned white[10];
+    for (unsigned i=0; i<10; ++i) white[i]=OBS_WHITE;
+    reset(); colour_present=true;
+    colour_observation_script=white; colour_observation_count=10;
+    assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(followed.end==FOLLOW_NO_GAIN && !followed.progress && followed.position==2400);
+    assert(forwards_count==10 && !backwards_count && colour_on_mat());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen() && !mat_steering_ready());
+    assert(!colour_reads && !mat_scans_used && !strstr(log_text,"MAT:") && !ble_calls);
+
+    // A persistent 2 dB gain can extend the bounded trial, never confirm progress.
+    static const int two_db[] = {-70,-70,-68,-68};
+    reset(); colour_present=true; script=two_db; script_length=4; default_rssi=-68;
+    assert(line_pair_margin(pair(-70,-70),pair(-68,-68))==3);
+    assert(line_compare(pair(-70,-70),pair(-68,-68))==0);
+    assert(line_compare(pair(-70,-70),pair(-67,-67))==1);
+    assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(followed.end==FOLLOW_NO_GAIN && !followed.progress && followed.position==4800);
+    assert(forwards_count==20 && !backwards_count && translation_ms==4800);
+    assert(strstr(log_text,"bounded extension") && !strstr(log_text,"first confirmed improvement"));
+
+    // The model must distinguish its white edge (depth 1) from ring 1 (depth 2).
+    reset(); model=true; colour_present=true; robot_x=0.25;
+    assert(!colour_arrival_check() && model_last_depth==1 && colour_on_mat());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen() && !mat_steering_ready());
+    robot_x=0.20;
+    assert(!colour_arrival_check() && model_last_depth==2 && colour_target_ring_seen());
+    colour_set_target_mat(COLOUR_MAT_BLUE);
+    assert(!colour_arrival_check() && model_last_depth==0 && colour_foreign_mat_seen());
+    assert(!colour_target_ring_seen());
+    colour_arrival_reset();
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
 }
 
 static void check_recorded_run(void)
@@ -914,10 +1035,10 @@ static void check_dip_safety(void)
 
 static void check_forward_continuation(void)
 {
-    // Flat initial readings now return and try the other three headings.
+    // The initial heading is outside the helper's seven trials; all eight return.
     reset();
     assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
-    assert(forwards_count==40 && backwards_count==16 && translation_ms==19200);
+    assert(forwards_count==80 && backwards_count==32 && translation_ms==38400 && move_count==112);
     assert(!motors_on && strstr(log_text,"initial/current no-gain heading returns to start"));
     assert(strstr(log_text,"DIRECTION SEARCH") && !strstr(log_text,"first confirmed improvement"));
     assert(moves[10].heading==0 && !moves[10].forwards);
@@ -950,9 +1071,9 @@ static void check_forward_continuation(void)
     assert(strstr(log_text,"new confirmed best at 2264 powered ms"));
     assert(!strstr(log_text,"trial ended") && !strstr(log_text,"DIRECTION SEARCH"));
 
-    // Flat readings now exhaust four finite trials, not the 60 s budget.
+    // Flat readings exhaust the initial heading plus seven finite alternatives.
     reset(); assert(!approach_beacon() && fault_test(FAULT_NO_DIRECTION));
-    assert(translation_ms==19200 && !fault_test(FAULT_TRANSLATION_LIMIT) && !motors_on);
+    assert(translation_ms==38400 && !fault_test(FAULT_TRANSLATION_LIMIT) && !motors_on);
     // Deadline remains mission-wide and can interrupt a finite trial/return.
     reset(); run_started_ms=0; sim_time=(uint64_t)(MAX_RUN_MS-5000u)*1000;
     assert(!approach_beacon() && fault_test(FAULT_RUN_LIMIT) && !motors_on);
@@ -1000,11 +1121,11 @@ static void check_radio_and_limits(void)
     reset(); retry_mode = 2; assert(!approach_beacon() && ble_calls == 3 && !forwards_count);
     assert(retry_calls==2 && fault_test(FAULT_PAYLOAD));
     reset(); retry_mode = 3; assert(approach_beacon() && ble_calls==2 && retry_calls==1 && !forwards_count);
-    // Arrival after step 16, then one failed transfer: stationary retry must
-    // complete without issuing steps 17 or 18. RSSI here is synthetic and flat.
+    // Arrival after forward step 16, then one failed transfer: stationary retry
+    // issues no further movement. Flat acquisition first returns the initial trial.
     reset(); retry_mode = 4;
-    assert(approach_beacon() && forwards_count==16 && retry_calls==1 && ble_calls==18);
-    assert(!backwards_count && !motors_on);
+    assert(approach_beacon() && forwards_count==16 && retry_calls==1 && ble_calls==22);
+    assert(backwards_count==4 && translation_ms==6300 && current_heading==270 && !motors_on);
     reset(); stopped = true; assert(!approach_beacon() && !forwards_count && !ble_calls);
     reset(); storage_failed = true; assert(!approach_beacon() && fault_test(FAULT_REPORT));
     reset(); stop_at_scan = 6; assert(!approach_beacon() && !forwards_count);
@@ -1076,7 +1197,7 @@ static void check_colour_arrival(void){
     reset(); colour_arrive_at_check = 3; complete_on_loose = true;
     assert(approach_beacon() && colour_resets == 1 && forwards_count == 2);
     assert(strict_attempts == 2 && loose_attempts == 1 && colour_checks == 3);
-    assert(strstr(log_text, "ARRIVAL: colour sensor confirms the arrival ring (pink ring 4, blue or purple ring 5) or darker"));
+    assert(strstr(log_text, "ARRIVAL: colour arrival ring verified after lighter ring"));
     // Never on the mat: every attempt keeps the strict gate, one colour check each.
     reset(); complete_after_step = 3;
     assert(approach_beacon() && !loose_attempts && strict_attempts == colour_checks);
@@ -1160,11 +1281,12 @@ static void check_mat_steering(void)
 
     // Started on ring 1 driving along the ring, like the side-on run: scan,
     // turn toward the centre and arrive at ring 4 with no Wi-Fi line at all.
-    // Then started on ring 2 facing straight out, and on the white edge.
+    // Then ring 2 facing straight out and an off-axis outer-ring start.
+    // White-only entry is rejected separately by check_colour_trial_policy.
     static const struct { double x, y, heading; const char *name; } starts[] = {
         {0.0, -0.26, 0, "ring 1, along the ring"},
         {0.20, 0.0, 0, "ring 2, facing out"},
-        {-0.30, 0.10, 90, "white edge, side-on"},
+        {-0.30, 0.10, 0, "outer ring, off-axis"},
     };
     for (unsigned i=0;i<sizeof(starts)/sizeof(*starts);++i) {
         reset(); shipped_steps(); model=true; colour_present=true;
@@ -1179,13 +1301,8 @@ static void check_mat_steering(void)
             assert(false);
         }
         assert(!strict_attempts && loose_attempts==1 && strstr(log_text,"MAT: scan 1 points"));
-        // One scan was enough from each start (ring 1 along the ring: 90
-        // degrees left; ring 2 facing out: 180; white edge: within 4 degrees
-        // of the true centre direction).
-        // One scan was enough from each start (ring 1 along the ring: 90
-        // degrees left; ring 2 facing out: 180; white edge: within 4 degrees
-        // of the true centre direction). Outer steps are 250 ms; within two
-        // rings of arrival they are 100 ms.
+        // One scan is enough from each coloured-ring start. Outer steps are
+        // 250 ms; within two rings of arrival they are 100 ms.
         assert(mat_scans_used==1 && move_count<=4 && !backwards_count);
         for (unsigned m=0;m<move_count;++m)
             assert(moves[m].forwards && (moves[m].ms==250 || moves[m].ms==100));
@@ -1217,7 +1334,7 @@ static void check_near_centre_steps(void)
     static const struct { double x, y, heading; const char *name; } starts[] = {
         {0.0, -0.26, 0, "ring 1, along the ring"},
         {0.20, 0.0, 0, "ring 2, facing out"},
-        {-0.30, 0.10, 90, "white edge, side-on"},
+        {-0.30, 0.10, 0, "outer ring, off-axis"},
         {-0.33, 0.0, 0, "white edge, facing the centre"},
         {0.0, -0.30, 90, "white edge, facing the centre from below"},
     };
@@ -1302,6 +1419,7 @@ static void check_near_centre_steps(void)
 int NAVIGATION_TEST_MAIN(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
+    check_diagonal_fallback(); check_colour_trial_policy();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
     check_v18_steps(); check_mat_steering(); check_near_centre_steps();
@@ -1345,6 +1463,6 @@ int NAVIGATION_TEST_MAIN(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, seven cardinal/diagonal trials, diagonal fallback, foreign-mat rejection, white-only steering refusal, unchanged 3 dB progress margin, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from coloured-ring starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }

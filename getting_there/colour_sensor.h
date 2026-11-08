@@ -71,6 +71,14 @@ bool colour_arrival_check(void);
 // at least one reading. False before the first check, after a failed read,
 // or without a sensor. Navigation uses it to take smaller steps on the mat.
 bool colour_on_mat(void);
+// Raw observations from any reading of the latest complete stationary arrival
+// check. Target requires a coloured ring (RING1 or deeper) of the active mat;
+// foreign requires a coloured ring of another mat. White alone sets neither.
+// With target NONE, any coloured mat is accepted and none is foreign.
+// Both are false before a check, on reset/read failure or without a sensor.
+// These describe surfaces, not GPS positions or obstacle clearance.
+bool colour_target_ring_seen(void);
+bool colour_foreign_mat_seen(void);
 // Mat depth (see colour_zone_depth) of the latest check's last reading;
 // -1 before a check, after a failed read or without a sensor.
 int colour_last_depth(void);

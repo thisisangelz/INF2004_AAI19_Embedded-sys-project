@@ -12,6 +12,7 @@ i2c_inst_t *i2c0 = &bus0;
 static uint8_t selected_reg, sensor_id = 0x44;
 static colour_reading_t script[32];
 static unsigned script_length, script_next;
+static int fail_script_at = -1;
 static bool bus_dead, stopped;
 static unsigned config_writes, reads;
 static char log_text[8192];
@@ -23,7 +24,10 @@ void report_printf(const char *format, ...)
     va_start(args, format);
     int n = vsnprintf(log_text + log_length, sizeof(log_text) - log_length, format, args);
     va_end(args);
-    if (n > 0) log_length += (size_t)n;
+    if (n > 0) {
+        size_t room = sizeof(log_text) - log_length;
+        log_length += (size_t)n < room ? (size_t)n : room - 1;
+    }
 }
 void sleep_ms(uint32_t ms) { (void)ms; }
 void gpio_set_function(uint pin, uint function) { (void)pin; (void)function; }
@@ -47,6 +51,7 @@ int i2c_read_timeout_us(i2c_inst_t *i2c, uint8_t addr, uint8_t *dst, size_t len,
     if (bus_dead) return -2;
     if (selected_reg == 0x12) { dst[0] = sensor_id; return 1; }
     if (selected_reg == 0x13) { dst[0] = 0x01; return 1; } // AVALID
+    if (selected_reg == 0x14 && (int)script_next == fail_script_at) return -2;
     assert(selected_reg == 0x14 && len == 8 && script_next < script_length);
     const colour_reading_t *r = &script[script_next++];
     const uint16_t v[4] = {r->c, r->r, r->g, r->b};
@@ -185,6 +190,104 @@ static void check_arrival_rules(void)
 static colour_reading_t rgb(uint16_t c, uint16_t gr, uint16_t br)
 {
     return (colour_reading_t){.c = c, .r = 1000, .g = gr, .b = br};
+}
+
+static void check_fresh_mat_observations(void)
+{
+    const colour_reading_t floor = at(2900, 922);
+    const colour_reading_t blue1 = rgb(8500, 1265, 1310);
+    const colour_reading_t blue5 = rgb(3300, 1632, 2360);
+    const colour_reading_t purple1 = rgb(8000, 1083, 1120);
+    const colour_reading_t purple5 = rgb(2400, 950, 1410);
+    const colour_reading_t blue_white = rgb(14000, 1204, 1184);
+    const colour_reading_t purple_white = rgb(14000, 1115, 1090);
+    const colour_reading_t unknown = at(400, 900);
+    assert(colour_sensor_init());
+    colour_set_target_mat(COLOUR_MAT_PURPLE);
+    colour_arrival_reset();
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+
+    // AP3 on blue: raw rings remain visible although filtered arrival sees floor.
+    queue3(floor, blue1, floor);
+    assert(!colour_arrival_check() && !colour_on_mat());
+    assert(!colour_target_ring_seen() && colour_foreign_mat_seen());
+    assert(colour_target_mat() == COLOUR_MAT_PURPLE);
+    assert(colour_last_depth() == 0 && !colour_near_arrival(6));
+    queue3(blue5, blue5, blue5);
+    assert(!colour_arrival_check() && colour_foreign_mat_seen());
+    assert(!colour_target_ring_seen());
+
+    // White remains on-mat in the original API, but proves no coloured ring.
+    queue3(blue_white, purple_white, blue_white);
+    assert(!colour_arrival_check() && colour_on_mat());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+    queue3(floor, purple1, floor);
+    assert(!colour_arrival_check() && colour_target_ring_seen());
+    assert(!colour_foreign_mat_seen());
+    // Each observation can be true in a mixed check, independent of last reading.
+    queue3(purple1, blue1, floor);
+    assert(!colour_arrival_check());
+    assert(colour_target_ring_seen() && colour_foreign_mat_seen());
+    queue3(floor, floor, floor);
+    assert(!colour_arrival_check());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+    queue3(unknown, unknown, unknown);
+    assert(!colour_arrival_check());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+
+    // Still requires lighter evidence from a prior check and three fresh darks.
+    colour_arrival_reset();
+    queue3(purple1, purple5, purple5);
+    unsigned before = reads;
+    assert(!colour_arrival_check() && reads == before + COLOUR_ARRIVAL_SAMPLES);
+    queue3(purple5, purple5, purple1);
+    assert(!colour_arrival_check());
+    queue3(purple5, purple5, purple5);
+    before = reads;
+    assert(colour_arrival_check() && reads == before + COLOUR_ARRIVAL_SAMPLES);
+    assert(colour_target_ring_seen() && !colour_foreign_mat_seen());
+
+    // Failure after seeing BOTH rings must discard the partial check as well.
+    queue3(purple1, blue1, purple5);
+    fail_script_at = 2;
+    assert(!colour_arrival_check() && colour_sensor_available());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+    assert(!colour_on_mat() && colour_last_depth() == -1);
+    assert(colour_target_mat() == COLOUR_MAT_PURPLE);
+    fail_script_at = -1;
+    queue3(purple1, blue1, floor);
+    assert(!colour_arrival_check());
+    assert(colour_target_ring_seen() && colour_foreign_mat_seen());
+    colour_arrival_reset();
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+    queue3(purple1, blue1, floor);
+    assert(!colour_arrival_check());
+    bus_dead = true;
+    for (unsigned i = 0; i < 3; ++i) {
+        assert(!colour_arrival_check());
+        assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+    }
+    assert(!colour_sensor_available());
+    before = reads;
+    assert(!colour_arrival_check() && reads == before);
+    bus_dead = false;
+    assert(colour_sensor_init());
+    queue3(purple1, blue1, floor);
+    assert(!colour_arrival_check());
+    assert(colour_target_ring_seen() && colour_foreign_mat_seen());
+    sensor_id = 0;
+    assert(!colour_sensor_init());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+    assert(!colour_arrival_check() && !colour_sensor_available());
+    sensor_id = 0x44;
+    assert(colour_sensor_init());
+    assert(!colour_target_ring_seen() && !colour_foreign_mat_seen());
+    colour_set_target_mat(COLOUR_MAT_NONE);
+    colour_arrival_reset();
+    queue3(blue1, purple1, floor);
+    assert(!colour_arrival_check() && colour_target_ring_seen());
+    assert(!colour_foreign_mat_seen());
+    colour_arrival_reset();
 }
 
 // Blue and purple mats (7 November, two rounds each): every corner of each
@@ -413,6 +516,7 @@ int main(void)
     check_calibration_data();
     check_arrival_rules();
     check_blue_purple();
+    check_fresh_mat_observations();
     check_scan_direction();
     check_departure_floor();
     puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, blue and purple mats with per-mat arrival, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");

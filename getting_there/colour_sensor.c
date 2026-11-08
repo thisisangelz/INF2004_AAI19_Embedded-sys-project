@@ -37,7 +37,14 @@ _Static_assert(COLOUR_ARRIVAL_SAMPLES == 3, "COLOUR log line prints exactly thre
 static bool available;
 // Bit (1u << colour_mat_t) per mat whose lighter surface has been seen.
 static unsigned lighter_mats;
-static bool on_mat;
+// Main-thread observations, packed together and published only after a full check.
+typedef struct {
+    uint8_t on_mat : 1;
+    uint8_t target_ring : 1;
+    uint8_t foreign_mat : 1;
+} colour_observations_t;
+_Static_assert(sizeof(colour_observations_t) == 1, "colour observations fit one byte");
+static colour_observations_t observations;
 static int last_depth = -1;
 // Fewest rings between any reading of the latest check and its mat's arrival
 // ring (0 or less: on it or inside). NOT_ON_MAT when no reading was on a mat.
@@ -61,6 +68,7 @@ static int tcs_read(uint8_t reg, uint8_t *data, size_t length)
 bool colour_sensor_init(void)
 {
     available = false;
+    observations = (colour_observations_t){0};
     i2c_init(TCS_I2C, TCS_BAUD);
     gpio_set_function(TCS_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(TCS_SCL_PIN, GPIO_FUNC_I2C);
@@ -92,13 +100,15 @@ bool colour_sensor_available(void) { return available; }
 void colour_arrival_reset(void)
 {
     lighter_mats = 0;
-    on_mat = false;
+    observations = (colour_observations_t){0};
     last_depth = -1;
     last_rings_to_arrival = NOT_ON_MAT;
     failed_checks = 0;
 }
 
-bool colour_on_mat(void) { return available && on_mat; }
+bool colour_on_mat(void) { return available && observations.on_mat; }
+bool colour_target_ring_seen(void) { return available && observations.target_ring; }
+bool colour_foreign_mat_seen(void) { return available && observations.foreign_mat; }
 int colour_last_depth(void) { return available ? last_depth : -1; }
 bool colour_near_arrival(unsigned rings)
 {
@@ -141,10 +151,12 @@ bool colour_floor_check(bool *floor)
 
 bool colour_arrival_check(void)
 {
-    if (!available) return false;
-    on_mat = false;
+    observations = (colour_observations_t){0};
     last_depth = -1;
     last_rings_to_arrival = NOT_ON_MAT;
+    if (!available) return false;
+    colour_observations_t observed = {0};
+    colour_mat_t target = colour_target_mat();
     colour_zone_t zones[COLOUR_ARRIVAL_SAMPLES];
     colour_mat_t mats[COLOUR_ARRIVAL_SAMPLES];
     colour_reading_t last = {0};
@@ -157,6 +169,17 @@ bool colour_arrival_check(void)
             break;
         }
         zones[i] = colour_classify_mat(&last, &mats[i]);
+        // Raw surface observation, not GPS or an obstacle detector. Colour
+        // access is main-thread only: no firmware callback can observe the
+        // temporary all-mat profile. Keep filtered arrival and logs unchanged.
+        colour_mat_t raw_mat;
+        colour_set_target_mat(COLOUR_MAT_NONE);
+        colour_zone_t raw_zone = colour_classify_mat(&last, &raw_mat);
+        colour_set_target_mat(target);
+        if (raw_zone >= COLOUR_RING1 && raw_mat != COLOUR_MAT_NONE) {
+            if (target == COLOUR_MAT_NONE || raw_mat == target) observed.target_ring = 1;
+            else observed.foreign_mat = 1;
+        }
         // Every reading on the same mat, each at its arrival ring or darker.
         if (!colour_zone_arrived(mats[i], zones[i]) || mats[i] != mats[0]) all_dark = false;
     }
@@ -177,19 +200,20 @@ bool colour_arrival_check(void)
     bool seen_before = (lighter_mats >> mats[0]) & 1u;
     for (unsigned i = 0; i < COLOUR_ARRIVAL_SAMPLES; ++i) {
         if (colour_lighter_zone(mats[i], zones[i])) lighter_mats |= 1u << mats[i];
-        if (zones[i] >= COLOUR_WHITE) on_mat = true;
+        if (zones[i] >= COLOUR_WHITE) observed.on_mat = 1;
         if (mats[i] != COLOUR_MAT_NONE) {
             int rings = colour_zone_depth(colour_arrival_zone(mats[i])) - colour_zone_depth(zones[i]);
             if (rings < last_rings_to_arrival) last_rings_to_arrival = rings;
         }
     }
     last_depth = colour_zone_depth(zones[COLOUR_ARRIVAL_SAMPLES - 1]);
+    observations = observed;
     bool arrived = all_dark && seen_before;
-    report_printf("COLOUR,zones=%s/%s/%s,mats=%s/%s/%s,c=%u,r=%u,g=%u,b=%u,gr=%u,br=%u,lighter_seen=%u,arrived=%u\n",
+    report_printf("COLOUR,zones=%s/%s/%s,mats=%s/%s/%s,c=%u,r=%u,g=%u,b=%u,gr=%u,br=%u,lighter_seen=%u,arrived=%u,target_ring=%u,foreign_mat=%u\n",
                   colour_zone_name(zones[0]), colour_zone_name(zones[1]), colour_zone_name(zones[2]),
                   colour_mat_name(mats[0]), colour_mat_name(mats[1]), colour_mat_name(mats[2]),
                   last.c, last.r, last.g, last.b, colour_gr_x1000(&last), colour_br_x1000(&last),
-                  seen_before, arrived);
+                  seen_before, arrived, observed.target_ring, observed.foreign_mat);
     return arrived;
 }
 
