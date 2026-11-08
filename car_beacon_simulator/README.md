@@ -43,9 +43,11 @@ produces a build error. Both versions use their own real filtering, colour
 classification, motor control and BLE validation. The simulator never copies
 those decisions into its hardware model.
 
-The separate `codex/beacon-simulator` branch contains the older navigation with
-the previously requested **2 dB improvement** tuning. Selecting it tests that
-older code, not the latest main. The source identity is recorded in each trace.
+The app is maintained on the existing **codex/beacon-simulator** branch. Its
+root firmware files still contain the older **2 dB improvement** variant;
+selecting that branch as the robot's source tests that older code. Select
+**codex/three-beacon-route** for the new route firmware, or **origin/main** for
+main's single-target firmware. The source identity is recorded in each trace.
 
 1. Select the source branch or Git ref, then its robot build: AP1, AP2, AP3 or route.
 2. Choose a preset, type coordinates, or drag the car and beacons in the arena. Drag

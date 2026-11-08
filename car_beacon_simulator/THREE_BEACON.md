@@ -1,7 +1,8 @@
 # Three-beacon firmware and simulator
 
-The firmware branch is `codex/three-beacon-route`. The simulator branch is
-`codex/three-beacon-simulator`. Keep them separate; neither is a merge into
+The firmware branch is `codex/three-beacon-route`. The existing simulator branch
+is `codex/beacon-simulator`; its current app includes the three-beacon model.
+Keep them separate; neither is a merge into
 `main`. The simulator can also select `origin/main` to inspect its existing
 single-target behaviour under the same environment.
 
