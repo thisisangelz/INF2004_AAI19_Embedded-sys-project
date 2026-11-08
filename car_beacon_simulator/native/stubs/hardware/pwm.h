@@ -1,3 +1,6 @@
+#ifndef SIM_PWM_H
+#define SIM_PWM_H
+#define NUM_PWM_SLICES 8
 #include "pico/stdlib.h"
 typedef struct { uint16_t wrap; } pwm_config;
 pwm_config pwm_get_default_config(void);
@@ -9,3 +12,5 @@ void pwm_set_gpio_level(uint pin, uint16_t level);
 void pwm_set_wrap(uint slice, uint16_t wrap);
 void pwm_set_clkdiv(uint slice, float divider);
 void pwm_set_enabled(uint slice, bool enabled);
+
+#endif

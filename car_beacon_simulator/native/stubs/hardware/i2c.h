@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include "pico/stdlib.h"
 typedef struct { int unused; } i2c_inst_t;
-extern i2c_inst_t *i2c1;
+extern i2c_inst_t *i2c0, *i2c1;
 uint i2c_init(i2c_inst_t *i2c, uint baud);
 void i2c_deinit(i2c_inst_t *i2c);
 int i2c_write_blocking(i2c_inst_t *i2c, uint8_t addr, const uint8_t *src, size_t len, bool nostop);

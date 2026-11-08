@@ -9,6 +9,12 @@ The user requires experiments to run only on their explicit instruction.
   not authorize running experiments as verification.
 - Static inspection and syntax checks are allowed. Interface tests that use
   mocked data and never execute firmware are also allowed.
+- `node --test tests/test_replay.js` and
+  `python3 -m unittest discover -s tests -p test_backend_models.py -v` use mocked
+  interfaces and independent hardware adapters, not selected firmware. These
+  checks are allowed. Do not replace the Python pattern with the whole suite.
+- `--build-only` compiles and links without executing firmware. Firmware host
+  checks likewise require their explicit `--build-only` flag for build-only work.
 - In the application, only the explicit **Build & run experiment** action may
   request a new firmware execution. Loading a page, editing starting conditions,
   selecting a source or preset, loading setup/trace files, inspecting history,

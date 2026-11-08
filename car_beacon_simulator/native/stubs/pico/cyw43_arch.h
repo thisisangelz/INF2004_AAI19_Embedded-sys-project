@@ -1,3 +1,5 @@
+#ifndef SIM_CYW43_ARCH_H
+#define SIM_CYW43_ARCH_H
 #include "pico/stdlib.h"
 typedef struct { int unused; } cyw43_wifi_scan_options_t;
 typedef struct { int16_t rssi; uint8_t ssid_len; uint8_t ssid[32]; uint8_t bssid[6]; } cyw43_ev_scan_result_t;
@@ -15,3 +17,8 @@ void cyw43_arch_enable_ap_mode(const char *ssid,const char *password,uint32_t au
 void cyw43_arch_gpio_put(uint pin,bool enabled);
 int cyw43_wifi_pm(int *state,uint32_t mode);
 uint32_t cyw43_pm_value(uint8_t mode,uint16_t sleep,uint8_t li,uint8_t dtim,uint8_t assoc);
+
+// Radio callbacks run serially on the host; these retain the firmware lock boundary.
+static inline void cyw43_arch_lwip_begin(void) { }
+static inline void cyw43_arch_lwip_end(void) { }
+#endif

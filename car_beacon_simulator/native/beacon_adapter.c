@@ -6,6 +6,9 @@
 #include "sim.h"
 #include "beacon_adapter.h"
 #include "btstack.h"
+#define SIM_STR_(x) #x
+#define SIM_STR(x) SIM_STR_(x)
+#define SIM_BEACON_LABEL SIM_STR(SIM_BEACON_ID)
 
 static int beacon_printf(const char *format, ...);
 static void beacon_sleep(uint32_t ms);
@@ -39,12 +42,14 @@ static uint16_t notification_length;
 static int beacon_printf(const char *fmt, ...) {
     char text[4096]; va_list a; va_start(a,fmt);
     int n=vsnprintf(text,sizeof(text),fmt,a); va_end(a);
-    sim_log("beacon",text); return n;
+    sim_log("beacon" SIM_BEACON_LABEL,text); return n;
 }
 static void beacon_sleep(uint32_t ms) {
     (void)ms;
     // Beacon boots before the robot run. Yield after startup reaches its idle
     // loop; its registered event callbacks remain live throughout the run.
+    // Foreground idle-loop heartbeat is not executed after this yield; alarm
+    // callbacks and every radio/protocol callback continue under device ownership.
     if(booting && stack_started) longjmp(boot_return,1);
 }
 static void beacon_att_init(const uint8_t *db,att_read_callback_t read,att_write_callback_t write) {
@@ -72,7 +77,7 @@ uint8_t att_server_notify(hci_con_handle_t handle,uint16_t attribute,const uint8
     (void)handle;(void)attribute;
     if(length>sizeof(notification_out)) return ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH;
     memcpy(notification_out,data,length); notification_length=length;
-    if(length>=3 && data[0]==MSG_REPLY_DATA) sim.tx_bytes+=data[2];
+    if(length>=3 && data[0]==MSG_REPLY_DATA) { sim.tx_bytes+=data[2]; sim_beacon(SIM_BEACON_ID)->tx_bytes+=data[2]; }
     return 0;
 }
 void cyw43_arch_enable_ap_mode(const char *ssid,const char *password,uint32_t auth) {
@@ -86,45 +91,56 @@ uint32_t cyw43_pm_value(uint8_t mode,uint16_t sleep,uint8_t li,uint8_t dtim,uint
 bool powerbank_load_start(void) { return true; } // physical power load is outside simulation
 
 static void update_stats(void) {
-    sim.peer_state=beacon_status_name(beacon_status);
-    if(beacon_status==BEACON_STATUS_FILE_VERIFIED) sim.peer_verified=true;
-    if(beacon_status==BEACON_STATUS_COMPLETE) sim.peer_complete=true;
-    if(beacon_status==BEACON_STATUS_HANDSHAKE) sim.peer_verified=sim.peer_complete=false;
+    SimBeacon *b=sim_beacon(SIM_BEACON_ID);
+    b->peer_state=beacon_status_name(beacon_status);
+    if(beacon_status==BEACON_STATUS_FILE_VERIFIED && !b->verified) { b->verified=true; ++b->verified_events; }
+    if(beacon_status==BEACON_STATUS_COMPLETE && !b->complete) { b->complete=true; ++b->complete_events; }
+    if(beacon_status==BEACON_STATUS_HANDSHAKE) b->verified=b->complete=false;
+    // Legacy aggregate fields describe the connected peer (AP1 before connection).
+    sim.peer_state=b->peer_state; sim.peer_verified=b->verified; sim.peer_complete=b->complete;
 }
 void native_beacon_boot(void) {
-    booting=true;
+    sim_device=SIM_BEACON_ID; booting=true;
     if(!setjmp(boot_return)) (void)beacon_firmware_main();
-    booting=false; update_stats();
+    booting=false; update_stats(); sim_device=0;
 }
 void native_beacon_connect(bool connected) {
     if(!server_hci) return;
+    int owner=sim_device; sim_device=SIM_BEACON_ID;
     if(connected) {
+        ++sim_beacon(SIM_BEACON_ID)->connections;
         uint8_t p[21]={HCI_EVENT_LE_META,19,HCI_SUBEVENT_LE_CONNECTION_COMPLETE,0,42,0};
         server_hci(HCI_EVENT_PACKET,0,p,sizeof(p));
     } else {
         uint8_t p[]={HCI_EVENT_DISCONNECTION_COMPLETE,4,0,42,0,0x13};
         server_hci(HCI_EVENT_PACKET,0,p,sizeof(p));
     }
-    update_stats();
+    update_stats(); sim_device=owner;
 }
 int native_beacon_enable_notifications(void) {
     uint8_t config[]={1,0};
     if(!server_write) return ATT_ERROR_UNLIKELY_ERROR;
+    int owner=sim_device; sim_device=SIM_BEACON_ID;
     int result=server_write(42,ATT_CHARACTERISTIC_0xFF21_01_CLIENT_CONFIGURATION_HANDLE,0,0,config,2);
-    update_stats(); return result;
+    update_stats(); sim_device=owner; return result;
 }
 int native_beacon_write(uint8_t *data,uint16_t length) {
     if(!server_write) return ATT_ERROR_UNLIKELY_ERROR;
+    int owner=sim_device; sim_device=SIM_BEACON_ID;
     unsigned before=received_file_length;
     int result=server_write(42,ATT_CHARACTERISTIC_0xFF21_01_VALUE_HANDLE,0,0,data,length);
-    if(received_file_length>before) sim.rx_bytes+=received_file_length-before;
-    sim.received_length=received_file_length; update_stats(); return result;
+    SimBeacon *b=sim_beacon(SIM_BEACON_ID);
+    if(received_file_length>before) { sim.rx_bytes+=received_file_length-before; b->rx_bytes+=received_file_length-before; }
+    b->received_length=sim.received_length=received_file_length;
+    update_stats(); sim_device=owner; return result;
 }
 uint16_t native_beacon_take_notification(uint8_t *out) {
     uint16_t length=notification_length;
     memcpy(out,notification_out,length); notification_length=0; return length;
 }
 uint16_t native_beacon_value_handle(void) { return ATT_CHARACTERISTIC_0xFF21_01_VALUE_HANDLE; }
+uint16_t native_beacon_service_start(void) { return ATT_SERVICE_0xFF20_START_HANDLE; }
+uint16_t native_beacon_service_end(void) { return ATT_SERVICE_0xFF20_END_HANDLE; }
 const uint8_t *native_beacon_advertisement(uint8_t *length) {
     *length=advertised?radio_ad_length:0; return radio_ad;
 }

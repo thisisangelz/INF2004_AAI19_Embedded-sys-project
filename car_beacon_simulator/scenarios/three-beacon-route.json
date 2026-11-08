@@ -1,0 +1,15 @@
+{
+  "ref": "codex/three-beacon-route",
+  "build_target": "route",
+  "moving": false,
+  "scenario": {
+    "x": 0, "y": 0, "heading": 0,
+    "mat_radius": 0.35, "sensor_offset": 0.08, "box_radius": 0.07,
+    "colour_enabled": 1, "radio_range": 5,
+    "beacons": [
+      {"id": 1, "x": 1, "y": 0, "mat": "pink"},
+      {"id": 2, "x": 1, "y": 1.5, "mat": "blue"},
+      {"id": 3, "x": -0.5, "y": 1.5, "mat": "purple"}
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+#ifndef MOCK_BTSTACK_CONFIG_H
+#define MOCK_BTSTACK_CONFIG_H
+#define HCI_ACL_PAYLOAD_SIZE 64
+#define ENABLE_BLE
+#endif

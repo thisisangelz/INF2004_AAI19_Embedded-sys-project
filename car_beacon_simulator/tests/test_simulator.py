@@ -5,6 +5,7 @@ scenarios intentionally fail: failure must remain visible, never be corrected
 by a simulator that secretly steers towards the known beacon coordinates.
 """
 import math
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -33,7 +34,12 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(f['faults'],0)
         self.assertEqual((f['left'],f['right']),(0,0))
         self.assertTrue(any(f['buzzer'] for f in d['frames']))
-        self.assertLess(f['distance'],.27)
+        # Proximity comes from the selected firmware, not a fixed 25 cm target.
+        # Radio reports are rounded to integer dBm before firmware filtering.
+        self.assertGreaterEqual(f['ble'],f['ble_threshold']-.5-1e-6)
+        # v18 also plays startup, calibration and in-range cues. Those are
+        # telemetry, not additional payloads or evidence of route completion.
+        self.assertTrue(any('COMPLETION BEEPS:' in entry['message'] for entry in d['logs']))
 
     def test_identical_inputs_produce_identical_execution(self):
         again=self.run_scene(x=0,y=0,bx=1,by=0)
@@ -48,9 +54,19 @@ class SimulationTests(unittest.TestCase):
             if abs(b['distance']-a['distance'])<1e-10:
                 self.assertEqual(b['wifi'],a['wifi'])
         far=self.run_scene(x=-2,y=-1,bx=1,by=1)
-        self.assertFalse(far['result']['success'])
-        self.assertGreater(far['result']['distance'],3)
-        self.assertTrue(any('no further direction search' in l['message'] for l in far['logs']))
+        initial=[]
+        for entry in far['logs']:
+            if 'DIRECTION SEARCH' in entry['message']: break
+            initial.append(entry['message'])
+        self.assertTrue(any('continue through inconclusive readings' in m for m in initial))
+        points=[int(m.group(1)) for text in initial
+                for m in [re.search(r'FOLLOW_POINT,powered_ms=(\d+)',text)] if m]
+        self.assertTrue(points)
+        self.assertGreater(max(points),2400)
+        # Do not prescribe a successful route: preserve whichever result the
+        # actual firmware reports after its own backtracking/limit decisions.
+        self.assertEqual(far['result']['success'],any(
+            entry['message'].strip()=='RESULT: PAYLOAD CONFIRMED' for entry in far['logs']))
 
     def test_close_start_transfers_without_moving(self):
         d=self.run_scene(x=0,y=0,bx=.15,by=0)
@@ -119,9 +135,14 @@ class SimulationTests(unittest.TestCase):
             self.assertIn('static bool approach_beacon(void)\n{',original)
             nav.write_text(original.replace('static bool approach_beacon(void)\n{',
                 'static bool approach_beacon(void)\n{\n    report_printf("SIM TEST: injected stop\\n"); return false;',1))
-            payload=repo/'getting_there/payload_client.c'
-            payload.write_text(payload.read_text().replace('#define CLOSE_RSSI_DBM (-50)',
-                                                          '#define CLOSE_RSSI_DBM (-30)'))
+            payload=repo/'getting_there/payload_client.h'
+            if '#define AP1_CLOSE_RSSI_DBM' not in payload.read_text():
+                payload=repo/'getting_there/payload_client.c'
+            payload_original=payload.read_text()
+            modified,count=re.subn(r'(#define (?:AP1_CLOSE_RSSI_DBM|CLOSE_RSSI_DBM))\s+\(-?\d+\)',
+                                   r'\1 (-30)',payload_original,count=1)
+            self.assertEqual(count,1,'The test must change the real threshold definition')
+            payload.write_text(modified)
             d=s.run_simulation(repo,'working-tree',self.sdk,dict(x=0,y=0,bx=1,by=0),save=False)
             self.assertFalse(d['result']['success'])
             self.assertEqual(d['result']['path'],0)
@@ -131,8 +152,7 @@ class SimulationTests(unittest.TestCase):
                              'Branch threshold changes must not change the environment signal')
             # Now edit only the beacon, and let the original car run normally.
             nav.write_text(original)
-            payload.write_text(payload.read_text().replace('#define CLOSE_RSSI_DBM (-30)',
-                                                          '#define CLOSE_RSSI_DBM (-50)'))
+            payload.write_text(payload_original)
             beacon=repo/self.baseline['metadata']['beacon_source']
             self.assertIn('Reply file from beacon AP%d',beacon.read_text())
             beacon.write_text(beacon.read_text().replace('Reply file from beacon AP%d',
