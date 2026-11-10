@@ -47,7 +47,13 @@
           Math.round(s.medianStepMovedMs) + ' ms</b> forward.');
       }
       out.push('Wi-Fi scanning used <b>' + pct(s.scanMs / s.wallMs) + '</b> of the run (' + s.wifiScans +
-        ' scans). Each stop takes two batches of five scans before the robot may move again.');
+        ' scans). A stationary stop takes two batches of scans before the robot may move on.');
+      if (s.cruiseSegments) {
+        const ends = Object.keys(s.cruiseEnds).map((k) => s.cruiseEnds[k] + ' ended on ' + k).join(', ');
+        out.push('<b>Cruise:</b> ' + s.movingScans + ' of ' + s.wifiScans + ' Wi-Fi scans (' + pct(s.movingScans / s.wifiScans) +
+          ') were taken while driving, in ' + s.cruiseSegments + ' segment' + (s.cruiseSegments > 1 ? 's' : '') + ' (' + ends +
+          '). Largest control-loop gap: <b>' + s.cruiseMaxGapMs + ' ms</b>.');
+      }
       if (s.bleChecks) out.push('The robot made <b>' + s.bleChecks + '</b> stationary BLE proximity checks (' + s.bleReadings + ' filtered readings).');
       if (s.dipChecks) out.push('<b>' + s.dipChecks + '</b> dip checks: the signal fell and the robot stopped to re-measure before moving.');
       if (s.imuFaults) out.push('<b>' + s.imuFaults + '</b> IMU read error' + (s.imuFaults > 1 ? 's' : '') + ' during a drive. The robot stopped, recovered the sensor and ended that block early.');
@@ -100,7 +106,7 @@
     if (!run.timed) return '';
     const s = run.stats;
     const rows = [
-      ['Wi-Fi scanning', s.scanMs, 'var(--c-scan)', 'five scans per batch, two batches per stop'],
+      ['Wi-Fi scanning', s.scanMs, 'var(--c-scan)', 'stationary batches, two per stop'],
       ['Driving', s.driveMs, 'var(--c-drive)', 'time the motors ran'],
       ['Turning', s.turnMs, 'var(--c-turn)', 'gyro-controlled turns'],
       ['Colour sensor', s.colourMs, 'var(--c-colour)', 'about 345 ms per arrival check'],
@@ -111,7 +117,7 @@
       '<p class="sub">Share of the run time, from the first Wi-Fi scan to the last stop.</p>' +
       '<div class="bar-use" role="img" aria-label="Time use">' + rows.map((r) => '<i style="width:' + (r[1] / total * 100) + '%;background:' + r[2] + '" title="' + r[0] + '"></i>').join('') + '</div>' +
       '<div class="legend">' + rows.map((r) => '<div><span class="sw" style="background:' + r[2] + '"></span><span>' + r[0] + '</span><span class="n">' + secs(r[1]) + '</span><span class="p">' + pct(r[1] / total) + '</span><small>' + r[3] + '</small></div>').join('') + '</div>' +
-      '<p class="foot">Before the first scan: ' + secs(s.startupMs, 0) + ' (power-up, log erase, gyro calibration, Bluetooth start). Not included above. Drive time is what the motors ran when the log reports it (DRIVE OK), otherwise the commanded time. Turn time is the logged turn time. Colour time is an estimate.</p></section>';
+      '<p class="foot">Before the first scan: ' + secs(s.startupMs, 0) + ' (power-up, log erase, gyro calibration, Bluetooth start). Not included above. Scans taken while driving overlap the driving time and are not counted under Wi-Fi scanning. Drive time is what the motors ran when the log reports it (DRIVE OK), otherwise the commanded time. Turn time is the logged turn time. Colour time is an estimate.</p></section>';
   }
 
   // ---------- timeline ----------
@@ -151,11 +157,11 @@
     const lo = Math.floor((Math.min.apply(null, vals) - 3) / 5) * 5;
     const hi = Math.ceil((Math.max.apply(null, vals) + 3) / 5) * 5;
     const y1 = (v) => p1.y + p1.h - ((v - lo) / (hi - lo)) * p1.h;
-    panel(p1.y, p1.h, 'Signal strength (dBm): Wi-Fi scans, stops, BLE checks', niceTicks(lo, hi, 5).map((v) => ({ v })), y1);
+    panel(p1.y, p1.h, 'Signal strength (dBm): Wi-Fi scans (green = taken while driving), stops, BLE checks', niceTicks(lo, hi, 5).map((v) => ({ v })), y1);
     [[-58, 'BLE gate −58'], [-85, 'with colour −85']].forEach((g) => {
       if (g[0] > lo && g[0] < hi) parts.push('<line class="gate" x1="' + L + '" x2="' + (W - R) + '" y1="' + y1(g[0]) + '" y2="' + y1(g[0]) + '"/><text class="gate-t" x="' + (W - R - 4) + '" y="' + (y1(g[0]) - 4) + '" text-anchor="end">' + g[1] + '</text>');
     });
-    raw.forEach((e) => parts.push('<circle class="raw" cx="' + x(rel(e.t)) + '" cy="' + y1(e.d.dbm) + '" r="1.8"/>'));
+    raw.forEach((e) => parts.push('<circle class="raw' + (e.d.stopped === 0 ? ' mv' : '') + '" cx="' + x(rel(e.t)) + '" cy="' + y1(e.d.dbm) + '" r="' + (e.d.stopped === 0 ? 2.8 : 1.8) + '"/>'));
     if (pts.length) {
       parts.push('<polyline class="line" points="' + pts.map((e) => x(rel(e.t)) + ',' + y1((e.d.dbm1 + e.d.dbm2) / 2)).join(' ') + '"/>');
       pts.forEach((e) => parts.push('<circle class="pt" cx="' + x(rel(e.t)) + '" cy="' + y1((e.d.dbm1 + e.d.dbm2) / 2) + '" r="3.4"><title>Stop ' + e.d.point + ': ' + e.d.dbm1 + ' / ' + e.d.dbm2 + ' dBm</title></circle>'));
@@ -316,7 +322,7 @@
 
   // ---------- events ----------
   const CATS = {
-    decisions: ['follow', 'dip', 'dip_check', 'return', 'trial', 'direction', 'approach', 'route'],
+    decisions: ['follow', 'dip', 'dip_check', 'return', 'trial', 'direction', 'approach', 'route', 'cruise'],
     colour: ['mat', 'mat_step', 'arrival', 'step', 'colour_scan_result'],
     problems: ['failed', 'fault', 'result', 'faultmask', 'imu'],
     transfer: ['xfer'],

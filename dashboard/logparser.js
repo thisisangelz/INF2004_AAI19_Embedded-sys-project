@@ -58,6 +58,8 @@
       return make('ble', { dbm: +m[1], need: +m[2], close: +m[3], of: +m[4] });
     if (/^BLE-only check:/.test(line)) return make('ble_check');
     if (/^AP\d (GATT|PAYLOAD COMPLETE|payload)/.test(line)) return make('xfer');
+    if (line.startsWith('CRUISE,')) return make('cruise', kv(line));
+    if (line.startsWith('CRUISE: ')) return make('cruise_note');
     if (line.startsWith('FOLLOW: ')) return make('follow');
     if (line.startsWith('DIP: ')) return make('dip');
     if (line.startsWith('RETURN: ')) return make('return');
@@ -130,7 +132,7 @@
       case 'return': return 'return';
       case 'trial': return 'search';
       case 'direction': return 'search';
-      case 'route': return null;
+      case 'route': case 'cruise': case 'cruise_note': return null;
       case 'mat': case 'mat_step': return 'mat';
       case 'approach': return /resuming|follow current/.test(text) ? 'follow' : null;
       case 'arrival': return /confirms/.test(text) ? 'transfer' : null;
@@ -274,6 +276,10 @@
         colourChecks: colour.length,
         matScans: scans.length,
         wifiScans: of('rssi_raw').length,
+        movingScans: of('rssi_raw').filter((e) => e.d.stopped === 0).length,
+        cruiseSegments: of('cruise').length,
+        cruiseEnds: of('cruise').reduce((acc, e) => { acc[e.d.end] = (acc[e.d.end] || 0) + 1; return acc; }, {}),
+        cruiseMaxGapMs: of('cruise').reduce((m, e) => Math.max(m, Number(e.d.max_gap_ms) || 0), 0),
       },
       stops, phases, segs, pathStops, scans,
     };

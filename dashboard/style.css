@@ -117,6 +117,7 @@ svg .ttl { fill: var(--fg); font-weight: 600; font-size: 12px; }
 svg .grid { stroke: var(--grid); stroke-width: 1; }
 svg .axis { stroke: var(--rule); stroke-width: 1; }
 svg .raw { fill: var(--raw); opacity: .55; }
+svg .raw.mv { fill: var(--c-drive); opacity: .95; }
 svg .line { fill: none; stroke: var(--accent); stroke-width: 1.6; }
 svg .pt { fill: var(--accent); stroke: var(--surface); stroke-width: 1.2; }
 svg .ble { fill: none; stroke: var(--c-turn); stroke-width: 1.2; opacity: .75; }
