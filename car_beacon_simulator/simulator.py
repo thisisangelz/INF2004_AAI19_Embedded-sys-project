@@ -28,6 +28,8 @@ RUNS = ROOT / 'runs'
 LOCK = threading.Lock()
 REQUIRED = ['getting_there.c', 'motion.c', 'payload_client.c', 'faults.c']
 OPTIONAL = ['wifi_sampler.c', 'line_search.c', 'colour_sensor.c', 'colour_mat.c', 'robot_cues.c', 'target_beacon.c']
+ROBOT_BUILDS = ('ap1', 'ap2', 'ap3', 'route', 'route2')
+TWO_BEACON_DEFINE = 'ROUTE_BEACON_COUNT=2'
 SOURCE_FOLDERS = ['getting_there','ble_transfer','ble_transfer_powerbank',
                   'common', 'picow_access_point','picow_access_point_powerbank',
                   'picow_access_point2','picow_access_point2_powerbank',
@@ -169,7 +171,7 @@ def beacon_configs(source):
 
 
 def compile_firmware(repo, ref, sdk, moving=False, build_target='ap1'):
-    if build_target not in ('ap1', 'ap2', 'ap3', 'route'): raise ValueError('Invalid build_target')
+    if build_target not in ROBOT_BUILDS: raise ValueError('Invalid build_target')
     source, info = source_snapshot(repo, ref)
     btstack = sdk/'lib/btstack/src'
     cc = shutil.which(os.environ.get('CC','clang')) or shutil.which('gcc')
@@ -180,6 +182,12 @@ def compile_firmware(repo, ref, sdk, moving=False, build_target='ap1'):
         raise ValueError('Selected source does not support robot target selection')
     if build_target == 'route' and not any('THREE_BEACON_ROUTE' in p.read_text() for p in fw.glob('*') if p.suffix in ('.c','.h')):
         raise ValueError('Selected source does not implement THREE_BEACON_ROUTE')
+    if build_target == 'route2':
+        cmake = fw/'CMakeLists.txt'
+        if not cmake.is_file() or not re.search(
+                r'target_compile_definitions\s*\(\s*getting_there_route2\s+PRIVATE\s+'
+                + TWO_BEACON_DEFINE + r'\s*\)', cmake.read_text()):
+            raise ValueError('Selected source does not implement the two-beacon route (getting_there_route2)')
     digest = hashlib.sha256()
     digest.update(Path(__file__).read_bytes())
     for p in sorted((ROOT/'native').rglob('*')):
@@ -224,6 +232,7 @@ def compile_firmware(repo, ref, sdk, moving=False, build_target='ap1'):
         if (fw/'target_beacon.h').exists() and 'target_beacon_id(' in (fw/'target_beacon.h').read_text():
             flags += ['-DSIM_DYNAMIC_TARGET_API=1']
         if build_target == 'route': flags += ['-DTHREE_BEACON_ROUTE=1']
+        elif build_target == 'route2': flags += ['-D'+TWO_BEACON_DEFINE]
         else: flags += ['-DTARGET_BEACON_ID='+build_target[-1]]
         objects = []
         symbols = ['beacon_firmware_main','native_beacon_boot','native_beacon_connect','native_beacon_enable_notifications',
@@ -357,7 +366,7 @@ def main():
     parser.add_argument('--port',type=int,default=8765)
     parser.add_argument('--headless',action='store_true')
     parser.add_argument('--build-only',action='store_true')
-    parser.add_argument('--build-target',choices=('ap1','ap2','ap3','route'),default='ap1')
+    parser.add_argument('--build-target',choices=ROBOT_BUILDS,default='ap1')
     parser.add_argument('--ref')
     parser.add_argument('--moving-samples',action='store_true')
     parser.add_argument('--scenario',type=Path)

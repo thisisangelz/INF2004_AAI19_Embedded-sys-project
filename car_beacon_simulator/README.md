@@ -1,6 +1,6 @@
 # Beacon Lab
 
-A separate, local 2D simulator for single-beacon tests and a three-beacon route.
+A separate, local 2D simulator for single-beacon tests and two- or three-beacon routes.
 It executes the actual robot and isolated AP1/AP2/AP3 beacon C firmware from a
 selected Git branch while replacing the physical hardware with
 deterministic models. The source repository, its checked-out branch, and firmware
@@ -35,8 +35,11 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
 
 ## Run an experiment
 
-Select **codex/three-beacon-route** and the **route** robot build to test the new
-AP1 → AP2 → AP3 firmware. Select **origin/main** with a single-target build to
+Select **codex/three-beacon-route**, then choose **Two-beacon route** (AP1 → AP2)
+or **Three-beacon route** (AP1 → AP2 → AP3) under **Robot build**.
+The dropdown selects real firmware and sets the matching default radio layout.
+You can still disable radios separately to test missing beacons.
+Select **origin/main** with a single-target build to
 compare main's existing v18 navigation and colour gate. Selecting a route build
 does not turn single-target source into route firmware: an incompatible source
 produces a build error. Both versions use their own real filtering, colour
@@ -49,7 +52,7 @@ selecting that branch as the robot's source tests that older code. Select
 **codex/three-beacon-route** for the new route firmware, or **origin/main** for
 main's single-target firmware. The source identity is recorded in each trace.
 
-1. Select the source branch or Git ref, then its robot build: AP1, AP2, AP3 or route.
+1. Select the source branch or Git ref, then the robot build.
 2. Choose a preset, type coordinates, or drag the car and beacons in the arena. Drag
    the small green circle above the car around its centre to rotate its starting
    direction; the Heading field updates with it. All numeric inputs accept two
@@ -258,6 +261,7 @@ negotiation. Discovery handle ranges come from the selected beacon's generated
 GATT database. These are transport interfaces, not bypasses of firmware checks.
 Single-target success requires `RESULT: PAYLOAD CONFIRMED`, after reply length/CRC
 validation and a valid target `COMPLETE_ACK`. Route success requires the actual
-firmware's `RESULT: ROUTE COMPLETE` after all three verified transfers. A BLE
+firmware's `RESULT: ROUTE COMPLETE` after all transfers required by the selected
+route (mask `0x3` for two or `0x7` for three). A BLE
 connection or one completed leg alone is not a successful route. The beacon
 protocol is compiled from the selected source, independently for each identity.

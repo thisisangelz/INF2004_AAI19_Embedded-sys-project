@@ -6,6 +6,7 @@ const keys=[...legacyKeys,'b2x','b2y','b3x','b3y','m1x','m1y','m2x','m2y','m3x',
 const setupControls=[...keys,'preset','branch','customRef','moving','robotBuild','beaconCount','singleBeacon','matLayout','mat1','mat2','mat3','colour_enabled','runBtn','fetchBtn','importFile','saveScenario','loadTraceBtn','traceFile','editStartBtn'];
 const beaconColours={1:'#ff8fbd',2:'#7bafff',3:'#bf9bff'};
 const matColours={pink:'#ff8fbd',blue:'#7bafff',purple:'#bf9bff',none:'#607786'};
+const routeTargets={route:[1,2,3],route2:[1,2]};
 const triangle={x:0,y:0,heading:0,bx:1,by:0,b2x:1,b2y:1.5,b3x:-.5,b3y:1.5};
 let scenarioExtras={},twoBeaconIds=[1,2],customMatIds=[1,2,3];
 const presets={triangle,rearward:{...triangle,heading:180},sideways:{...triangle,heading:90},straight:{x:0,y:0,heading:0,bx:1,by:0},diagonal:{x:0,y:0,heading:0,bx:1,by:1},far:{x:-2,y:-1,heading:0,bx:1,by:1},behind:{x:0,y:0,heading:0,bx:-1,by:0},close:{x:0,y:0,heading:0,bx:.15,by:0}};
@@ -97,13 +98,13 @@ function branchNote(){
   }else details.textContent='Source paths are resolved and recorded when you build.';
   const supported=!custom&&current?.supported_builds;
   for(const option of $('robotBuild').options)option.disabled=Array.isArray(supported)&&!supported.includes(option.value);
-  $('buildNote').textContent=Array.isArray(supported)&&!supported.includes(build)?`This source does not support robot ${build}. Select a compatible source or build.`:'Requires a compatible source build. Incompatible builds report an error; no controller is substituted.';
+  $('buildNote').textContent=Array.isArray(supported)&&!supported.includes(build)?`This source does not support robot ${build}. Select a compatible source or build.`:routeTargets[build]?'Switching routes sets the matching radios. You can change enabled radios separately to test missing beacons.':'Requires a compatible source build.';
 }
 
 // A threshold is known only from compiled firmware telemetry; legacy traces used -50.
-function firmwareThreshold(f){return run?(activeValue(f,'ble_threshold')??(run.metadata.robot_build==='route'?null:-50)):null;}
+function firmwareThreshold(f){return run?(activeValue(f,'ble_threshold')??(routeTargets[run.metadata.robot_build]?null:-50)):null;}
 function previewFrame(){
-  const s=scenario(),id=$('robotBuild').value==='route'?1:Number($('robotBuild').value.slice(2));
+  const s=scenario(),build=$('robotBuild').value,id=routeTargets[build]?.[0]??Number(build.slice(2));
   const beacons=s.beacons.map(b=>{
     const distance=Math.hypot(s.x-b.x,s.y-b.y);
     return {...b,distance,wifi:Math.max(-126,Math.min(-1,s.wifi_ref-10*s.exponent*Math.log10(Math.max(.01,distance)))),ble:Math.max(-126,Math.min(-1,-50-10*s.exponent*Math.log10(Math.max(.01,distance)/s.ble_radius))),peer_state:'Advertising',rx_bytes:0,tx_bytes:0};
@@ -151,8 +152,8 @@ function applyPreset(name){
   delete next.beacons;delete next.mats;
   // Presets alter placement, while build/source and illustrative model choices stay explicit.
   for(const k of ['bx','by','b2x','b2y','b3x','b3y'])next[k]=preset[k]??Number($(k).value);
-  if(isTriangle)next.beacons=[1,2,3].map(id=>({id,x:next[beaconPrefix(id)+'x'],y:next[beaconPrefix(id)+'y'],mat:$('mat'+id).value}));
-  else next.beacons=setupBeacons().filter(b=>enabledIds().includes(b.id)).map(b=>({...b,x:next[beaconPrefix(b.id)+'x'],y:next[beaconPrefix(b.id)+'y']}));
+  const ids=isTriangle?(routeTargets[$('robotBuild').value]??[1,2,3]):enabledIds();
+  next.beacons=setupBeacons().filter(b=>ids.includes(b.id)).map(b=>({...b,x:next[beaconPrefix(b.id)+'x'],y:next[beaconPrefix(b.id)+'y']}));
   applyScenario(next);
 }
 function fitView(){
@@ -277,11 +278,12 @@ function drawChart(){
 function setText(id,text){$(id).textContent=text;}
 function routeStatus(f,id){
   if(Number.isInteger(f.completed_mask))return f.completed_mask&(1<<(id-1))?'Firmware verified':targetId(f)===id?'Active target':'Pending';
-  if(run?.metadata.robot_build!=='route'&&id===1&&f.payload_verified)return 'Firmware verified';
+  if(!routeTargets[run?.metadata.robot_build]&&id===1&&f.payload_verified)return 'Firmware verified';
   return targetId(f)===id?'Active target':'Not recorded';
 }
 function renderRoute(f,s){
-  const ids=run?.metadata.robot_build==='route'||!run&&$('robotBuild').value==='route'?[1,2,3]:beaconsFor(s).map(b=>b.id);
+  const build=run?(run.metadata.robot_build||'ap1'):$('robotBuild').value;
+  const ids=routeTargets[build]??beaconsFor(s).map(b=>b.id);
   $('routeProgress').innerHTML=ids.map(id=>{
     const peer=f.beacons?.find(b=>b.id===id),enabled=beaconsFor(s).some(b=>b.id===id),status=routeStatus(f,id);
     const transfer=(peer?.peer_complete??peer?.complete)?'Beacon transfer complete':peer?.peer_state||'No beacon telemetry';
@@ -318,7 +320,7 @@ function renderStats(){
   setText('peerState',available?telemetry.peer_state:'Target radio absent');setText('wifiModel',available?sampled(telemetry.wifi):'Unavailable');setText('bleModel',available?sampled(telemetry.ble):'Unavailable');setText('bleRead',sampled(telemetry.ble_observed));
   setText('bleAverage',telemetry.ble_filtered===-127?`${telemetry.ble_samples} / 12 samples`:sampled(telemetry.ble_filtered));setText('closeCount',`${telemetry.ble_close_count??0} / 3`);setText('bleCounts',`${telemetry.ble_reports??0} / ${telemetry.ble_attempts??0}`);setText('bytes',`${telemetry.rx_bytes??0} / ${telemetry.tx_bytes??0} bytes`);
   setText('peerCRC',(peer.peer_verified??peer.verified??f.peer_verified)?'Verified':'Pending');
-  const verified=Number.isInteger(f.completed_mask)?!!(f.completed_mask&(1<<(targetId(f)-1))):run?.metadata.robot_build!=='route'&&f.payload_verified;
+  const verified=Number.isInteger(f.completed_mask)?!!(f.completed_mask&(1<<(targetId(f)-1))):!routeTargets[run?.metadata.robot_build]&&f.payload_verified;
   setText('robotCRC',verified?'Verified + final ACK':'Pending');$('peerCRC').className=(peer.peer_verified??peer.verified??f.peer_verified)?'good':'';$('robotCRC').className=verified?'good':'';
   setText('colourRead',colourText(f));
   const collision=f.box_collision??f.collision;setText('boxCollision',collision===undefined?'Not recorded':collision?'Collision flagged':'Clear');$('boxCollision').className=collision?'bad':'';
@@ -344,8 +346,9 @@ function loadRun(data,autoplay=false){
   $('runStatus').textContent=`${autoplay?'New experiment':'Recorded execution'} · Run ${run.id} · ${clock(run.result.t)} total. ${autoplay?'Playing from the start at the selected speed.':'Paused; press Play to view it.'}`;
   $('playBtn').textContent=playing?'Ⅱ':'▶';$('outcome').classList.toggle('failed',!run.result.success);
   setText('outcomeIcon',run.result.success?'✓':'!');
-  setText('outcomeTitle',run.result.success?(run.metadata.robot_build==='route'?'Route confirmed by the firmware':'Payload confirmed by the firmware'):'The firmware stopped without a confirmed payload');
-  setText('outcomeDetail',run.result.success?`${fmt(run.result.t,1)} simulated seconds · ${fmt(run.result.path)} m travelled · recorded firmware completion${run.metadata.robot_build==='route'?` · completed mask 0x${(run.result.completed_mask??run.frames.at(-1).completed_mask??0).toString(16)}`:' · payload checks and final acknowledgement completed'}.`:run.result.failure_messages.join(' · ')||run.result.reason);
+  const isRoute=!!routeTargets[run.metadata.robot_build];
+  setText('outcomeTitle',run.result.success?(isRoute?'Route confirmed by the firmware':'Payload confirmed by the firmware'):'The firmware stopped without a confirmed payload');
+  setText('outcomeDetail',run.result.success?`${fmt(run.result.t,1)} simulated seconds · ${fmt(run.result.path)} m travelled · recorded firmware completion${isRoute?` · completed mask 0x${(run.result.completed_mask??run.frames.at(-1).completed_mask??0).toString(16)}`:' · payload checks and final acknowledgement completed'}.`:run.result.failure_messages.join(' · ')||run.result.reason);
   setText('provenance',`${run.metadata.ref} · ${run.metadata.commit.slice(0,12)} · ${run.metadata.robot_build?'robot '+run.metadata.robot_build+' + '+beaconsFor(run.scenario).length+' beacon(s) · exact selected firmware':run.metadata.beacon_mode==='branch-firmware'?'car + AP1 branch firmware':'legacy run: car firmware + simulated peer'} · computed in ${run.result.wall_seconds}s`);
   setText('beaconSourceLabel',`${run.metadata.beacon_ssid||'I AM PICO W'} · ${run.metadata.beacon_mode==='branch-firmware'?'branch firmware':'legacy simulated peer'}`);
   fitView();seek(0);
@@ -371,7 +374,7 @@ async function runExperiment(){
 async function loadHistory(){history=await api('/api/runs');const cur=JSON.stringify(run?.scenario||scenario());$('history').innerHTML=history.length?`<table><thead><tr><th>BRANCH / COMMIT</th><th>OUTCOME</th><th>TIME</th><th>PATH</th><th>CLOSEST</th><th>SETUP</th><th></th></tr></thead><tbody>${history.map(r=>`<tr><td>${escape(r.metadata.ref)} · ${escape(r.metadata.robot_build||'ap1')}<br><small>${escape(r.metadata.commit.slice(0,10))}</small></td><td class="${r.result.success?'pass':'fail'}">${r.result.success?'Confirmed':'Stopped'}</td><td>${fmt(r.result.t,1)} s</td><td>${fmt(r.result.path)} m</td><td>${fmt(r.result.closest)} m</td><td>${JSON.stringify(r.scenario)===cur&&(r.metadata.robot_build||'ap1')===$('robotBuild').value&&r.metadata.moving_samples===!!$('moving').checked&&r.metadata.model_version===(run?.metadata.model_version||2)?'Same setup':'Different setup'}</td><td><button data-run="${escape(r.id)}">Inspect →</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty">Saved experiments will appear here.</div>';}
 function download(name,text,type='application/json'){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 const isObject=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-const builds=['ap1','ap2','ap3','route'];
+const builds=['ap1','ap2','ap3',...Object.keys(routeTargets)];
 function validateBeaconArray(value,label){
   if(!Array.isArray(value)||value.length<1||value.length>3)throw Error(`Invalid ${label}: expected one to three entries.`);
   const ids=new Set();
@@ -485,7 +488,16 @@ $('runBtn').onclick=runExperiment;$('branch').onchange=()=>{if(busy)return;$('cu
 $('preset').onchange=()=>{if(!busy)applyPreset($('preset').value);};
 for(const k of keys){const changed=()=>{if(!busy){$('preset').value='custom';resetPreview();}};$(k).addEventListener('input',changed);$(k).addEventListener('change',changed);}
 for(const id of ['moving','colour_enabled','beaconCount','singleBeacon','matLayout','mat1','mat2','mat3'])$(id).onchange=()=>{if(!busy){$('preset').value='custom';resetPreview(true);}};
-$('robotBuild').onchange=()=>{if(!busy){branchNote();resetPreview();}};
+$('robotBuild').onchange=()=>{
+  if(busy)return;
+  const targets=routeTargets[$('robotBuild').value];
+  if(targets){
+    $('beaconCount').value=String(targets.length);
+    if(targets.length===2)twoBeaconIds=targets;
+    $('preset').value='custom';
+  }
+  branchNote();resetPreview(true);
+};
 $('playBtn').onclick=()=>{if(!run)return;if(playTime>=run.result.t)seek(0);playing=!playing;$('playBtn').textContent=playing?'Ⅱ':'▶';renderStats();};$('stepBtn').onclick=()=>{playing=false;$('playBtn').textContent='▶';seek(playTime+.1);};$('endBtn').onclick=()=>seek(run.result.t);$('replayBtn').onclick=()=>{seek(0);playing=true;$('playBtn').textContent='Ⅱ';};$('timeline').oninput=()=>{playing=false;$('playBtn').textContent='▶';seek(Number($('timeline').value));};$('fitBtn').onclick=()=>{fitView();drawArena();};
 $('chartTabs').onclick=e=>{const b=e.target.closest('[data-chart]');if(!b)return;chartMode=b.dataset.chart;for(const el of $('chartTabs').children)el.classList.toggle('active',el===b);setText('chartLegend',chartMode==='distance'?'Ground-truth distance':'Ideal signal');setText('chartOther',chartMode==='distance'?'Not available to the controller':'● Actual readings delivered to firmware');drawChart();};
 $('evidenceTabs').onclick=e=>{const b=e.target.closest('[data-view]');if(!b)return;for(const el of $('evidenceTabs').children)el.classList.toggle('active',el===b);$('eventsView').hidden=b.dataset.view!=='events';$('historyView').hidden=b.dataset.view!=='history';$('logFilter').hidden=b.dataset.view!=='events';if(b.dataset.view==='history')loadHistory().catch(e=>showError(e.message));};$('logFilter').onchange=()=>{logMode=$('logFilter').value;lastLogCount=-1;renderLogs();};$('events').onclick=e=>{const row=e.target.closest('[data-time]');if(row){playing=false;$('playBtn').textContent='▶';seek(Number(row.dataset.time));}};$('history').onclick=async e=>{const b=e.target.closest('[data-run]');if(!b)return;try{if(busy)return;const data=await api('/api/run/'+b.dataset.run);if(busy)return;validateTrace(data);loadRun(data);}catch(e){showError(e.message);}};

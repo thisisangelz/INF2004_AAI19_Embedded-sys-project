@@ -5,7 +5,7 @@
 #include "target_beacon.h"
 #endif
 int sim_active_target(void) {
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT || THREE_BEACON_ROUTE
     return sim.active_target; // Only an explicit firmware marker changes route progress.
 #elif defined(SIM_DYNAMIC_TARGET_API)
     return target_beacon_id();

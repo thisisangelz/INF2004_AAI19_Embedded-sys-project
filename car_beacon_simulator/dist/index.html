@@ -20,15 +20,15 @@
       <div id="branchNote" class="hint">Compiles the selected robot build and beacon firmware from this exact source.</div><div id="sourceDetails" class="hint"></div>
       <label class="field-label" for="customRef">Or enter a branch / commit</label><input id="customRef" placeholder="Optional: origin/my-branch" autocomplete="off">
       <label class="field-label" for="robotBuild">Robot build</label>
-      <select id="robotBuild"><option value="ap1">AP1 · pink target</option><option value="ap2">AP2 · blue target</option><option value="ap3">AP3 · purple target</option><option value="route" selected>Route · AP1 → AP2 → AP3</option></select>
+      <select id="robotBuild"><option value="ap1">AP1 · pink target</option><option value="ap2">AP2 · blue target</option><option value="ap3">AP3 · purple target</option><option value="route2">Two-beacon route · AP1 → AP2</option><option value="route" selected>Three-beacon route · AP1 → AP2 → AP3</option></select>
       <p id="buildNote" class="hint">Requires a compatible source build. Incompatible builds report an error; no controller is substituted.</p>
       <div class="separator"></div>
       <label class="field-label" for="preset">Starting scenario</label>
-      <select id="preset"><option value="triangle" selected>Three beacons · triangle</option><option value="rearward">Triangle · robot faces away (180°)</option><option value="sideways">Triangle · robot faces sideways (90°)</option><option value="straight">Straight approach</option><option value="diagonal">Beacon to the side</option><option value="far">Far diagonal · weak gradient</option><option value="behind">Beacon behind car</option><option value="close">Already within range</option><option value="custom">Custom arrangement</option></select>
+      <select id="preset"><option value="triangle" selected>Standard route layout</option><option value="rearward">Route · robot faces away (180°)</option><option value="sideways">Route · robot faces sideways (90°)</option><option value="straight">Straight approach</option><option value="diagonal">Beacon to the side</option><option value="far">Far diagonal · weak gradient</option><option value="behind">Beacon behind car</option><option value="close">Already within range</option><option value="custom">Custom arrangement</option></select>
       <div class="entity-label"><span class="dot mint-dot"></span> CAR START <span>metres</span></div>
       <div class="input-row three"><label>X<input id="x" type="number" value="0" min="-50" max="50" step="0.01"></label><label>Y<input id="y" type="number" value="0" min="-50" max="50" step="0.01"></label><label>Heading °<input id="heading" type="number" value="0" min="-360" max="360" step="0.01"></label></div>
       <label class="field-label" for="beaconCount">Enabled radio beacons</label>
-      <select id="beaconCount"><option value="3" selected>Three · AP1 + AP2 + AP3</option><option value="1">One · hardware approximation</option><option value="2">Two · custom / imported layout</option></select>
+      <select id="beaconCount"><option value="3" selected>Three · AP1 + AP2 + AP3</option><option value="1">One · hardware approximation</option><option value="2">Two beacons</option></select>
       <label id="singleBeaconLabel" class="field-label" for="singleBeacon">Single physical beacon identity</label>
       <select id="singleBeacon"><option value="1" selected>AP1</option><option value="2">AP2</option><option value="3">AP3</option></select>
       <label class="field-label" for="matLayout">Illustrative floor mats</label>

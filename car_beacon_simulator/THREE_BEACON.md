@@ -1,4 +1,4 @@
-# Three-beacon firmware and simulator
+# Two- and three-beacon firmware and simulator
 
 The firmware branch is `codex/three-beacon-route`. The existing simulator branch
 is `codex/beacon-simulator`; its current app includes the three-beacon model.
@@ -33,9 +33,10 @@ firmware rather than a controller implemented in the simulator.
    wheel odometry.
 4. Reset target-local Wi-Fi identity, BLE qualification, colour history and search
    state. Retain the gyro reference, mission clock, log and latched STOP.
-5. Repeat for AP2 on blue, then AP3 on purple.
+5. Repeat for AP2 on blue. The two-beacon build finishes here. The three-beacon
+   build departs and continues to AP3 on purple.
 
-A route is successful only when the firmware reports all three verified
+A route is successful only when the firmware reports all required verified
 transfers and emits `RESULT: ROUTE COMPLETE`. Connecting to a beacon, touching a
 mat, a beacon-side completion notification, and completing only AP1 are not
 overall success. A missing beacon, failed CRC, invalid acknowledgement, unsafe
@@ -43,8 +44,9 @@ handover or exhausted search remains a visible failure.
 
 ## Set up a comparison
 
-Select the exact firmware source and robot build separately. The `route` build
-requires a source that actually implements the route; selecting it for an older
+Select the exact firmware source and robot build separately. The `route2` (two
+beacons) and `route` (three beacons) builds require a source that implements the
+selected route; selecting one for an unsupported
 commit must report an incompatibility instead of supplying a replacement
 controller. Per-target `ap1`, `ap2` and `ap3` builds remain useful for comparison.
 

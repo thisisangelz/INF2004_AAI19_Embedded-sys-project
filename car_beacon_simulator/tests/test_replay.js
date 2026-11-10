@@ -433,6 +433,52 @@ test('only an explicit build submits build_target, locks setup, and autoplays th
   assert.equal(calls.filter(call=>call.url==='/api/run').length,1);
 });
 
+test('route dropdown selects two or three targets and only builds on request',async()=>{
+  const calls=[],trace=routeFixture(true);
+  trace.metadata.robot_build='route2';
+  trace.result.completed_mask=3;
+  trace.frames.at(-1).completed_mask=3;
+  const h=harness(async(url,options)=>{
+    calls.push(url);
+    if(url==='/api/runs')return {ok:true,json:async()=>[]};
+    assert.equal(url,'/api/run');
+    const request=JSON.parse(options.body);
+    assert.equal(request.build_target,'route2');
+    assert.deepEqual(request.scenario.beacons.map(b=>b.id),[1,2]);
+    assert.deepEqual(request.scenario.mats.map(b=>b.id),[1,2]);
+    trace.scenario=request.scenario;
+    for(const f of trace.frames)f.beacons=f.beacons.filter(b=>b.id!==3);
+    return {ok:true,json:async()=>trace};
+  });
+  const select=build=>{h.elements.robotBuild.value=build;h.elements.robotBuild.onchange();};
+  h.elements.b3x.value='-4.25';
+  select('route2');
+  assert.equal(h.elements.beaconCount.value,'2');
+  assert.equal(h.evaluate('frame.active_target'),1);
+  assert.doesNotMatch(h.elements.routeProgress.innerHTML,/AP3/);
+  select('route');
+  assert.equal(h.elements.beaconCount.value,'3');
+  assert.equal(h.evaluate('scenario().beacons[2].x'),-4.25);
+  select('route2');
+  h.elements.preset.value='sideways';h.elements.preset.onchange();
+  assert.equal(calls.length,0);
+  assert.equal(h.elements.duration.textContent,'Not run');
+  await h.elements.runBtn.onclick();
+  assert.equal(calls.filter(url=>url==='/api/run').length,1);
+  assert.equal(h.evaluate('playing'),true);
+  h.elements.endBtn.onclick();
+  assert.match(h.elements.outcomeTitle.textContent,/Route confirmed/);
+  assert.match(h.elements.outcomeDetail.textContent,/mask 0x3/);
+  assert.doesNotMatch(h.elements.routeProgress.innerHTML,/AP3/);
+  h.elements.saveScenario.onclick();
+  const setup=JSON.parse(await h.downloads[0].text()),replay=harness();
+  await setupFile(replay,setup);
+  assert.equal(replay.elements.robotBuild.value,'route2');
+  await replay.fileInput(JSON.stringify(trace));
+  assert.equal(replay.elements.robotBuild.value,'route2');
+  assert.equal(replay.evaluate('playing'),false);
+});
+
 test('incompatible route build errors are shown without retrying or substituting main/AP1',async()=>{
   const calls=[],h=harness(async(url,options)=>{calls.push({url,options});return {ok:false,json:async()=>({error:'Selected source has no route build'})};});
   h.elements.customRef.value='origin/main';await h.elements.runBtn.onclick();
