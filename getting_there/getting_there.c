@@ -223,6 +223,15 @@ static payload_result_t translate_block(bool forwards, uint32_t duration, float 
     return check_payload();
 }
 
+#define MAT_MAX_SCANS 6u          // per run; then the Wi-Fi search resumes
+static unsigned mat_scans_used;
+
+static bool mat_steering_ready(void)
+{
+    // A white edge alone does not identify the active beacon's mat.
+    return colour_target_ring_seen() && !colour_foreign_mat_seen() && mat_scans_used < MAT_MAX_SCANS;
+}
+
 static payload_result_t return_along_line(uint32_t from, uint32_t to, float heading)
 {
     report_printf("RETURN: approximate reverse from %lu to %lu powered ms, same heading %d\n",
@@ -234,6 +243,10 @@ static payload_result_t return_along_line(uint32_t from, uint32_t to, float head
         payload_result_t result = translate_block(false, block, heading, to + remaining,
             translation_cost(remaining - block), false, &actual);
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (mat_steering_ready()) {
+            report_printf("RETURN: target coloured ring found; ending reverse for colour steering\n");
+            return PAYLOAD_NOT_CLOSE;
+        }
         remaining = actual < remaining ? remaining - actual : 0;
     }
     wifi_sampler_set_position(heading, to, true);
@@ -383,7 +396,6 @@ static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_
 // the same darkest angle in both rounds of every run). After each scan the
 // robot turns that way and takes small steps, checking the colour at every
 // stop, until arrival or until the surface gets lighter, then scans again.
-#define MAT_MAX_SCANS 6u          // per run; then the Wi-Fi search resumes
 // Travel after each scan before checking the direction again: four outer
 // steps, or ten near the centre, so small steps do not cause extra scans.
 #define MAT_TRAVEL_PER_SCAN_MS 1000u
@@ -393,15 +405,6 @@ static scan_status_t colour_scan_turn(float origin, unsigned round, colour_scan_
 // the same reading, heading error growing). A ring took two or three such
 // steps in the purple run, so three flat steps means the robot is not moving.
 #define MAT_STALL_STEPS 3u
-static unsigned mat_scans_used;
-
-static bool mat_steering_ready(void)
-{
-    // White edges are deliberately ambiguous in the classifier. Require a
-    // coloured ring of the active target before steering toward a mat centre.
-    return colour_target_ring_seen() && !colour_foreign_mat_seen() && mat_scans_used < MAT_MAX_SCANS;
-}
-
 // On the arrival ring but AP1 failed even the loose BLE gate: never drive on
 // into the beacon box. Retry while stopped, then stop the run.
 static payload_result_t mat_wait_on_arrival(void)
@@ -534,6 +537,7 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
     report_printf("DIP: three weak positions; stationary BLE check and two fresh Wi-Fi batches before any extra movement\n");
     payload_result_t result = check_payload();
     if (result != PAYLOAD_NOT_CLOSE) return result;
+    if (mat_steering_ready()) return PAYLOAD_NOT_CLOSE;
     if (colour_foreign_mat_seen()) {
         report_printf("DIP: foreign coloured mat at stopped recheck; no forward probes, returning to retained best\n");
         return PAYLOAD_NOT_CLOSE;
@@ -553,6 +557,7 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
             false, &actual);
         *position += actual;
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (mat_steering_ready()) return PAYLOAD_NOT_CLOSE;
         if (colour_foreign_mat_seen()) {
             // This dip already requires a return unless recovery is proven.
             // Do not spend the second forward probe entering another mat.
@@ -586,6 +591,11 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     // driving; a previous heading's colour reading is not a clearance check.
     payload_result_t turned = check_payload();
     if (turned != PAYLOAD_NOT_CLOSE) return turned;
+    if (mat_steering_ready()) {
+        followed->end = FOLLOW_MAT;
+        report_printf("FOLLOW: target coloured ring seen after turn; colour steering takes over\n");
+        return PAYLOAD_NOT_CLOSE;
+    }
 #endif
     wifi_sampler_set_position(heading, 0, true);
     line_pair_t best;
@@ -617,6 +627,10 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
             followed->end = FOLLOW_DECLINE;
             result = return_along_line(position, best_position, heading);
             if (result != PAYLOAD_NOT_CLOSE) return result;
+            if (mat_steering_ready()) {
+                followed->end = FOLLOW_MAT;
+                return PAYLOAD_NOT_CLOSE;
+            }
             followed->position = best_position;
             line_pair_t returned;
             result = measure_pair(&returned);
@@ -678,12 +692,21 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
                                                &position, &current, &recovered);
                 followed->position = position;
                 if (result != PAYLOAD_NOT_CLOSE) return result;
+                if (mat_steering_ready()) {
+                    followed->end = FOLLOW_MAT;
+                    report_printf("DIP: target coloured ring found; colour steering takes over\n");
+                    return PAYLOAD_NOT_CLOSE;
+                }
                 if (!recovered) {
                     followed->end = FOLLOW_DECLINE;
                     report_printf("FOLLOW: decline persisted after recheck and probes; return only %lu powered ms to best point %lu\n",
                                   (unsigned long)(position - best_position), (unsigned long)best_position);
                     result = return_along_line(position, best_position, heading);
                     if (result != PAYLOAD_NOT_CLOSE) return result;
+                    if (mat_steering_ready()) {
+                        followed->end = FOLLOW_MAT;
+                        return PAYLOAD_NOT_CLOSE;
+                    }
                     line_pair_t returned;
                     result = measure_pair(&returned);
                     if (result != PAYLOAD_NOT_CLOSE) return result;
@@ -785,6 +808,11 @@ static payload_result_t check_directions(float origin, follow_result_t *followed
                           followed->end == FOLLOW_FOREIGN_MAT ? "foreign mat rejected" : "no confirmed gain");
             result = return_along_line(followed->position, 0, heading);
             if (result != PAYLOAD_NOT_CLOSE) return result;
+            if (mat_steering_ready()) {
+                followed->end = FOLLOW_MAT;
+                *found = true;
+                return PAYLOAD_NOT_CLOSE;
+            }
             line_pair_t returned;
             result = measure_pair(&returned);
             if (result != PAYLOAD_NOT_CLOSE) return result;
@@ -847,6 +875,10 @@ static bool approach_beacon(void)
             result = return_along_line(followed.position, 0, followed.heading);
             if (result == PAYLOAD_COMPLETE) return true;
             if (result == PAYLOAD_FATAL) return false;
+            if (mat_steering_ready()) {
+                followed.end = FOLLOW_MAT;
+                continue;
+            }
             line_pair_t returned;
             result = measure_pair(&returned);
             if (result == PAYLOAD_COMPLETE) return true;

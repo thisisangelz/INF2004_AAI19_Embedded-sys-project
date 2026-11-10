@@ -188,10 +188,37 @@ static void check_route_colour_trials(void)
     assert(!mat_steering_ready() && !colour_reads && !mat_scans_used && !ble_calls);
     assert(!strstr(log_text,"MAT:") && !fault_mask());
 }
+
+static void check_target_mat_handoff(void)
+{
+    static const unsigned target_at_turn[] = {OBS_TARGET_RING};
+    static const unsigned target_after_move[] = {0, OBS_TARGET_RING};
+    follow_result_t followed;
+
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0;
+    colour_observation_script=target_at_turn; colour_observation_count=1;
+    assert(follow_direction(90,0,&followed)==PAYLOAD_NOT_CLOSE);
+    assert(followed.end==FOLLOW_MAT && colour_checks==1);
+    assert(!move_count && !wifi_calls && !ble_calls);
+
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0;
+    colour_observation_script=target_at_turn; colour_observation_count=1;
+    assert(return_along_line(1800,0,0)==PAYLOAD_NOT_CLOSE);
+    assert(backwards_count==1 && mat_steering_ready() && !ble_calls);
+
+    route_reset(); attempt_override=NULL; colour_arrive_at_check=0; default_rssi=-75;
+    colour_observation_script=target_after_move; colour_observation_count=2;
+    uint32_t position=1500; line_pair_t current; bool recovered;
+    assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_NOT_CLOSE);
+    assert(position==1750 && forwards_count==1 && !backwards_count);
+    assert(mat_steering_ready() && !recovered && wifi_calls==10 && !ble_calls);
+}
+
 int main(void)
 {
     check_full_route(); check_partial_and_gates(); check_departure_heading_and_budget();
     check_bounded_trials_and_watchdog(); check_mat_fallback_and_inference();
     check_route_colour_trials();
+    check_target_mat_handoff();
     return 0;
 }
