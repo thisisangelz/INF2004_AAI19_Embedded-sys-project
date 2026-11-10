@@ -13,6 +13,7 @@
 typedef struct {
     uint32_t wall_ms, powered_ms, scan_id;
     float heading;
+    uint16_t duration_ms;
     uint8_t code;
     bool stopped;
 } wifi_record_t;
@@ -151,6 +152,8 @@ static bool sampler_collect(void)
 {
     if (!scan_open || cyw43_wifi_scan_active(&cyw43_state)) return true;
     wifi_record_t record = pending_result;
+    uint32_t duration = sampler_now_ms() - scan_started_ms;
+    record.duration_ms = duration > UINT16_MAX ? UINT16_MAX : (uint16_t)duration;
     if (record.code == RSSI_MISSING_CODE) {
         record.wall_ms = sampler_now_ms();
         record.powered_ms = sampler_position();
@@ -198,10 +201,10 @@ static bool sampler_flush(void)
     if (motion_drive_active() || scan_open || cyw43_wifi_scan_active(&cyw43_state)) return false;
     for (unsigned i = 0; i < record_count; ++i) {
         const wifi_record_t *r = &records[i];
-        report_printf("RSSI_RAW,scan=%lu,t_ms=%lu,powered_ms=%lu,heading=%d,dbm=%d,stopped=%u\n",
+        report_printf("RSSI_RAW,scan=%lu,t_ms=%lu,powered_ms=%lu,heading=%d,dbm=%d,stopped=%u,dur_ms=%u\n",
                       (unsigned long)r->scan_id, (unsigned long)r->wall_ms,
                       (unsigned long)r->powered_ms, (int)r->heading,
-                      rssi_decode(r->code), r->stopped ? 1u : 0u);
+                      rssi_decode(r->code), r->stopped ? 1u : 0u, (unsigned)r->duration_ms);
     }
     record_count = 0;
     return report_ok();
@@ -212,10 +215,22 @@ bool wifi_sampler_quiesce(void)
     motion_stop();
     if (sampler_failed) return false;
     while (scan_open && cyw43_wifi_scan_active(&cyw43_state)) {
-        if (!sampler_can_continue() || sampler_now_ms() - scan_started_ms >= SCAN_TIMEOUT_MS) {
-            fault_raise(FAULT_WIFI_SCAN);
+        uint32_t elapsed = sampler_now_ms() - scan_started_ms;
+        bool timed_out = elapsed >= SCAN_TIMEOUT_MS;
+        if (timed_out || !sampler_can_continue()) {
+            // The driver has no scan cancel, so the scan may still own the
+            // radio: refuse BLE and flash until cyw43_arch_deinit either way.
             sampler_failed = true;
-            report_printf("FAILED: Wi-Fi scan stopped or timed out; BLE/flash forbidden until radio shutdown\n");
+            if (timed_out) {
+                fault_raise(FAULT_WIFI_SCAN);
+                report_printf("FAILED: Wi-Fi scan %lu timed out after %lu ms, driver still reports it active; BLE/flash refused until radio shutdown\n",
+                              (unsigned long)scan_id, (unsigned long)elapsed);
+            } else {
+                // STOP, the run limit or a log failure already raised its own fault.
+                report_printf("STOPPED: %s during Wi-Fi scan %lu, %lu ms after it started; BLE/flash refused until radio shutdown\n",
+                              motion_stop_requested() ? "GP21 STOP" : "run ended", (unsigned long)scan_id,
+                              (unsigned long)elapsed);
+            }
             return false;
         }
         sleep_ms(5);

@@ -1105,8 +1105,17 @@ static void check_radio_and_limits(void)
     scan_delay_ms = 900;
     assert(translate_block(true,750,0,0,translation_cost(750),true,&actual) == PAYLOAD_NOT_CLOSE);
     assert(!scan_active && !wifi_sampler_moving_enabled() && ble_calls == 1);
+    reset(); scan_delay_ms = 200;
+    assert(wifi_sampler_sample(&sample) && strstr(log_text,"stopped=1,dur_ms=200"));
+    // GP21 during a scan: STOP is not a radio fault, but the scan may still own
+    // the radio, so the log and BLE stay locked until shutdown.
+    reset(); scan_delay_ms = 700; stop_at_scan = 1;
+    assert(!wifi_sampler_sample(&sample) && !fault_test(FAULT_WIFI_SCAN));
+    assert(strstr(log_text,"STOPPED: GP21 STOP during Wi-Fi scan 1, 0 ms after it started"));
+    assert(!strstr(log_text,"FAILED") && !save_checkpoint() && !checkpoint_calls);
     reset(); scan_delay_ms = SCAN_TIMEOUT_MS + 1;
     assert(!wifi_sampler_sample(&sample) && fault_test(FAULT_WIFI_SCAN));
+    assert(strstr(log_text,"FAILED: Wi-Fi scan 1 timed out after 15000 ms"));
     assert(!forwards_count && !ble_calls);
     sim_time += (uint64_t)SCAN_TIMEOUT_MS * 1000;
     assert(!save_checkpoint() && !checkpoint_calls); // radio failure stays latched
