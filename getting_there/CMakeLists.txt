@@ -52,10 +52,12 @@ function(getting_there_firmware target)
 endfunction()
 
 getting_there_firmware(getting_there)
-# The same robot firmware aimed at AP2 or AP3 (Wi-Fi SSID, BLE beacon ID and
-# log names). Any beacon may sit on any colour mat.
+# Route variants share navigation, colour qualification and transfer logic.
+getting_there_firmware(getting_there_route2)
+target_compile_definitions(getting_there_route2 PRIVATE ROUTE_BEACON_COUNT=2)
 getting_there_firmware(getting_there_route)
 target_compile_definitions(getting_there_route PRIVATE THREE_BEACON_ROUTE=1)
+# Fixed targets select their matching Wi-Fi SSID, BLE ID and colour profile.
 getting_there_firmware(robot_ap2)
 target_compile_definitions(robot_ap2 PRIVATE TARGET_BEACON_ID=2)
 getting_there_firmware(robot_ap3)

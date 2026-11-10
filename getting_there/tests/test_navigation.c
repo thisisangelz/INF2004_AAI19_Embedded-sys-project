@@ -451,7 +451,7 @@ static void reset(void)
     mock_limit_start = mock_limit_duration = radio_lock_depth = 0;
     floor_read_error = floor_always_mat = false; departure_floor_checks = 0;
     assert(target_beacon_select(1));
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
     memset(&route, 0, sizeof(route)); incoming_heading = 0;
 #endif
     stopped = motors_on = wifi_missing = fail_drive = fail_turn = stop_during_pause = false;

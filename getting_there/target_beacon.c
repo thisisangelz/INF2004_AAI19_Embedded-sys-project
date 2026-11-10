@@ -1,6 +1,6 @@
 #include "target_beacon.h"
 #include "packed_bits.h"
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
 // IDs 1..3 need two bits. Only main writes, while holding the radio lock;
 // callbacks read only while their target is immutable for the whole attempt.
 static struct { uint8_t id : 2; } target = {TARGET_BEACON_ID};
@@ -11,8 +11,8 @@ uint8_t target_beacon_id(void) { return TARGET_BEACON_ID; }
 #endif
 bool target_beacon_select(uint8_t id)
 {
-    if (id < 1 || id > 3) return false;
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
+    if (id < 1 || id > ROUTE_BEACON_COUNT) return false;
     target.id = id;
     return true;
 #else

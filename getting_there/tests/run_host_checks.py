@@ -22,17 +22,19 @@ extended_events = 'gatt_event_query_complete_get_service_id' in event_header
 common = [args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-ffunction-sections',
           '-fdata-sections', '-I', str(tests / 'stubs'),
           '-I', str(tests.parent)]
-for name in ['navigation', 'route', 'payload_client', 'payload_client_route', 'report', 'motion', 'flash', 'colour']:
+for name in ['navigation', 'route', 'route2', 'payload_client', 'payload_client_route', 'report', 'motion', 'flash', 'colour']:
     executable = output / f'test_{name}.exe'
-    source = 'payload_client' if name == 'payload_client_route' else name
+    source = {'route2': 'route', 'payload_client_route': 'payload_client'}.get(name, name)
     command = common + [str(tests / f'test_{source}.c'), str(tests.parent / 'faults.c'),
                         str(tests.parent / 'target_beacon.c')]
     if name in ('route', 'payload_client_route'):
         command += ['-DTHREE_BEACON_ROUTE=1']
+    if name == 'route2':
+        command += ['-DROUTE_BEACON_COUNT=2']
     if name == 'flash':
         command += ['-DPICO_FLASH_SIZE_BYTES=2097152', '-DPICO_FLASH_BANK_TOTAL_SIZE=8192',
                     '-DPICO_FLASH_BANK_STORAGE_OFFSET=1564672']
-    if name in ('navigation', 'route'):
+    if source in ('navigation', 'route'):
         command += ['-DLINE_SEARCH_MOVING_SAMPLES=1', str(tests.parent / 'line_search.c'),
                     str(tests.parent / 'wifi_sampler.c'), str(tests.parent / 'colour_mat.c')]
     if name == 'colour':

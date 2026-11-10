@@ -29,17 +29,18 @@ static void check_full_route(void)
 {
     route_reset();
     assert(approach_route());
-    assert(route.completed_mask==7 && target_beacon_id()==3 && confirms==3);
-    assert(forwards_count==3 && backwards_count==4 && departure_floor_checks==4);
-    assert(sign_checks==1 && !motors_on && colour_resets==3);
+    const int legs = ROUTE_BEACON_COUNT, departure_blocks = 2 * (legs - 1);
+    assert(route.completed_mask==(legs == 2 ? 3 : 7) && target_beacon_id()==legs && confirms==(unsigned)legs);
+    assert(forwards_count==legs && backwards_count==departure_blocks && departure_floor_checks==departure_blocks);
+    assert(sign_checks==1 && !motors_on && colour_resets==legs);
     // Initial check, fresh check after turning, then arrival after the first step.
-    assert(colour_checks==9 && ble_calls==9);
-    for (unsigned i=0; i<3; ++i) assert(leg_checks[i]==3);
-    assert(strstr(log_text,"ROUTE: target=1") && strstr(log_text,"ROUTE: target=2") &&
-           strstr(log_text,"ROUTE: target=3"));
+    assert(colour_checks==3*legs && ble_calls==3*legs);
+    for (int i=0; i<3; ++i) assert(leg_checks[i]==(i < legs ? 3u : 0u));
+    assert(strstr(log_text,"ROUTE: target=1") && strstr(log_text,"ROUTE: target=2"));
+    assert((strstr(log_text,"ROUTE: target=3") != NULL) == (legs == 3));
     assert(strstr(log_text,"ROUTE: confirmed=1,mask=1") &&
-           strstr(log_text,"ROUTE: confirmed=2,mask=3") &&
-           strstr(log_text,"ROUTE: confirmed=3,mask=7"));
+           strstr(log_text,"ROUTE: confirmed=2,mask=3"));
+    assert((strstr(log_text,"ROUTE: confirmed=3,mask=7") != NULL) == (legs == 3));
     assert(!strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
     assert(translation_ms==500 && !fault_mask()); // leg budget resets, mission clock does not
 }

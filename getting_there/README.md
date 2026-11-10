@@ -1,22 +1,22 @@
 # Pico approach and payload transfer
 
 This programme developed from `Alvin_2` at `2012e7b` through the archived
-`line-search` branch. This branch adds the AP1 → AP2 → AP3 route below.
+`line-search` branch. This branch supports two- and three-beacon routes.
 The tracked files under `build/` are earlier main's prebuilt images; they do not
 contain this branch's new changes. Build this branch and use its fresh output.
 
 
-## Current route build: AP1 → AP2 → AP3
+## Route builds
 
-CMake target `getting_there_route` defines `THREE_BEACON_ROUTE=1` and produces
-`getting_there_route.uf2`. Existing `getting_there`, `robot_ap2`, `robot_ap3`
-and `colour_scan` targets remain available. The common navigation fixes below
-also apply to the single-target builds.
+| CMake target | Sequence | Final verified mask | Firmware image |
+| --- | --- | --- | --- |
+| `getting_there_route2` | AP1 → AP2 | `0x3` | `getting_there_route2.uf2` |
+| `getting_there_route` | AP1 → AP2 → AP3 | `0x7` | `getting_there_route.uf2` |
 
-The locally built route image is copied to
-`getting_there/build-v2/getting_there_route.uf2` (generated and ignored by Git).
-The firmware-files table later in this document records the older main images;
-use the route image for this branch's three-target mission.
+Both use the same navigation and transfer logic. The two-beacon build ends
+after AP2's verified transfer and does not require AP3. Existing
+`getting_there`, `robot_ap2`, `robot_ap3` and `colour_scan` targets remain available.
+Locally built images in `getting_there/build-v2/` are generated and ignored by Git.
 
 - Every heading, including the initial heading, has a 2400 ms powered no-gain
   trial. Positive but unconfirmed improvement permits one extension to 4800 ms.
@@ -31,14 +31,14 @@ use the route image for this branch's three-target mission.
   Invalid/read-failed mat scans restore their entry heading before fallback.
 - The route shares one 900000 ms mission deadline and one persistent 512 KiB
   journal. Each leg has 60000 ms powered translation, including returns and its
-  departure; the first two legs reserve departure time. The gyro is calibrated
+  departure; each non-final leg reserves departure time. The gyro is calibrated
   and its turn sign learnt once. Heading, STOP latch and mission clock persist.
 - Route builds require a working colour sensor and genuine colour arrival.
   An inferred centre stops with a colour fault. Single-target builds retain
   their labelled inferred-centre override and missing-sensor BLE fallback.
 - After CRC and final ACK verification **and successful BLE cleanup**, log and
   checkpoint the reply and `ROUTE: confirmed=1,mask=1` (then masks 3 and 7).
-  `ROUTE: target=1`, `2`, `3` mark the active leg. Only mask 7 may produce
+  `ROUTE: target=1`, `2`, `3` mark the active leg. Only the build's final mask may produce
   `RESULT: ROUTE COMPLETE`; intermediate legs produce no overall payload result.
 - Departure keeps the previous target active. It drives opposite the last
   successful approach block, including a reverse approach. A fresh valid

@@ -24,16 +24,17 @@
 static uint32_t run_started_ms, translation_ms;
 static bool wifi_quiescent = true;
 static struct { uint8_t learned : 1; } direction;
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
 #define ROUTE_DEPARTURE_MS 3000u
 #define ROUTE_CLEARANCE_MS 250u
+#define ROUTE_COMPLETE_MASK ((1u << ROUTE_BEACON_COUNT) - 1u)
 static struct {
-    uint8_t completed_mask : 3;
+    uint8_t completed_mask : ROUTE_BEACON_COUNT;
     uint8_t departing : 1;
     uint8_t incoming_valid : 1;
     uint8_t incoming_forwards : 1;
 } route;
-_Static_assert(3 == BITS_NEEDED(7), "completed mask width");
+_Static_assert(sizeof(route) == 1, "route state fits in one byte");
 static float incoming_heading;
 #endif
 static uint32_t now_ms(void) { return (uint32_t)(time_us_64() / 1000); }
@@ -41,7 +42,7 @@ static uint32_t now_ms(void) { return (uint32_t)(time_us_64() / 1000); }
 static bool run_can_continue(void)
 {
     if (motion_stop_requested()) { motion_stop(); return false; }
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
     if (!colour_sensor_available()) {
         motion_stop(); fault_raise(FAULT_COLOUR_SENSOR); return false;
     }
@@ -91,7 +92,7 @@ static payload_result_t check_payload(void)
             // Motors are stopped here. On the mat, the colour sensor decides
             // arrival and BLE only has to show AP1 is in range.
             bool on_mat = colour_arrival_check() || mat_centre_override;
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
             if (!colour_sensor_available()) {
                 fault_raise(FAULT_COLOUR_SENSOR);
                 report_printf("FAILED: route colour sensor unavailable; BLE fallback is disabled\n");
@@ -168,9 +169,9 @@ static uint32_t translation_cost(uint32_t duration)
 
 static bool reserve_translation(uint32_t required)
 {
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
     // Retain enough of this leg's 60 s budget to depart after its transfer.
-    if (!route.departing && target_beacon_id() < 3)
+    if (!route.departing && target_beacon_id() < ROUTE_BEACON_COUNT)
         required += translation_cost(ROUTE_DEPARTURE_MS);
 #endif
     if (translation_ms <= LINE_TRANSLATION_MS && required <= LINE_TRANSLATION_MS - translation_ms)
@@ -212,7 +213,7 @@ static payload_result_t translate_block(bool forwards, uint32_t duration, float 
         report_printf("FAILED: unexpected powered duration; no further movement\n");
         return PAYLOAD_FATAL;
     }
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
     // Arrival can be confirmed on a reverse return too. Departure must undo
     // the most recent powered approach direction, never repeat it inward.
     incoming_heading = heading;
@@ -428,7 +429,7 @@ static payload_result_t mat_centre_reached(const char *why)
 {
     motion_stop();
     report_printf("MAT: %s; inferred centre, arrival ring is NOT proven\n", why);
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
     fault_raise(FAULT_COLOUR_SENSOR);
     report_printf("FAILED: route requires genuine colour arrival; stationary stop at inferred centre\n");
     return PAYLOAD_FATAL;
@@ -477,7 +478,7 @@ static payload_result_t mat_approach(void)
         report_printf("MAT: scan %u points %d degrees from its start, heading %d\n",
                       scan, est.vector_angle, (int)heading);
         if (!motion_turn_to_heading(heading)) return PAYLOAD_FATAL;
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
         // A fresh valid colour gradient followed by a successful turn gives
         // an observed inward heading even if arrival occurs by rotation.
         // Reverse outward without another turn; this is not exact path replay.
@@ -580,7 +581,7 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     // One long beep each time a new search direction starts.
     cue_play(CUE_PASS);
     if (!motion_turn_to_heading(heading)) return PAYLOAD_FATAL;
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
     // The front sensor moved during the turn. Refresh its evidence before
     // driving; a previous heading's colour reading is not a clearance check.
     payload_result_t turned = check_payload();
@@ -800,7 +801,7 @@ static bool approach_beacon(void)
 {
     translation_ms = profile_id = 0;
     profile_count = 0;
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
     route.incoming_valid = false;
 #endif
     wifi_quiescent = true;
@@ -872,7 +873,7 @@ static bool approach_beacon(void)
     return false;
 }
 
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
 // Drive opposite the observed approach direction, without another turn.
 // This path does NOT use translate_block: no payload checks or BLE scan are
 // permitted, and the old identity remains active throughout departure.
@@ -958,7 +959,7 @@ static bool approach_route(void)
         // The callback already logged the full verified reply; persist it and
         // the confirmation before the next target can overwrite that buffer.
         if (!save_checkpoint()) return false;
-        if (route.completed_mask == 7) return true;
+        if (route.completed_mask == ROUTE_COMPLETE_MASK) return true;
         if (!depart_previous_mat() || !run_can_continue() || !wifi_sampler_quiesce() ||
             !payload_client_reset_target_qualification((uint8_t)(id + 1u))) return false;
         // No reset of gyro bias, integrated heading, STOP latch, mission clock
@@ -1047,7 +1048,8 @@ int main(void)
     cues_init();
     sleep_ms(2000);
     report_printf("Getting there | bounded eight-heading acquisition, foreign-mat guard, no-new-best watchdog | %s\n",
-                  THREE_BEACON_ROUTE ? "AP1 -> AP2 -> AP3 route" : target_beacon_name());
+                  ROUTE_BEACON_COUNT == 2 ? "AP1 -> AP2 route" :
+                  ROUTE_BEACON_COUNT == 3 ? "AP1 -> AP2 -> AP3 route" : target_beacon_name());
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
     report_printf("Colour mats: pink, blue and purple all recognised\n");
@@ -1161,7 +1163,7 @@ int main(void)
         direction.learned = false;
         motion_set_run_limit(run_started_ms, MAX_RUN_MS);
         payload_client_set_continue_callback(run_can_continue);
-#if THREE_BEACON_ROUTE
+#if ROUTE_BEACON_COUNT
         bool completed = approach_route();
 #else
         bool completed = approach_beacon();
@@ -1169,8 +1171,8 @@ int main(void)
         motion_stop();
         if (completed) completion_sound();
         else cue_play(CUE_FAULT);
-#if THREE_BEACON_ROUTE
-        report_printf("RESULT: %s\n", completed && route.completed_mask == 7 ?
+#if ROUTE_BEACON_COUNT
+        report_printf("RESULT: %s\n", completed && route.completed_mask == ROUTE_COMPLETE_MASK ?
                       "ROUTE COMPLETE" : "ROUTE STOPPED");
         report_printf("ROUTE: final_mask=%u\n", (unsigned)route.completed_mask);
 #else
