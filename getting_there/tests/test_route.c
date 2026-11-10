@@ -31,10 +31,10 @@ static void check_full_route(void)
     assert(approach_route());
     const int legs = ROUTE_BEACON_COUNT, departure_blocks = 2 * (legs - 1);
     assert(route.completed_mask==(legs == 2 ? 3 : 7) && target_beacon_id()==legs && confirms==(unsigned)legs);
-    assert(forwards_count==legs && backwards_count==departure_blocks && departure_floor_checks==departure_blocks);
-    assert(sign_checks==1 && !motors_on && colour_resets==legs);
+    assert(forwards_count==legs && backwards_count==departure_blocks && departure_floor_checks==(unsigned)departure_blocks);
+    assert(sign_checks==1 && !motors_on && colour_resets==(unsigned)legs);
     // Initial check, fresh check after turning, then arrival after the first step.
-    assert(colour_checks==3*legs && ble_calls==3*legs);
+    assert(colour_checks==3u*(unsigned)legs && ble_calls==3*legs);
     for (int i=0; i<3; ++i) assert(leg_checks[i]==(i < legs ? 3u : 0u));
     assert(strstr(log_text,"ROUTE: target=1") && strstr(log_text,"ROUTE: target=2"));
     assert((strstr(log_text,"ROUTE: target=3") != NULL) == (legs == 3));
@@ -160,7 +160,7 @@ static void check_route_colour_trials(void)
     assert(!moves[1].forwards && moves[1].heading==270 && moves[1].ms==LINE_FORWARD_BLOCK_MS);
     assert(moves[2].forwards && moves[2].heading==90);
     const unsigned trial_steps = (LINE_DIRECTION_TEST_MS + LINE_FORWARD_BLOCK_MS - 1u) / LINE_FORWARD_BLOCK_MS;
-    assert(forwards_count==1+6*trial_steps && backwards_count==25 && move_count==26+6*trial_steps);
+    assert((unsigned)forwards_count==1+6*trial_steps && backwards_count==25 && move_count==26+6*trial_steps);
     assert(translation_ms==28800+2*LINE_FORWARD_BLOCK_MS);
     assert(colour_checks==(unsigned)move_count+7 && profile_id==7 && current_heading==225);
     assert(strstr(log_text,"foreign coloured mat at ") && strstr(log_text,"foreign mat rejected"));

@@ -1234,7 +1234,8 @@ static void check_v18_steps(void)
     assert(translation_ms==1750 && strstr(log_text,"STEP: colour sensor sees the mat; forward blocks now 250 ms"));
     assert(strstr(log_text,"500 ms on the floor, 250 ms on the mat"));
     // Leaving the mat again restores the floor step.
-    mat_from_check=0; assert(forward_block_ms()==500 && strstr(log_text,"no longer sees the mat"));
+    mat_from_check=0; last_colour_observations=0;
+    assert(forward_block_ms()==500 && strstr(log_text,"no longer sees the mat"));
     // A flat side trial still covers 2400 ms, now in five stops instead of ten.
     reset(); shipped_steps();
     assert(follow_direction(0,LINE_DIRECTION_TEST_MS,&followed)==PAYLOAD_NOT_CLOSE);
