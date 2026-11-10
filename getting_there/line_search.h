@@ -1,19 +1,14 @@
 #ifndef GETTING_THERE_LINE_SEARCH_H
 #define GETTING_THERE_LINE_SEARCH_H
 #include "wifi_sampler.h"
+#include "target_beacon.h"
 
 #define LINE_BLOCK_MS 750u
-// v18 step sizes. Every stop costs about 13 s (BLE check and two Wi-Fi
-// batches), so the floor uses 500 ms steps (v16: 250 ms). Once the colour
-// sensor sees the mat the robot is close, and 250 ms steps avoid driving past
-// the centre. Three weak positions now span 1.5 s of travel instead of
-// 0.75 s, so a short weak patch in the signal no longer ends a good line.
-#if WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_LEGACY
-#define LINE_FORWARD_BLOCK_MS 500u
+// Two-beacon floor trials cover more distance between stationary readings.
+#if ROUTE_BEACON_COUNT == 2
+#define LINE_FORWARD_BLOCK_MS 750u
 #else
-// The comparison builds share a slightly longer floor step. Four steps fit
-// the 2400 ms trial, with one fewer stop for RSSI than the legacy step size.
-#define LINE_FORWARD_BLOCK_MS 600u
+#define LINE_FORWARD_BLOCK_MS 500u
 #endif
 #define LINE_MAT_BLOCK_MS 250u
 // Near the centre: 100 ms steps once a stop is within two rings of the mat's
@@ -36,7 +31,13 @@
 #define LINE_SWEEP_MS 6000u
 #define LINE_TRANSLATION_MS 60000u
 #define LINE_PROFILE_CAPACITY 32u
+#if ROUTE_BEACON_COUNT == 2
+#define MIN_PROGRESS_DB 2
+#else
 #define MIN_PROGRESS_DB 3
+#endif
+#define MIN_RETURN_DB 3
+#define MIN_DECLINE_DB 3
 
 typedef struct { wifi_sample_t first, second; } line_pair_t;
 float line_normalise_heading(float heading);

@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "packed_bits.h"
+#include "target_beacon.h"
 
 #define WIFI_RSSI_FILTER_LEGACY 0
 #define WIFI_RSSI_FILTER_KALMAN 1
@@ -11,8 +12,13 @@
 #define WIFI_RSSI_FILTER WIFI_RSSI_FILTER_LEGACY
 #endif
 #if WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_LEGACY
+#if ROUTE_BEACON_COUNT == 2
+#define SCANS_PER_SAMPLE 7u
+#define MIN_VALID_SCANS 5u
+#else
 #define SCANS_PER_SAMPLE 5u
 #define MIN_VALID_SCANS 3u
+#endif
 #elif WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_KALMAN || WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_TRIMMED_MEAN
 #define SCANS_PER_SAMPLE 9u
 #define MIN_VALID_SCANS 7u

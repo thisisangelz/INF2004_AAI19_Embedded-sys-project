@@ -6,7 +6,7 @@
 // TCS34725 on Robo Pico Grove 1 (I2C0, SDA GP0, SCL GP1). Thresholds come from
 // docs/calibration/ (gain 4x, 103 ms): the 5-ring pink mat (6 November) and the
 // 6-ring blue and purple mats (7 November). Each reading identifies its mat,
-// so any beacon can sit on any of the three mats.
+// with the active target profile supplied by target_beacon_mat().
 typedef enum {
     COLOUR_UNKNOWN, // no reading, sensor error or unusable value
     COLOUR_FLOOR,
@@ -38,7 +38,7 @@ typedef struct {
 } colour_reading_t;
 
 // Pure helpers, no hardware access (colour_mat.c).
-// The beacon's own mat (AP1 pink, AP2 blue, AP3 purple; see target_beacon.h).
+// The beacon's configured mat (see target_beacon.c for the selected route).
 // Once set, rings of the other mats classify as floor with COLOUR_MAT_NONE,
 // and any white edge counts as this mat's edge. COLOUR_MAT_NONE (the
 // default) accepts every mat.
