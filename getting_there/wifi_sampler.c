@@ -48,18 +48,49 @@ wifi_sample_t wifi_filter(const uint8_t *codes, unsigned count)
 {
     uint8_t sorted[SCANS_PER_SAMPLE];
     unsigned valid = 0;
+#if WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_KALMAN
+    // Model the signal at this stopped position as a scalar random walk.
+    // Variances are initial tuning values in dB squared, per scan.
+    const float process_variance = 0.25f, measurement_variance = 4.0f;
+    float estimate = 0.0f, variance = measurement_variance;
+#endif
     if (count > SCANS_PER_SAMPLE) count = SCANS_PER_SAMPLE;
     for (unsigned i = 0; i < count; ++i) {
-        if (codes[i] >= RSSI_MISSING_CODE || codes[i] == 0) continue;
+#if WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_KALMAN
+        // Predict through a missing scan too, but only update on a reading.
+        if (valid != 0) variance += process_variance;
+#endif
+        uint8_t code = codes[i];
+        if (code >= RSSI_MISSING_CODE || code == 0) continue;
+#if WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_KALMAN
+        // Use arrival order and start fresh for every batch and target.
+        if (valid == 0) {
+            estimate = code;
+        } else {
+            float gain = variance / (variance + measurement_variance);
+            estimate += gain * ((float)code - estimate);
+            variance *= 1.0f - gain;
+        }
+#endif
         unsigned j = valid++;
-        while (j && sorted[j - 1] > codes[i]) { sorted[j] = sorted[j - 1]; --j; }
-        sorted[j] = codes[i];
+        while (j && sorted[j - 1] > code) { sorted[j] = sorted[j - 1]; --j; }
+        sorted[j] = code;
     }
     if (valid < MIN_VALID_SCANS) return (wifi_sample_t){.code = RSSI_MISSING_CODE};
-    unsigned trim = valid / 4u, kept = valid - 2u * trim, sum = 0;
+    const unsigned trim = WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_LEGACY ? valid / 4u : 1u;
+#if WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_KALMAN
+    unsigned filtered = (unsigned)(estimate + 0.5f);
+#else
+    unsigned kept = valid - 2u * trim, sum = 0;
     for (unsigned i = trim; i < valid - trim; ++i) sum += sorted[i];
-    return (wifi_sample_t){.code = (sum + kept / 2u) / kept,
-        .spread = sorted[valid - trim - 1u] - sorted[trim]};
+    unsigned filtered = (sum + kept / 2u) / kept;
+#endif
+    unsigned low = sorted[trim], high = sorted[valid - trim - 1u];
+    // Keep the spread-aware movement check conservative if an extreme scan
+    // pulls the Kalman estimate outside the central observations.
+    if (filtered < low) low = filtered;
+    if (filtered > high) high = filtered;
+    return (wifi_sample_t){.code = filtered, .spread = high - low};
 }
 
 static int sampler_result(void *unused, const cyw43_ev_scan_result_t *result)
@@ -91,7 +122,11 @@ void wifi_sampler_init(bool (*can_continue)(void))
     memset(pending_bssid, 0, sizeof(pending_bssid));
     pending_result = (wifi_record_t){.code = RSSI_MISSING_CODE};
     moving_reference = (wifi_sample_t){.code = RSSI_MISSING_CODE};
-    report_printf("RSSI sampling: stationary decisions; moving acquisition %s, qualification requires 3 full five-scan windows <= 750 ms\n",
+    const char *filter = WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_KALMAN ? "kalman" :
+                         WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_TRIMMED_MEAN ? "trimmed-mean" :
+                         "legacy-trimmed-mean";
+    report_printf("RSSI sampling: filter=%s, scans=%u, min_valid=%u; stationary decisions; moving acquisition %s\n",
+                  filter, SCANS_PER_SAMPLE, MIN_VALID_SCANS,
                   LINE_SEARCH_MOVING_SAMPLES ? "awaiting timing qualification" : "disabled pending hardware timing checks");
 }
 
@@ -241,7 +276,8 @@ bool wifi_sampler_poll_moving(void)
 bool wifi_sampler_sample(wifi_sample_t *sample)
 {
     if (!wifi_sampler_quiesce()) return false;
-    report_printf("%s Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped\n", target_beacon_name());
+    report_printf("%s Wi-Fi sample: collecting %u fresh scans (%u valid required); motors stopped\n",
+                  target_beacon_name(), SCANS_PER_SAMPLE, MIN_VALID_SCANS);
     uint8_t readings[SCANS_PER_SAMPLE];
     unsigned valid = 0;
     uint32_t start = sampler_now_ms();

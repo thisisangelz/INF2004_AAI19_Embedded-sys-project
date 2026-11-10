@@ -57,6 +57,29 @@ Locally built images in `getting_there/build-v2/` are generated and ignored by G
   centre override, mat scan count, profiles and translation budget reset per leg.
   Log exhaustion remains a stopped failure; no leg erases or restarts the log.
 
+### Wi-Fi RSSI comparison builds
+
+The `two-beacon-route-kalman` branch adds `getting_there_route2_kalman.uf2`.
+The `two-beacon-route-trimmed-mean` branch adds `getting_there_route2_trimmed.uf2`.
+Both use AP1 (pink) and AP2 (blue), and keep the normal route's BLE, movement and
+completion rules. The differences are in Wi-Fi RSSI sampling and filtering.
+
+- Each stopped batch makes nine fresh scans for the current target. At least
+  seven valid readings are required. Two separate batches support a movement
+  comparison. The baseline uses five scans per batch.
+- The trimmed mean drops exactly one strongest and one weakest valid reading
+  and averages the rest. Five to seven readings contribute to the result.
+- The scalar Kalman filter uses valid readings in arrival order and resets at
+  the start of each batch. It starts with the first reading and uses process
+  variance 0.25 dB² per scan and measurement variance 4 dB² as initial tuning
+  values. The retained RSSI range is widened if the estimate falls outside it.
+  See [Kalman's original paper](https://www.cs.unc.edu/~welch/kalman/media/pdf/Kalman1960.pdf)
+  for the recursive estimate and variance method.
+
+Longer batches cost additional scan time. These values are a starting point
+for a hardware comparison. The log records the filter and scan budget at
+startup, then the raw readings, valid count, filtered dBm, spread and duration.
+
 ### AP3 search correction after the 8 November trace
 
 The supplied [failed route trace analysis](../docs/runs/2026-11-08-route-ap3-no-direction.md)

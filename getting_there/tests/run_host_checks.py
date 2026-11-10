@@ -22,6 +22,7 @@ extended_events = 'gatt_event_query_complete_get_service_id' in event_header
 common = [args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-ffunction-sections',
           '-fdata-sections', '-I', str(tests / 'stubs'),
           '-I', str(tests.parent)]
+dead_strip = '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections'
 for name in ['navigation', 'route', 'route2', 'payload_client', 'payload_client_route', 'report', 'motion', 'flash', 'colour']:
     executable = output / f'test_{name}.exe'
     source = {'route2': 'route', 'payload_client_route': 'payload_client'}.get(name, name)
@@ -44,9 +45,16 @@ for name in ['navigation', 'route', 'route2', 'payload_client', 'payload_client_
                     str(btstack / 'ad_parser.c'), str(btstack / 'btstack_util.c')]
         if extended_events:
             command += ['-DTEST_EXTENDED_GATT_EVENTS=1']
-    command += ['-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
-                '-lm', '-o', str(executable)]
+    command += [dead_strip, '-lm', '-o', str(executable)]
     subprocess.run(command, check=True)
+    if not args.build_only:
+        subprocess.run([str(executable)], check=True)
+
+for filter_name in ('KALMAN', 'TRIMMED_MEAN'):
+    executable = output / f'test_wifi_filter_{filter_name.lower()}.exe'
+    subprocess.run(common + [f'-DWIFI_RSSI_FILTER=WIFI_RSSI_FILTER_{filter_name}',
+                             str(tests / 'test_wifi_filter.c'), str(tests.parent / 'wifi_sampler.c'),
+                             dead_strip, '-o', str(executable)], check=True)
     if not args.build_only:
         subprocess.run([str(executable)], check=True)
 
