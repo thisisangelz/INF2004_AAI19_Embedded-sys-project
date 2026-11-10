@@ -32,6 +32,10 @@ const char *target_beacon_ssid(void)
 size_t target_beacon_ssid_length(void) { return target_beacon_id() == 1 ? 11u : 13u; }
 colour_mat_t target_beacon_mat(void)
 {
+#if ROUTE_BEACON_COUNT == 2
+    static const colour_mat_t mats[] = {COLOUR_MAT_BLUE, COLOUR_MAT_PINK};
+#else
     static const colour_mat_t mats[] = {COLOUR_MAT_PINK, COLOUR_MAT_BLUE, COLOUR_MAT_PURPLE};
+#endif
     return mats[target_beacon_id() - 1u];
 }

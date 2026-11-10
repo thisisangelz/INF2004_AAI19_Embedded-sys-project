@@ -3,9 +3,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "packed_bits.h"
+#include "target_beacon.h"
 
+#if ROUTE_BEACON_COUNT == 2
+#define SCANS_PER_SAMPLE 7u
+#define MIN_VALID_SCANS 5u
+#else
 #define SCANS_PER_SAMPLE 5u
 #define MIN_VALID_SCANS 3u
+#endif
 #define SCAN_TIMEOUT_MS 15000u
 #define WIFI_MOVING_INTERVAL_MS 750u
 #define WIFI_RECORD_CAPACITY 64u

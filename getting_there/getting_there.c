@@ -791,8 +791,8 @@ static payload_result_t check_directions(float origin, follow_result_t *followed
 {
     static const float offsets[SEARCH_DIRECTIONS] = {-90.0f, 90.0f, 180.0f, 45.0f, -45.0f, 135.0f, -135.0f};
     *found = false;
-    report_printf("DIRECTION SEARCH: both perpendiculars, straight back, then four diagonals; origin %d degrees; unchanged confirmation margin\n",
-                  (int)origin);
+    report_printf("DIRECTION SEARCH: both perpendiculars, straight back, then four diagonals; origin %d degrees; minimum improvement %d dB\n",
+                  (int)origin, MIN_PROGRESS_DB);
     for (unsigned i = 0; i < SEARCH_DIRECTIONS; ++i) {
         float heading = line_normalise_heading(origin + offsets[i]);
         report_printf("DIRECTION TRIAL: %u/%u, offset=%d, heading=%d\n",
@@ -1094,6 +1094,8 @@ int main(void)
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
     report_printf("Move using Wi-Fi direction; on the mat, steer by colour scans\n");
+    report_printf("NAV SETTINGS: floor_step_ms=%u,minimum_improvement_db=%d\n",
+                  LINE_FORWARD_BLOCK_MS, MIN_PROGRESS_DB);
     report_printf("Transfer only on %s or darker after a lighter ring, with BLE >= %d dBm\n",
                   COLOUR_ARRIVAL_TEXT, COLOUR_ARRIVAL_BLE_DBM);
     report_printf("Without a working colour sensor: transfer after BLE averages >= %d dBm\n", AP1_CLOSE_RSSI_DBM);

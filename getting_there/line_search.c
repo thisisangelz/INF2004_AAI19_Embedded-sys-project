@@ -11,7 +11,7 @@ float line_normalise_heading(float heading)
 static int return_margin(wifi_sample_t previous, wifi_sample_t current)
 {
     int margin = previous.spread + current.spread + 1;
-    return margin > MIN_PROGRESS_DB ? margin : MIN_PROGRESS_DB;
+    return margin > MIN_RETURN_DB ? margin : MIN_RETURN_DB;
 }
 
 int line_pair_margin(line_pair_t previous, line_pair_t current)
@@ -82,8 +82,10 @@ bool line_reference_declined(line_pair_t reference, line_pair_t current)
 {
     // Equality remains inside the recovery tolerance. Both current batches
     // must be strictly weaker than the reference by more than the noise margin.
+    int margin = line_pair_margin(reference, current);
+    if (margin < MIN_DECLINE_DB) margin = MIN_DECLINE_DB;
     return valid_pair(reference) && valid_pair(current) &&
-           line_confirmed_gain(current, reference) > line_pair_margin(reference, current);
+           line_confirmed_gain(current, reference) > margin;
 }
 
 bool line_return_consistent(line_pair_t best, line_pair_t returned)

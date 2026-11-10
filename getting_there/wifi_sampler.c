@@ -91,7 +91,8 @@ void wifi_sampler_init(bool (*can_continue)(void))
     memset(pending_bssid, 0, sizeof(pending_bssid));
     pending_result = (wifi_record_t){.code = RSSI_MISSING_CODE};
     moving_reference = (wifi_sample_t){.code = RSSI_MISSING_CODE};
-    report_printf("RSSI sampling: stationary decisions; moving acquisition %s, qualification requires 3 full five-scan windows <= 750 ms\n",
+    report_printf("RSSI sampling: trimmed mean, scans=%u,min_valid=%u; stationary decisions; moving acquisition %s\n",
+                  SCANS_PER_SAMPLE, MIN_VALID_SCANS,
                   LINE_SEARCH_MOVING_SAMPLES ? "awaiting timing qualification" : "disabled pending hardware timing checks");
 }
 
@@ -241,7 +242,8 @@ bool wifi_sampler_poll_moving(void)
 bool wifi_sampler_sample(wifi_sample_t *sample)
 {
     if (!wifi_sampler_quiesce()) return false;
-    report_printf("%s Wi-Fi sample: collecting 5 fresh scans (3 required); motors stopped\n", target_beacon_name());
+    report_printf("%s Wi-Fi sample: collecting %u fresh scans (%u required); motors stopped\n",
+                  target_beacon_name(), SCANS_PER_SAMPLE, MIN_VALID_SCANS);
     uint8_t readings[SCANS_PER_SAMPLE];
     unsigned valid = 0;
     uint32_t start = sampler_now_ms();
