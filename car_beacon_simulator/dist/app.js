@@ -6,10 +6,13 @@ const keys=[...legacyKeys,'b2x','b2y','b3x','b3y','m1x','m1y','m2x','m2y','m3x',
 const setupControls=[...keys,'preset','branch','customRef','moving','robotBuild','beaconCount','singleBeacon','matLayout','mat1','mat2','mat3','colour_enabled','runBtn','fetchBtn','importFile','saveScenario','loadTraceBtn','traceFile','editStartBtn'];
 const beaconColours={1:'#ff8fbd',2:'#7bafff',3:'#bf9bff'};
 const matColours={pink:'#ff8fbd',blue:'#7bafff',purple:'#bf9bff',none:'#607786'};
-const routeTargets={route:[1,2,3],route2:[1,2]};
+const twoBeaconRoute=[1,2];
+const routeTargets={route:[1,2,3],route2:twoBeaconRoute,'route2-kalman':twoBeaconRoute,'route2-trimmed':twoBeaconRoute};
 const routeSources={
   route:['codex/three-beacon-route','origin/codex/three-beacon-route'],
-  route2:['two-beacon-route','origin/two-beacon-route']
+  route2:['two-beacon-route','origin/two-beacon-route'],
+  'route2-kalman':['two-beacon-route-kalman','origin/two-beacon-route-kalman'],
+  'route2-trimmed':['two-beacon-route-trimmed-mean','origin/two-beacon-route-trimmed-mean']
 };
 const triangle={x:0,y:0,heading:0,bx:1,by:0,b2x:1,b2y:1.5,b3x:-.5,b3y:1.5};
 let scenarioExtras={},twoBeaconIds=[1,2],customMatIds=[1,2,3];
@@ -331,7 +334,7 @@ function renderStats(){
   renderRoute(f,s);
   if(run){const atEnd=playTime>=run.result.t-.001;$('arenaState').textContent=atEnd?(run.result.success?'FIRMWARE CONFIRMED':'FIRMWARE STOPPED'):playing?'PLAYING RECORDED EXECUTION':'PAUSED · INSPECT EXECUTION';$('outcome').hidden=!atEnd;}
 }
-function filteredLogs(){if(!run)return[];return run.logs.filter(l=>l.t<=playTime+.00001).filter(l=>logMode==='all'||(logMode==='faults'?/FAIL|FAULT:|ERROR|STOP LATCH/i.test(l.message):logMode==='ble'?/^beacon(?:[1-3])?$/.test(l.source)||/BLE|GATT|payload|Bluetooth|CRC|HANDSHAKE/i.test(l.message):/TARGET|ROUTE|COLOUR|COLOR|MAT_|CENTRE|CENTER|DIP:|DIP_CHECK|FOLLOW:|FOLLOW_POINT|DIRECTION|RETURN:|SIDE |APPROACH:|RESULT:|FAULT:|FAILED:|COMPLETION|PAYLOAD COMPLETE|START:|calibrat/i.test(l.message)));}
+function filteredLogs(){if(!run)return[];return run.logs.filter(l=>l.t<=playTime+.00001).filter(l=>logMode==='all'||(logMode==='faults'?/FAIL|FAULT:|ERROR|STOP LATCH/i.test(l.message):logMode==='ble'?/^beacon(?:[1-3])?$/.test(l.source)||/BLE|GATT|payload|Bluetooth|CRC|HANDSHAKE/i.test(l.message):/TARGET|ROUTE|COLOUR|COLOR|MAT_|CENTRE|CENTER|DIP:|DIP_CHECK|FOLLOW:|FOLLOW_POINT|DIRECTION|RETURN:|SIDE |APPROACH:|RESULT:|FAULT:|FAILED:|COMPLETION|PAYLOAD COMPLETE|START(?:UP)?:|RSSI sampling:|calibrat/i.test(l.message)));}
 function renderLogs(){if(!run)return;const logs=filteredLogs();if(logs.length===lastLogCount)return;lastLogCount=logs.length;const el=$('events'),nearEnd=el.scrollTop+el.clientHeight>=el.scrollHeight-35;el.innerHTML=logs.slice(-250).map(l=>`<div class="log-row ${/^beacon(?:[1-3])?$/.test(l.source)?'beacon':''} ${/FAIL|FAULT:|ERROR/.test(l.message)?'fault':''}" data-time="${l.t}"><span class="time">${clock(l.t)}</span><span class="source">${escape(l.source)}</span><span class="message">${escape(l.message.trim())}</span></div>`).join('')||'<div class="empty">No matching events at this time. Play or scrub forward.</div>';if(nearEnd)el.scrollTop=el.scrollHeight;}
 function render(){drawArena();drawChart();renderStats();renderLogs();}
 function seek(t){if(!run)return;playTime=Math.min(run.result.t,Math.max(0,t));let lo=0,hi=run.frames.length-1;while(lo<hi){const m=Math.ceil((lo+hi)/2);if(run.frames[m].t<=playTime)lo=m;else hi=m-1;}frame=run.frames[lo];if(playTime>=run.result.t){playing=false;frame=run.frames.at(-1);$('playBtn').textContent='▶';}render();}

@@ -20,7 +20,7 @@
       <div id="branchNote" class="hint">Compiles the selected robot build and beacon firmware from this exact source.</div><div id="sourceDetails" class="hint"></div>
       <label class="field-label" for="customRef">Or enter a branch / commit</label><input id="customRef" placeholder="Optional: origin/my-branch" autocomplete="off">
       <label class="field-label" for="robotBuild">Robot build</label>
-      <select id="robotBuild"><option value="ap1">AP1 · pink target</option><option value="ap2">AP2 · blue target</option><option value="ap3">AP3 · purple target</option><option value="route2">Two-beacon route · AP1 → AP2</option><option value="route" selected>Three-beacon route · AP1 → AP2 → AP3</option></select>
+      <select id="robotBuild"><option value="ap1">AP1 · pink target</option><option value="ap2">AP2 · blue target</option><option value="ap3">AP3 · purple target</option><option value="route2">Two-beacon route · baseline</option><option value="route2-kalman">Two-beacon route · Kalman filter</option><option value="route2-trimmed">Two-beacon route · trimmed mean</option><option value="route" selected>Three-beacon route · AP1 → AP2 → AP3</option></select>
       <p id="buildNote" class="hint">Requires a compatible source build. Incompatible builds report an error; no controller is substituted.</p>
       <div class="separator"></div>
       <label class="field-label" for="preset">Starting scenario</label>

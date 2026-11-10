@@ -455,7 +455,9 @@ test('route dropdown selects two or three targets and only builds on request',as
   h.evaluate(`config={refs:[
     {name:'origin/main',supported:true,commit:'main-sha'},
     {name:'codex/three-beacon-route',supported:true,commit:'three-sha'},
-    {name:'two-beacon-route',supported:true,commit:'two-sha'}
+    {name:'two-beacon-route',supported:true,commit:'two-sha'},
+    {name:'two-beacon-route-kalman',supported:true,commit:'kalman-sha'},
+    {name:'origin/two-beacon-route-trimmed-mean',supported:true,commit:'trimmed-sha'}
   ]};populateRefs(config.refs)`);
   const select=build=>{h.elements.robotBuild.value=build;h.elements.robotBuild.onchange();};
   h.elements.branch.value='origin/main';
@@ -469,6 +471,16 @@ test('route dropdown selects two or three targets and only builds on request',as
   assert.equal(h.elements.branch.value,'codex/three-beacon-route');
   assert.equal(h.elements.beaconCount.value,'3');
   assert.equal(h.evaluate('scenario().beacons[2].x'),-4.25);
+  for(const [build,branch] of [
+    ['route2-kalman','two-beacon-route-kalman'],
+    ['route2-trimmed','origin/two-beacon-route-trimmed-mean']
+  ]){
+    assert.ok(h.elements.robotBuild.options.some(option=>option.value===build));
+    select(build);
+    assert.equal(h.elements.branch.value,branch);
+    assert.equal(h.elements.beaconCount.value,'2');
+    assert.doesNotMatch(h.elements.routeProgress.innerHTML,/AP3/);
+  }
   h.elements.customRef.value='pinned-test-commit';
   select('route2');
   assert.equal(h.elements.branch.value,'two-beacon-route');

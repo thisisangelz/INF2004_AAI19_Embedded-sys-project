@@ -42,6 +42,14 @@ to the matching source when available, clears any previous custom ref, and
 sets the matching default radio layout. To test a different commit, enter its
 ref after choosing the build. Use **↻** to fetch a missing branch.
 You can still disable radios separately to test missing beacons.
+
+The two-beacon **Kalman filter** and **trimmed mean** builds select
+`two-beacon-route-kalman` and `two-beacon-route-trimmed-mean`, respectively.
+Both use nine Wi-Fi scans per batch, with at least seven valid readings, and
+600 ms floor steps. The Decisions log shows which filter ran and how long
+startup stages took. The noiseless radio model can give both filters the same
+answer. Compare them on hardware to judge their response to real RSSI noise.
+
 Select **origin/main** with a single-target build to
 compare main's existing v18 navigation and colour gate. Selecting a route build
 does not turn single-target source into route firmware: an incompatible source

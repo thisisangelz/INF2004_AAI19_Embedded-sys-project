@@ -28,8 +28,13 @@ RUNS = ROOT / 'runs'
 LOCK = threading.Lock()
 REQUIRED = ['getting_there.c', 'motion.c', 'payload_client.c', 'faults.c']
 OPTIONAL = ['wifi_sampler.c', 'line_search.c', 'colour_sensor.c', 'colour_mat.c', 'robot_cues.c', 'target_beacon.c']
-ROBOT_BUILDS = ('ap1', 'ap2', 'ap3', 'route', 'route2')
 TWO_BEACON_DEFINE = 'ROUTE_BEACON_COUNT=2'
+TWO_BEACON_BUILDS = {
+    'route2': ('getting_there_route2',),
+    'route2-kalman': ('getting_there_route2_kalman', 'WIFI_RSSI_FILTER=WIFI_RSSI_FILTER_KALMAN'),
+    'route2-trimmed': ('getting_there_route2_trimmed', 'WIFI_RSSI_FILTER=WIFI_RSSI_FILTER_TRIMMED_MEAN'),
+}
+ROBOT_BUILDS = ('ap1', 'ap2', 'ap3', 'route', *TWO_BEACON_BUILDS)
 SOURCE_FOLDERS = ['getting_there','ble_transfer','ble_transfer_powerbank',
                   'common', 'picow_access_point','picow_access_point_powerbank',
                   'picow_access_point2','picow_access_point2_powerbank',
@@ -182,12 +187,15 @@ def compile_firmware(repo, ref, sdk, moving=False, build_target='ap1'):
         raise ValueError('Selected source does not support robot target selection')
     if build_target == 'route' and not any('THREE_BEACON_ROUTE' in p.read_text() for p in fw.glob('*') if p.suffix in ('.c','.h')):
         raise ValueError('Selected source does not implement THREE_BEACON_ROUTE')
-    if build_target == 'route2':
+    route_build = TWO_BEACON_BUILDS.get(build_target)
+    if route_build:
+        cmake_target, *filter_defines = route_build
+        route_defines = [TWO_BEACON_DEFINE, *filter_defines]
         cmake = fw/'CMakeLists.txt'
-        if not cmake.is_file() or not re.search(
-                r'target_compile_definitions\s*\(\s*getting_there_route2\s+PRIVATE\s+'
-                + TWO_BEACON_DEFINE + r'\s*\)', cmake.read_text()):
-            raise ValueError('Selected source does not implement the two-beacon route (getting_there_route2)')
+        declaration = r'target_compile_definitions\s*\(\s*' + re.escape(cmake_target) + r'\s+PRIVATE\s+'
+        definitions = r'\s+'.join(map(re.escape, route_defines))
+        if not cmake.is_file() or not re.search(declaration + definitions + r'\s*\)', cmake.read_text()):
+            raise ValueError(f'Selected source does not implement the requested two-beacon build ({cmake_target})')
     digest = hashlib.sha256()
     digest.update(Path(__file__).read_bytes())
     for p in sorted((ROOT/'native').rglob('*')):
@@ -232,7 +240,7 @@ def compile_firmware(repo, ref, sdk, moving=False, build_target='ap1'):
         if (fw/'target_beacon.h').exists() and 'target_beacon_id(' in (fw/'target_beacon.h').read_text():
             flags += ['-DSIM_DYNAMIC_TARGET_API=1']
         if build_target == 'route': flags += ['-DTHREE_BEACON_ROUTE=1']
-        elif build_target == 'route2': flags += ['-D'+TWO_BEACON_DEFINE]
+        elif route_build: flags += ['-D'+define for define in route_defines]
         else: flags += ['-DTARGET_BEACON_ID='+build_target[-1]]
         objects = []
         symbols = ['beacon_firmware_main','native_beacon_boot','native_beacon_connect','native_beacon_enable_notifications',
