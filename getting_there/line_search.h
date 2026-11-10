@@ -8,7 +8,13 @@
 // sensor sees the mat the robot is close, and 250 ms steps avoid driving past
 // the centre. Three weak positions now span 1.5 s of travel instead of
 // 0.75 s, so a short weak patch in the signal no longer ends a good line.
+#if WIFI_RSSI_FILTER == WIFI_RSSI_FILTER_LEGACY
 #define LINE_FORWARD_BLOCK_MS 500u
+#else
+// The comparison builds share a slightly longer floor step. Four steps fit
+// the 2400 ms trial, with one fewer stop for RSSI than the legacy step size.
+#define LINE_FORWARD_BLOCK_MS 600u
+#endif
 #define LINE_MAT_BLOCK_MS 250u
 // Near the centre: 100 ms steps once a stop is within two rings of the mat's
 // arrival ring. The blue and purple mats fit six rings where pink has five,

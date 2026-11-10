@@ -61,8 +61,7 @@ Locally built images in `getting_there/build-v2/` are generated and ignored by G
 
 The `two-beacon-route-kalman` branch adds `getting_there_route2_kalman.uf2`.
 The `two-beacon-route-trimmed-mean` branch adds `getting_there_route2_trimmed.uf2`.
-Both use AP1 (pink) and AP2 (blue), and keep the normal route's BLE, movement and
-completion rules. The differences are in Wi-Fi RSSI sampling and filtering.
+Both use AP1 (pink) and AP2 (blue), with the same BLE and completion rules.
 
 - Each stopped batch makes nine fresh scans for the current target. At least
   seven valid readings are required. Two separate batches support a movement
@@ -75,6 +74,10 @@ completion rules. The differences are in Wi-Fi RSSI sampling and filtering.
   values. The retained RSSI range is widened if the estimate falls outside it.
   See [Kalman's original paper](https://www.cs.unc.edu/~welch/kalman/media/pdf/Kalman1960.pdf)
   for the recursive estimate and variance method.
+- Floor steps are 600 ms instead of 500 ms. Both builds keep the 250 ms mat
+  steps, 100 ms near-centre steps and existing travel and STOP limits.
+- Startup logs time the persistent log setup, gyro bias calibration and radio
+  startup separately. The gyro still takes 200 samples with 10 ms spacing.
 
 Longer batches cost additional scan time. These values are a starting point
 for a hardware comparison. The log records the filter and scan budget at
