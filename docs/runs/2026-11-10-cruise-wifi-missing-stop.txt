@@ -1,0 +1,63 @@
+========== SAVED RUN ==========
+IMU WHO_AM_I=0x70 | gyro +/- 1000 dps | turns 25% (slow 20%), drive 35%
+IMU I2C: 100000 Hz, 5 ms transaction timeout, 2 stopped recovery attempts
+Getting there | bounded eight-heading acquisition, foreign-mat guard, no-new-best watchdog | AP1 -> AP2 route
+Colour mat: BLUE (AP1); other mats read as floor
+Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log
+Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.
+Move using Wi-Fi direction; on the mat, steer by colour scans
+NAV SETTINGS: floor_step_ms=750,minimum_improvement_db=2
+Transfer only on the arrival ring (pink ring 4, blue or purple ring 5) or darker after a lighter ring, with BLE >= -85 dBm
+Without a working colour sensor: transfer after BLE averages >= -58 dBm
+Waiting for GP20: press to start; GP21 replays the previous run.
+GP20 START: preparing persistent log; motors remain stopped.
+Preparing persistent log: erasing 128 sectors in the reserved 512 KiB region
+Preparing persistent log: 16/128 flash sectors erased
+Preparing persistent log: 32/128 flash sectors erased
+Preparing persistent log: 48/128 flash sectors erased
+Preparing persistent log: 64/128 flash sectors erased
+Preparing persistent log: 80/128 flash sectors erased
+Preparing persistent log: 96/128 flash sectors erased
+Preparing persistent log: 112/128 flash sectors erased
+Preparing persistent log: 128/128 flash sectors erased
+Release GP20 to continue. Waiting at most 10 seconds; GP21 stops startup.
+GP20 released. Persistent log ready.
+COLOUR SENSOR: TCS34725 ID 0x44 ready on GP0/GP1; pink, blue and purple mats; arrival on the arrival ring (pink ring 4, blue or purple ring 5) or darker after a lighter ring of the same mat
+Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.
+Keep robot still: calibrating gyro for 2 seconds
+Gyro Z bias calibrated
+Starting Wi-Fi/Bluetooth hardware.
+Wi-Fi hardware initialised; starting Bluetooth.
+Bluetooth ready
+Bluetooth ready; beginning AP1 approach.
+RSSI sampling: trimmed mean, scans=7,min_valid=5; stationary decisions; moving acquisition disabled pending hardware timing checks
+ROUTE: target=1
+ROUTE: leg=AP1,mat=BLUE,translation_limit_ms=60000,mission_limit_ms=900000
+RSSI sampling: trimmed mean, scans=7,min_valid=5; stationary decisions; moving acquisition disabled pending hardware timing checks
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=2368,r=817,g=789,b=693,gr=965,br=848,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=1,t_ms=20397,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=708
+RSSI_RAW,scan=2,t_ms=21105,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=707
+RSSI_RAW,scan=3,t_ms=21818,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=4,t_ms=22530,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=5,t_ms=23242,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=6,t_ms=23960,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=7,t_ms=24672,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=712
+RSSI_SAMPLE,scan=7,valid=0,dbm=-127,spread=0,duration_ms=4983,moving=0,fallback=0
+AP1 Wi-Fi missing; checking BLE while remaining stopped
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=2368,r=817,g=789,b=693,gr=965,br=848,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=8,t_ms=26237,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=707
+RESULT: ROUTE STOPPED
+ROUTE: final_mask=0
+FAULT MASK: 0x110
+FAULT: WIFI_LOST
+FAULT: STOP_LATCHED
+GP21 stop latched
+Run ended. Log survives power-off. Next boot: open serial, press GP21 BEFORE GP20.
+
+[COMPLETE: all recorded run text saved]
+========== END OF SAVED RUN ==========
+Before a run: GP21 replays; GP20 starts a new run and replaces this log.

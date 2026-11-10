@@ -52,7 +52,7 @@
       return make('drive', { dir: m[1] === 'forwards' ? 1 : -1, duty: +m[2], ms: +m[3], heading: +m[4] });
     if ((m = /^TURN (\w+): commanded (-?[\d.]+) degrees.*?elapsed (\d+) ms/.exec(line)))
       return make('turn', { status: m[1], deg: +m[2], ms: +m[3] });
-    if ((m = /^DRIVE OK: (forwards|backwards), powered (d+) ms/.exec(line))) return make('drive_ok', { ms: +m[2] });
+    if ((m = /^DRIVE OK: (forwards|backwards), powered (\d+) ms/.exec(line))) return make('drive_ok', { ms: +m[2] });
     if (line.startsWith('TURN')) return make('turn', { status: 'FAILED', deg: 0, ms: 0 });
     if ((m = /^AP\d BLE: filtered (-?\d+) dBm, need >= (-?\d+), close (\d+)\/(\d+)/.exec(line)))
       return make('ble', { dbm: +m[1], need: +m[2], close: +m[3], of: +m[4] });

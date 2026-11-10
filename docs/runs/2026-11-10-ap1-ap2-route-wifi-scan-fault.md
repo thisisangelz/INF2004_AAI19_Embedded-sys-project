@@ -17,7 +17,7 @@ The robot never reached the mat. Every `COLOUR` check read `FLOOR` with `mats=NO
 
 1. **Time per stop fell from about 13 s to 8.3 s.** The colour gate skips the 5 s BLE check
    at stops that are off the mat. Each stop is now two five-scan Wi-Fi batches (about 7.1 s)
-   plus a colour read. The robot was moving for 12.1 s of 149 s (8.1%).
+   plus a colour read. The robot was moving for 11.5 s of 149 s (7.7%).
 2. **The Wi-Fi signal is flat here.** Ten steps along heading 0 changed it by about 1 dB, so the
    trial found nothing to follow.
 3. **Two IMU read errors** (`DRIVE, reg 0x43`) each stopped a drive block early (239 ms of 750 ms,

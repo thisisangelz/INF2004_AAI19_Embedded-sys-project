@@ -32,4 +32,4 @@ blue mat, `floor_step_ms=750`, `minimum_improvement_db=2`.
    failure.
 5. **Timing is partly estimated.** The log has no timestamps after the last Wi-Fi scan, and the
    colour scans and mat steering after it account for about 33 s of the 68 s shown. The driving time
-   (9.5 s) is measured.
+   (9.2 s) is measured.
