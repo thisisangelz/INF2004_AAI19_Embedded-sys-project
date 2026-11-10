@@ -150,8 +150,8 @@ how each step's evidence is acquired.
 
 On the floor, with cruise enabled, one follow step becomes:
 
-1. Drive one continuous segment of up to `CRUISE_SEGMENT_MS` with the existing gyro heading
-   control, updating every `CRUISE_CONTROL_MS`.
+1. Drive one continuous segment of up to `CRUISE_SEGMENT_MS` (6 s) with the existing gyro
+   heading control, updating every `CRUISE_CONTROL_MS` (5 ms).
 2. During the segment, run Wi-Fi scans back to back without blocking. Each finished scan is
    stored with the powered position at which it arrived.
 3. Poll the colour sensor without blocking, once per integration time.
@@ -160,16 +160,20 @@ On the floor, with cruise enabled, one follow step becomes:
    point, a control-loop gap over `CRUISE_MAX_LOOP_GAP_MS`, the travel budget, STOP or a fault.
 5. Stop, settle, quiesce, flash checkpoint and the stationary colour arrival check. These are
    the existing `translate_block` steps and they take about 0.7 s.
-6. If the segment ran its full length and the last `2 × CRUISE_HALF_SCANS` scans are valid and
-   show no decline, use them as the step's evidence (a *moving pair*). Otherwise LOCALIZE with
-   the existing stationary `measure_pair`.
+6. If the segment ran its full length, the newest `2 × LINE_MOVING_HALF_SCANS` scans of this
+   heading are valid, and they already confirm a new best point, use them as the step's
+   evidence (a *moving pair*). Otherwise LOCALIZE with the existing stationary `measure_pair`.
 7. Run the unchanged decision logic.
 
 A moving pair is formed like a stationary pair: two batches, each the median of
-`CRUISE_HALF_SCANS` scans with their range as the spread. The older batch was taken further
-back along the line. The existing comparison checks the strongest old batch against the
-weakest new batch, so a moving pair can only understate a gain and overstate a decline. The
-error goes toward stopping and measuring, not toward driving on.
+`LINE_MOVING_HALF_SCANS` (3) scans with their range as the spread. The window of scans spans
+the short stops between segments of one heading, because one segment alone is shorter than six
+scans. The older batch was taken further back along the line, so a moving pair understates a
+gain. A first version accepted any moving pair that showed no decline. In the host model that
+lost about 1 dB at the end of a 4.8 s trial toward a target 4 m away, the trial failed its 3 dB
+confirmation, and the robot never arrived. Moving evidence is therefore accepted only when it
+already confirms a new best (`line_new_best`, the same test the stationary path uses), so
+cruise never reaches a verdict the stationary measurement would not.
 
 Cruise is used only on the floor. Once a stationary check sees the mat, the existing 250 ms
 and 100 ms steps and the colour steering take over (FINAL_APPROACH). If a scan start or a
@@ -183,3 +187,111 @@ no longer raises `FAULT_WIFI_SCAN`, because `STOP_LATCHED` already records it. T
 marked busy, so flash and BLE are still refused until shutdown. A real timeout still raises
 `FAULT_WIFI_SCAN` and ends the run, because the driver offers no safe cancel. Every
 `RSSI_RAW` line also gains the scan duration (`dur_ms`).
+
+## 3. Configuration
+
+| Parameter | Value | File | Meaning |
+|---|---|---|---|
+| `CONTINUOUS_CRUISE` | 0, or 1 in `route2_cruise` | `getting_there.c` | Cruise on at boot |
+| `CRUISE_SEGMENT_MS` | 6000 | `getting_there.c` | Longest floor segment. Override with `-DCRUISE_SEGMENT_MS=…` |
+| `CRUISE_CONTROL_MS` | 5 | `getting_there.c` | Heading control and polling period |
+| `CRUISE_MAX_LOOP_GAP_MS` | 40 | `getting_there.c` | A longer stall ends cruise for the run |
+| `CRUISE_MAX_MISSING` | 2 | `getting_there.c` | Missing scans in a row that end a segment |
+| `LINE_MOVING_HALF_SCANS` | 3 | `line_search.h` | Scans per moving batch (two batches per pair) |
+| `SCANS_PER_SAMPLE`, `MIN_VALID_SCANS` | 7 and 5 (route2), 5 and 3 | `wifi_sampler.h` | Stationary batch size, unchanged |
+| `SCAN_TIMEOUT_MS` | 15000 | `wifi_sampler.h` | Scan wait that raises `FAULT_WIFI_SCAN` |
+| `MIN_PROGRESS_DB`, `MIN_DECLINE_DB` | 2 or 3, and 3 | `line_search.h` | Confirmation margins, unchanged |
+
+Segment length in the host model (710 ms scans, cruise on): 4 s, 6 s, 8 s and 10 s give the same
+result for targets 2 m away. For a target 6 m ahead the run takes 81.9 s at 4 s and 59.7 to 60.5 s
+from 6 s up. 6 s is the knee, and it equals the existing 6 s no-new-best watchdog, so a segment
+never drives further past the best point than the stationary search could.
+
+## 4. Verification
+
+| Check | Result |
+|---|---|
+| Host suite, every fixture, WSL Ubuntu gcc 15.2 | Passes (`run_host_checks.py`) |
+| New sampler tests (GP21 during a scan, timeout text, `dur_ms`) fail against the old sampler | Confirmed |
+| Cruise segment ends: length, decline, lost, timing, STOP, colour | Each has a passing test |
+| Colour poll: one read per integration, never waits | Passing test in `test_colour.c` |
+| Cross-build: `getting_there`, `getting_there_route`, `getting_there_route2`, `route2_cruise` | Link with SDK 2.3.1 |
+| `CONTINUOUS_CRUISE=1` only on `route2_cruise` | Confirmed in `build.ninja` |
+| On the robot | **Not run** |
+
+Host model comparison (`tests/test_navigation.c`, `check_cruise`; set `CRUISE_DUMP=1` to print).
+The model drives 0.20 m per 750 ms, reads RSSI as `-50 - 20 log10(d)` plus a heading term, has
+no RSSI noise and places a pink mat around the beacon.
+
+| Target (m) | Stationary time | Cruise time | Driving share before → after | Powered travel |
+|---|---|---|---|---|
+| (2, 0) | 110.1 s | 36.6 s | 6.2% → 18.5% | 6800 → 6770 ms |
+| (0, 2) | 224.4 s | 92.1 s | 7.3% → 17.8% | 16400 → 16370 ms |
+| (−2, 0) | 281.5 s | 119.8 s | 7.5% → 17.7% | 21200 → 21170 ms |
+| (0, −2) | 167.2 s | 64.3 s | 6.9% → 18.0% | 11600 → 11570 ms |
+| (4, 0) | 228.8 s | 52.0 s | 6.3% → 27.6% | 14300 → 14350 ms |
+| (6, 0) | 347.0 s | 59.9 s | 6.3% → 36.5% | 21850 → 21845 ms |
+| (3, 3) | 558.4 s | 190.7 s | 7.9% → 23.1% | 44000 → 44070 ms |
+
+The test asserts that cruise arrives at every target with powered travel within 2%, the same
+number of reversals, and at most half the time.
+
+**Why the share stays under 50%.** What remains is stationary by design and outside the
+segment: the opening Wi-Fi sample and baseline pair of each leg (15 scans), the baseline pair of
+each new heading, a stationary verdict whenever moving scans don't confirm a new best, the 0.7 s
+stop after each segment, and colour steering on the mat. In the 2 m case that is about 25 s of
+36.6 s. Removing more of it means changing the confirmation logic, which this change leaves
+alone. The model has no RSSI noise, so real moving scans may confirm less often than this.
+
+## 5. Hardware test procedure
+
+Build (Pico SDK 2.3.1 from the VS Code extension, or these commands in Git Bash):
+
+```bash
+export PATH="$HOME/.pico-sdk/cmake/v4.3.4/bin:$HOME/.pico-sdk/ninja/v1.13.2:$HOME/.pico-sdk/toolchain/15_2_Rel1/bin:$PATH"
+cmake -S getting_there -B build-route -G Ninja -DPICO_BOARD=pico_w \
+  -DPICO_SDK_PATH=$HOME/.pico-sdk/sdk/2.3.1 -DPICO_TOOLCHAIN_PATH=$HOME/.pico-sdk/toolchain/15_2_Rel1 \
+  -Dpicotool_DIR=$HOME/.pico-sdk/picotool/2.3.1/picotool
+ninja -C build-route getting_there_route2 route2_cruise
+```
+
+Flash by holding BOOTSEL, plugging in USB and copying `build-route/route2_cruise.uf2` to the
+`RPI-RP2` drive. Host tests: `python3 getting_there/tests/run_host_checks.py --sdk <SDK path>`
+(on this Windows machine, run it inside WSL; Smart App Control blocks the test executables).
+
+1. **Wheels lifted.** Start with GP20 and let it run one minute. Press GP21 during a segment:
+   the wheels must stop within a few milliseconds. Replay the log (GP21 before GP20). Check that
+   every `CRUISE,…` line has `max_gap_ms` of 10 or less, and that GP21 shows as `STOPPED: GP21
+   STOP during Wi-Fi scan …` with no `FAULT: WIFI_SCAN`.
+2. **Same course, both builds.** Use the course and start pose of the 10 November run. Run
+   `getting_there_route2`, then `route2_cruise`, three times each, without pressing GP21.
+   Save each replayed log to `docs/runs/` and compare them on the run log dashboard
+   (`feature/run-log-dashboard`).
+3. **Pass criteria.** Cruise arrives wherever the stationary build arrives. No `FAULT: WIFI_SCAN`.
+   No `end=timing`. Driving share above the stationary build's. Any `end=colour` should be at
+   the mat edge or a foreign mat, not on bare floor.
+4. **Also read from the logs.** `RSSI_RAW … stopped=0` against `stopped=1` spread: if moving
+   scans are much noisier than stationary ones, motor noise is affecting the radio. `dur_ms`
+   per scan: anything far above 710 ms suggests radio contention.
+
+## 6. Remaining limits
+
+- **Not tested on the robot.** Every number above comes from the host model.
+- **Scan start cost on hardware is unknown.** If `cyw43_wifi_scan` blocks the control loop for
+  more than 40 ms, cruise turns itself off for the run and logs why.
+- **Colour while moving.** The sensor integrates over 103 ms of travel. A floor reading taken as a
+  ring only costs a stop. A ring missed between two polls lets the robot run about one poll period
+  (about 3 cm at model speed) past it before the next reading.
+- **A hung scan still ends the run.** The driver has no scan cancel. The only recovery is
+  `cyw43_arch_deinit` and a fresh init, which also restarts Bluetooth. That was not attempted.
+- **IMU recovery budget.** Two moving recoveries per calibration. The 10 November run used both.
+  A per-time budget would be safer, since the heading uncertainty bound already guards the heading.
+- **No IR sensing exists in the code**, so there is nothing to integrate.
+- **The main loop was not rewritten as independent periodic managers.** The procedural search
+  stays, with non-blocking work only inside the drive segment. A full rewrite would discard the
+  tuned decision logic and its tests without a robot to verify against.
+
+**Hardware that would help most.** Wheel encoders, to measure travel instead of assuming it from
+powered milliseconds. That would make returns, the 60 s budget and position tags on moving scans
+real distances. An obstacle sensor for the beacon box. Another radio would not shorten scans:
+the limit is the full-channel sweep, not radio count.

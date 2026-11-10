@@ -1,5 +1,10 @@
 # Pico approach and payload transfer
 
+> **Continuous driving (CRUISE).** The `route2_cruise` target scans Wi-Fi and reads colour while
+> driving floor segments of up to 6 s, instead of stopping for two scan batches after every step.
+> Design, host-model results and the hardware test procedure:
+> [docs/dev/continuous-navigation.md](../docs/dev/continuous-navigation.md). Not yet run on the robot.
+
 This programme developed from `Alvin_2` at `2012e7b` through the archived
 `line-search` branch. This branch supports two- and three-beacon routes.
 The tracked files under `build/` are earlier main's prebuilt images; they do not
