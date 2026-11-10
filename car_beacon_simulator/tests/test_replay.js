@@ -465,11 +465,15 @@ test('route dropdown selects two or three targets and only builds on request',as
   select('route2');
   assert.equal(h.elements.branch.value,'two-beacon-route');
   assert.equal(h.elements.beaconCount.value,'2');
+  assert.equal(h.elements.mat1.value,'blue');
+  assert.equal(h.elements.mat2.value,'pink');
   assert.equal(h.evaluate('frame.active_target'),1);
   assert.doesNotMatch(h.elements.routeProgress.innerHTML,/AP3/);
   select('route');
   assert.equal(h.elements.branch.value,'codex/three-beacon-route');
   assert.equal(h.elements.beaconCount.value,'3');
+  assert.equal(h.elements.mat1.value,'pink');
+  assert.equal(h.elements.mat2.value,'blue');
   assert.equal(h.evaluate('scenario().beacons[2].x'),-4.25);
   for(const [build,branch] of [
     ['route2-kalman','two-beacon-route-kalman'],

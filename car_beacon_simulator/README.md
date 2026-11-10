@@ -43,10 +43,19 @@ sets the matching default radio layout. To test a different commit, enter its
 ref after choosing the build. Use **↻** to fetch a missing branch.
 You can still disable radios separately to test missing beacons.
 
+Current two-beacon builds use AP1 on **blue** and AP2 on **pink**. Choosing
+one of these builds sets those mat colours in the editable arena. Choosing the
+three-beacon build sets pink/blue/purple. Imported setups and recordings retain
+their saved colours. Adjust colours explicitly when testing an older commit.
+The standard two-beacon build now uses seven scans per batch with five valid
+required; it trims one strongest and one weakest reading. All current two-beacon
+builds use 750 ms floor steps and a noise-aware 2 dB minimum improvement.
+
+
 The two-beacon **Kalman filter** and **trimmed mean** builds select
 `two-beacon-route-kalman` and `two-beacon-route-trimmed-mean`, respectively.
 Both use nine Wi-Fi scans per batch, with at least seven valid readings, and
-600 ms floor steps. The Decisions log shows which filter ran and how long
+750 ms floor steps. The Decisions log shows which filter ran and how long
 startup stages took. The noiseless radio model can give both filters the same
 answer. Compare them on hardware to judge their response to real RSSI noise.
 

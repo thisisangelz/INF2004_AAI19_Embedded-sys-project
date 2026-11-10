@@ -106,6 +106,7 @@ function branchNote(){
   const supported=!custom&&current?.supported_builds;
   for(const option of $('robotBuild').options)option.disabled=Array.isArray(supported)&&!supported.includes(option.value);
   $('buildNote').textContent=Array.isArray(supported)&&!supported.includes(build)?`This source does not support robot ${build}. Select a compatible source or build.`:routeTargets[build]?`Choosing this route selects ${routeSources[build][0]}. If the branch is missing, use ↻ to fetch it.`:'Requires a compatible source build.';
+  if(routeTargets[build]?.length===2)$('buildNote').textContent+=' Current two-beacon firmware expects AP1 on blue and AP2 on pink. Mat colours can be edited below for older sources.';
 }
 
 // A threshold is known only from compiled firmware telemetry; legacy traces used -50.
@@ -501,6 +502,8 @@ $('robotBuild').onchange=()=>{
   if(targets){
     $('beaconCount').value=String(targets.length);
     if(targets.length===2)twoBeaconIds=targets;
+    const colours=targets.length===2?['blue','pink','purple']:['pink','blue','purple'];
+    for(const id of targets)$('mat'+id).value=colours[id-1];
     $('preset').value='custom';
     const branch=$('branch');
     const match=routeSources[build].find(ref=>[...branch.options].some(option=>option.value===ref&&!option.disabled));
