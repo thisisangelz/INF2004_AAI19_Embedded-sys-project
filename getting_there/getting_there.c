@@ -1083,8 +1083,11 @@ int main(void)
     if (!motion_stop_requested()) {
         cue_play(CUE_START);
         report_printf("GP20 START: preparing persistent log; motors remain stopped.\n");
+        uint32_t log_started_ms = now_ms();
         recording = report_begin();
         if (!recording) fault_raise(FAULT_REPORT);
+        else report_printf("STARTUP: persistent log prepared in %lu ms\n",
+                           (unsigned long)(now_ms() - log_started_ms));
     } else report_printf("START CANCELLED: GP21 was pressed; previous log preserved\n");
     bool released = recording && wait_start_release();
     if (released) report_printf("GP20 released. Persistent log ready.\n");
@@ -1104,8 +1107,11 @@ int main(void)
         report_printf("Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.\n");
         // A steady tone for as long as the robot must stay still.
         cue_play(CUE_CALIBRATING);
+        uint32_t calibration_started_ms = now_ms();
         ready = motion_calibrate();
         cue_stop();
+        report_printf("STARTUP: gyro calibration %s in %lu ms\n", ready ? "complete" : "stopped",
+                      (unsigned long)(now_ms() - calibration_started_ms));
         if (!ready) report_printf("FAILED: gyro calibration; check IMU wiring and keep the robot still\n");
     }
     bool radio_initialised = false;
@@ -1125,6 +1131,7 @@ int main(void)
 #else
     if (ready) {
         report_printf("Starting Wi-Fi/Bluetooth hardware.\n");
+        uint32_t radio_started_ms = now_ms();
         int radio_error = cyw43_arch_init();
         if (radio_error) {
             fault_raise(FAULT_BLE_RADIO);
@@ -1156,6 +1163,8 @@ int main(void)
             }
             else report_printf("Bluetooth ready; beginning %s approach.\n", target_beacon_name());
         }
+        report_printf("STARTUP: Wi-Fi/Bluetooth %s in %lu ms\n", ready ? "ready" : "stopped",
+                      (unsigned long)(now_ms() - radio_started_ms));
     }
     // approach_beacon initialises the sampler before its first checkpoint.
     if (ready && !motion_stop_requested()) {

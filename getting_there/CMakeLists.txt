@@ -55,6 +55,9 @@ getting_there_firmware(getting_there)
 # Route variants share navigation, colour qualification and transfer logic.
 getting_there_firmware(getting_there_route2)
 target_compile_definitions(getting_there_route2 PRIVATE ROUTE_BEACON_COUNT=2)
+getting_there_firmware(getting_there_route2_trimmed)
+target_compile_definitions(getting_there_route2_trimmed PRIVATE
+    ROUTE_BEACON_COUNT=2 WIFI_RSSI_FILTER=WIFI_RSSI_FILTER_TRIMMED_MEAN)
 getting_there_firmware(getting_there_route)
 target_compile_definitions(getting_there_route PRIVATE THREE_BEACON_ROUTE=1)
 # Fixed targets select their matching Wi-Fi SSID, BLE ID and colour profile.
