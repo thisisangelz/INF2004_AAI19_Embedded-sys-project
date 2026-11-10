@@ -2,6 +2,7 @@
 !**/build/
 !**/build/*.uf2
 **/build-v2/
+**/build-cruise/
 
 # Local copies of superseded firmware and build products.
 .local-archive/
