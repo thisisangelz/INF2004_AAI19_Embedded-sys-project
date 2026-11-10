@@ -444,21 +444,33 @@ test('route dropdown selects two or three targets and only builds on request',as
     assert.equal(url,'/api/run');
     const request=JSON.parse(options.body);
     assert.equal(request.build_target,'route2');
+    assert.equal(request.ref,'two-beacon-route');
     assert.deepEqual(request.scenario.beacons.map(b=>b.id),[1,2]);
     assert.deepEqual(request.scenario.mats.map(b=>b.id),[1,2]);
     trace.scenario=request.scenario;
+    trace.metadata.ref=request.ref;
     for(const f of trace.frames)f.beacons=f.beacons.filter(b=>b.id!==3);
     return {ok:true,json:async()=>trace};
   });
+  h.evaluate(`config={refs:[
+    {name:'codex/three-beacon-route',supported:true,commit:'three-sha'},
+    {name:'two-beacon-route',supported:true,commit:'two-sha'}
+  ]};populateRefs(config.refs)`);
   const select=build=>{h.elements.robotBuild.value=build;h.elements.robotBuild.onchange();};
   h.elements.b3x.value='-4.25';
   select('route2');
+  assert.equal(h.elements.branch.value,'two-beacon-route');
   assert.equal(h.elements.beaconCount.value,'2');
   assert.equal(h.evaluate('frame.active_target'),1);
   assert.doesNotMatch(h.elements.routeProgress.innerHTML,/AP3/);
   select('route');
+  assert.equal(h.elements.branch.value,'codex/three-beacon-route');
   assert.equal(h.elements.beaconCount.value,'3');
   assert.equal(h.evaluate('scenario().beacons[2].x'),-4.25);
+  h.elements.customRef.value='pinned-test-commit';
+  select('route2');
+  assert.equal(h.elements.customRef.value,'pinned-test-commit');
+  h.elements.customRef.value='';
   select('route2');
   h.elements.preset.value='sideways';h.elements.preset.onchange();
   assert.equal(calls.length,0);

@@ -35,9 +35,11 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
 
 ## Run an experiment
 
-Select **codex/three-beacon-route**, then choose **Two-beacon route** (AP1 → AP2)
-or **Three-beacon route** (AP1 → AP2 → AP3) under **Robot build**.
-The dropdown selects real firmware and sets the matching default radio layout.
+Choose **Two-beacon route** (AP1 → AP2) or **Three-beacon route**
+(AP1 → AP2 → AP3) under **Robot build**. The corresponding firmware sources
+are **two-beacon-route** and **codex/three-beacon-route**. The dropdown switches
+between these sources when available and sets the matching default radio layout.
+An explicitly selected custom branch or commit stays selected.
 You can still disable radios separately to test missing beacons.
 Select **origin/main** with a single-target build to
 compare main's existing v18 navigation and colour gate. Selecting a route build
@@ -49,8 +51,8 @@ those decisions into its hardware model.
 The app is maintained on the existing **codex/beacon-simulator** branch. Its
 root firmware files still contain the older **2 dB improvement** variant;
 selecting that branch as the robot's source tests that older code. Select
-**codex/three-beacon-route** for the new route firmware, or **origin/main** for
-main's single-target firmware. The source identity is recorded in each trace.
+**two-beacon-route** or **codex/three-beacon-route** for route firmware, or
+**origin/main** for main's single-target firmware. Each trace records its source.
 
 1. Select the source branch or Git ref, then the robot build.
 2. Choose a preset, type coordinates, or drag the car and beacons in the arena. Drag

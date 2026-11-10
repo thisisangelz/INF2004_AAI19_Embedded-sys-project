@@ -1,7 +1,8 @@
 # Two- and three-beacon firmware and simulator
 
-The firmware branch is `codex/three-beacon-route`. The existing simulator branch
-is `codex/beacon-simulator`; its current app includes the three-beacon model.
+The two-beacon firmware branch is `two-beacon-route`, and the three-beacon
+firmware branch is `codex/three-beacon-route`. The simulator is maintained
+separately on `codex/beacon-simulator`.
 Keep them separate; neither is a merge into
 `main`. The simulator can also select `origin/main` to inspect its existing
 single-target behaviour under the same environment.
@@ -44,9 +45,9 @@ handover or exhausted search remains a visible failure.
 
 ## Set up a comparison
 
-Select the exact firmware source and robot build separately. The `route2` (two
-beacons) and `route` (three beacons) builds require a source that implements the
-selected route; selecting one for an unsupported
+The build dropdown switches between the two route branches when available.
+The `route2` and `route` builds require sources that implement them.
+Selecting a build for an unsupported
 commit must report an incompatibility instead of supplying a replacement
 controller. Per-target `ap1`, `ap2` and `ap3` builds remain useful for comparison.
 

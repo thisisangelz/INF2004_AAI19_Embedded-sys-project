@@ -7,6 +7,10 @@ const setupControls=[...keys,'preset','branch','customRef','moving','robotBuild'
 const beaconColours={1:'#ff8fbd',2:'#7bafff',3:'#bf9bff'};
 const matColours={pink:'#ff8fbd',blue:'#7bafff',purple:'#bf9bff',none:'#607786'};
 const routeTargets={route:[1,2,3],route2:[1,2]};
+const routeSources={
+  route:['codex/three-beacon-route','origin/codex/three-beacon-route'],
+  route2:['two-beacon-route','origin/two-beacon-route']
+};
 const triangle={x:0,y:0,heading:0,bx:1,by:0,b2x:1,b2y:1.5,b3x:-.5,b3y:1.5};
 let scenarioExtras={},twoBeaconIds=[1,2],customMatIds=[1,2,3];
 const presets={triangle,rearward:{...triangle,heading:180},sideways:{...triangle,heading:90},straight:{x:0,y:0,heading:0,bx:1,by:0},diagonal:{x:0,y:0,heading:0,bx:1,by:1},far:{x:-2,y:-1,heading:0,bx:1,by:1},behind:{x:0,y:0,heading:0,bx:-1,by:0},close:{x:0,y:0,heading:0,bx:.15,by:0}};
@@ -85,7 +89,7 @@ function populateRefs(refs){
     $('branch').append(option);
   }
   const option=document.createElement('option');option.value='working-tree';option.textContent='Current firmware working tree · saved edits';$('branch').append(option);
-  const preferred=['codex/three-beacon-route','origin/codex/three-beacon-route','origin/main','main'].find(name=>refs.some(ref=>ref.name===name));
+  const preferred=[...routeSources.route,'origin/main','main'].find(name=>refs.some(ref=>ref.name===name));
   $('branch').value=old&&[...$('branch').options].some(o=>o.value===old)?old:preferred||'working-tree';
   branchNote();
 }
@@ -98,7 +102,7 @@ function branchNote(){
   }else details.textContent='Source paths are resolved and recorded when you build.';
   const supported=!custom&&current?.supported_builds;
   for(const option of $('robotBuild').options)option.disabled=Array.isArray(supported)&&!supported.includes(option.value);
-  $('buildNote').textContent=Array.isArray(supported)&&!supported.includes(build)?`This source does not support robot ${build}. Select a compatible source or build.`:routeTargets[build]?'Switching routes sets the matching radios. You can change enabled radios separately to test missing beacons.':'Requires a compatible source build.';
+  $('buildNote').textContent=Array.isArray(supported)&&!supported.includes(build)?`This source does not support robot ${build}. Select a compatible source or build.`:routeTargets[build]?`Default source: ${routeSources[build][0]}. Adjust enabled radios separately to test missing beacons.`:'Requires a compatible source build.';
 }
 
 // A threshold is known only from compiled firmware telemetry; legacy traces used -50.
@@ -490,11 +494,17 @@ for(const k of keys){const changed=()=>{if(!busy){$('preset').value='custom';res
 for(const id of ['moving','colour_enabled','beaconCount','singleBeacon','matLayout','mat1','mat2','mat3'])$(id).onchange=()=>{if(!busy){$('preset').value='custom';resetPreview(true);}};
 $('robotBuild').onchange=()=>{
   if(busy)return;
-  const targets=routeTargets[$('robotBuild').value];
+  const build=$('robotBuild').value,targets=routeTargets[build];
   if(targets){
     $('beaconCount').value=String(targets.length);
     if(targets.length===2)twoBeaconIds=targets;
     $('preset').value='custom';
+    const branch=$('branch'),custom=$('customRef'),current=custom.value.trim()||branch.value;
+    // Switch between the dedicated route sources. Leave other explicit refs pinned.
+    if(!current||Object.values(routeSources).some(sources=>sources.includes(current))){
+      const match=routeSources[build].find(ref=>[...branch.options].some(option=>option.value===ref&&!option.disabled));
+      if(match){branch.value=match;custom.value='';}
+    }
   }
   branchNote();resetPreview(true);
 };
