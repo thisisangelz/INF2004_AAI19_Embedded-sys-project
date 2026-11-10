@@ -38,8 +38,9 @@ python3 simulator.py --repo /path/to/firmware-repository --sdk /path/to/pico-sdk
 Choose **Two-beacon route** (AP1 → AP2) or **Three-beacon route**
 (AP1 → AP2 → AP3) under **Robot build**. The corresponding firmware sources
 are **two-beacon-route** and **codex/three-beacon-route**. The dropdown switches
-between these sources when available and sets the matching default radio layout.
-An explicitly selected custom branch or commit stays selected.
+to the matching source when available, clears any previous custom ref, and
+sets the matching default radio layout. To test a different commit, enter its
+ref after choosing the build. Use **↻** to fetch a missing branch.
 You can still disable radios separately to test missing beacons.
 Select **origin/main** with a single-target build to
 compare main's existing v18 navigation and colour gate. Selecting a route build

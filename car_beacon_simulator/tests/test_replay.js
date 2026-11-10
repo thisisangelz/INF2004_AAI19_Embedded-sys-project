@@ -453,10 +453,12 @@ test('route dropdown selects two or three targets and only builds on request',as
     return {ok:true,json:async()=>trace};
   });
   h.evaluate(`config={refs:[
+    {name:'origin/main',supported:true,commit:'main-sha'},
     {name:'codex/three-beacon-route',supported:true,commit:'three-sha'},
     {name:'two-beacon-route',supported:true,commit:'two-sha'}
   ]};populateRefs(config.refs)`);
   const select=build=>{h.elements.robotBuild.value=build;h.elements.robotBuild.onchange();};
+  h.elements.branch.value='origin/main';
   h.elements.b3x.value='-4.25';
   select('route2');
   assert.equal(h.elements.branch.value,'two-beacon-route');
@@ -469,9 +471,8 @@ test('route dropdown selects two or three targets and only builds on request',as
   assert.equal(h.evaluate('scenario().beacons[2].x'),-4.25);
   h.elements.customRef.value='pinned-test-commit';
   select('route2');
-  assert.equal(h.elements.customRef.value,'pinned-test-commit');
-  h.elements.customRef.value='';
-  select('route2');
+  assert.equal(h.elements.branch.value,'two-beacon-route');
+  assert.equal(h.elements.customRef.value,'');
   h.elements.preset.value='sideways';h.elements.preset.onchange();
   assert.equal(calls.length,0);
   assert.equal(h.elements.duration.textContent,'Not run');

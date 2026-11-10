@@ -102,7 +102,7 @@ function branchNote(){
   }else details.textContent='Source paths are resolved and recorded when you build.';
   const supported=!custom&&current?.supported_builds;
   for(const option of $('robotBuild').options)option.disabled=Array.isArray(supported)&&!supported.includes(option.value);
-  $('buildNote').textContent=Array.isArray(supported)&&!supported.includes(build)?`This source does not support robot ${build}. Select a compatible source or build.`:routeTargets[build]?`Default source: ${routeSources[build][0]}. Adjust enabled radios separately to test missing beacons.`:'Requires a compatible source build.';
+  $('buildNote').textContent=Array.isArray(supported)&&!supported.includes(build)?`This source does not support robot ${build}. Select a compatible source or build.`:routeTargets[build]?`Choosing this route selects ${routeSources[build][0]}. If the branch is missing, use ↻ to fetch it.`:'Requires a compatible source build.';
 }
 
 // A threshold is known only from compiled firmware telemetry; legacy traces used -50.
@@ -499,11 +499,11 @@ $('robotBuild').onchange=()=>{
     $('beaconCount').value=String(targets.length);
     if(targets.length===2)twoBeaconIds=targets;
     $('preset').value='custom';
-    const branch=$('branch'),custom=$('customRef'),current=custom.value.trim()||branch.value;
-    // Switch between the dedicated route sources. Leave other explicit refs pinned.
-    if(!current||Object.values(routeSources).some(sources=>sources.includes(current))){
-      const match=routeSources[build].find(ref=>[...branch.options].some(option=>option.value===ref&&!option.disabled));
-      if(match){branch.value=match;custom.value='';}
+    const branch=$('branch');
+    const match=routeSources[build].find(ref=>[...branch.options].some(option=>option.value===ref&&!option.disabled));
+    if(match){
+      branch.value=match;
+      $('customRef').value='';
     }
   }
   branchNote();resetPreview(true);
