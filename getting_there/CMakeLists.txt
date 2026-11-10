@@ -57,10 +57,12 @@ getting_there_firmware(getting_there_route2)
 target_compile_definitions(getting_there_route2 PRIVATE ROUTE_BEACON_COUNT=2)
 getting_there_firmware(getting_there_route)
 target_compile_definitions(getting_there_route PRIVATE THREE_BEACON_ROUTE=1)
-# The two-beacon route with CRUISE: floor segments scan Wi-Fi while driving.
-# Flash it beside getting_there_route2 to compare logs from the same course.
+# route2 defaults to CRUISE in target_beacon.h (also used by host/simulator).
+# Retain the feature branch's explicit target and a stationary comparison.
 getting_there_firmware(route2_cruise)
 target_compile_definitions(route2_cruise PRIVATE ROUTE_BEACON_COUNT=2 CONTINUOUS_CRUISE=1)
+getting_there_firmware(route2_stationary)
+target_compile_definitions(route2_stationary PRIVATE ROUTE_BEACON_COUNT=2 CONTINUOUS_CRUISE=0)
 # Fixed targets select their matching Wi-Fi SSID, BLE ID and colour profile.
 getting_there_firmware(robot_ap2)
 target_compile_definitions(robot_ap2 PRIVATE TARGET_BEACON_ID=2)

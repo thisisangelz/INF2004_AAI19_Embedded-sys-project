@@ -225,9 +225,6 @@ static payload_result_t translate_block(bool forwards, uint32_t duration, float 
 }
 
 // ---- CRUISE: one continuous floor segment, scanning and reading colour while driving ----
-#ifndef CONTINUOUS_CRUISE
-#define CONTINUOUS_CRUISE 0
-#endif
 // Longer segments stop helping past 6 s in the host model, and 6 s matches
 // the no-new-best watchdog, so a segment never overshoots further than the
 // stationary search could.
@@ -324,9 +321,9 @@ static payload_result_t cruise_segment(float heading, uint32_t position, uint32_
     bool finished = motion_drive_finish();
     // Log before the drain verdict so a stopped or failed segment is still recorded.
     bool drained = wifi_sampler_quiesce();
-    report_printf("CRUISE,heading=%d,from_ms=%lu,powered_ms=%lu,scans=%u,valid=%u,end=%s,max_gap_ms=%lu,late_updates=%u\n",
+    report_printf("CRUISE,heading=%d,from_ms=%lu,powered_ms=%lu,scans=%u,valid=%u,end=%s,max_gap_ms=%lu,late_updates=%u,target=%u\n",
                   (int)heading, (unsigned long)position, (unsigned long)*actual, scans, window->valid,
-                  cruise_end_names[end], (unsigned long)(max_gap_us / 1000u), late_updates);
+                  cruise_end_names[end], (unsigned long)(max_gap_us / 1000u), late_updates, target_beacon_id());
     if (!drained) return PAYLOAD_FATAL;
     wifi_quiescent = true;
     if (end == CRUISE_END_FAILED || !finished || !run_can_continue()) return PAYLOAD_FATAL;
@@ -996,6 +993,12 @@ static bool approach_beacon(void)
     wifi_quiescent = true;
     wifi_sampler_init(run_can_continue);
     colour_arrival_reset();
+    // Sampler identity and colour history are per leg; cruise windows are local
+    // to each follow_direction. Keep a timing-triggered cruise fallback across
+    // legs, along with the mission clock, STOP latch and integrated heading.
+    report_printf("NAV MODE: target=%u,cruise=%u,max_floor_ms=%u; fresh Wi-Fi identity and colour history\n",
+                  target_beacon_id(), cruise_enabled ? 1u : 0u,
+                  cruise_enabled ? CRUISE_SEGMENT_MS : LINE_FORWARD_BLOCK_MS);
     step_on_mat = false;
     mat_scans_used = 0;
     mat_centre_override = colour_arrived = false;

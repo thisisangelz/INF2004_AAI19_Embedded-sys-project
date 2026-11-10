@@ -1,5 +1,20 @@
 # Continuous navigation: audit, design and test plan
 
+## Two-beacon integration
+
+`two-beacon-route` incorporates the feature branch below. `getting_there_route2`
+now enables CRUISE through the shared `target_beacon.h` default, so the existing
+simulator route2 selection compiles the same setting without adapter overrides.
+`route2_cruise` remains an equivalent explicit target; `route2_stationary`
+retains the stopped-sampling comparison. AP1 is blue, AP2 pink. Each leg resets
+Wi-Fi identity and colour history; each heading owns its moving window. A
+timing fallback remains active through AP2. Only CRC + final ACK permits
+advancement; both verified transfers complete the route. No beacon changes
+are required. Original model results below belong to the feature branch, not
+to a new two-beacon hardware test. This integration has only been compiled.
+
+## Original feature-branch audit
+
 Branch: `feature/continuous-navigation`, cut from `origin/two-beacon-route` at `af68d43`.
 That is the firmware family that produced the 10 November route log
 (`docs/runs/2026-11-10-ap1-ap2-route-wifi-scan-fault.txt`). `main` still carries v18 and has no

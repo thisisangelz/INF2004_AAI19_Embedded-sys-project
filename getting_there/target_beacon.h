@@ -14,6 +14,11 @@
 // Keep the existing three-beacon build flag for older simulator builds.
 #define ROUTE_BEACON_COUNT (THREE_BEACON_ROUTE ? 3 : 0)
 #endif
+// Shared source default keeps hardware and simulator route2 builds identical.
+// Explicitly set to 0 for the retained stationary comparison build.
+#ifndef CONTINUOUS_CRUISE
+#define CONTINUOUS_CRUISE (ROUTE_BEACON_COUNT == 2)
+#endif
 #if TARGET_BEACON_ID < 1 || TARGET_BEACON_ID > 3
 #error "TARGET_BEACON_ID must be 1, 2 or 3"
 #endif

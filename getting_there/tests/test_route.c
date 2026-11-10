@@ -25,9 +25,10 @@ static void route_reset(void)
     memset(leg_steps,0,sizeof(leg_steps)); memset(leg_checks,0,sizeof(leg_checks)); seen_target=confirms=0;
     fail_second=lose_cleanup=false; route.incoming_forwards=true;
 }
-static void check_full_route(void)
+static void check_full_route(bool cruise)
 {
     route_reset();
+    cruise_enabled = cruise;
     assert(approach_route());
     const int legs = ROUTE_BEACON_COUNT, departure_blocks = 2 * (legs - 1);
     assert(route.completed_mask==(legs == 2 ? 3 : 7) && target_beacon_id()==legs && confirms==(unsigned)legs);
@@ -42,7 +43,14 @@ static void check_full_route(void)
            strstr(log_text,"ROUTE: confirmed=2,mask=3"));
     assert((strstr(log_text,"ROUTE: confirmed=3,mask=7") != NULL) == (legs == 3));
     assert(!strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
-    assert(translation_ms==LINE_FORWARD_BLOCK_MS && !fault_mask()); // leg budget resets, mission clock does not
+    assert(translation_ms==(cruise ? LINE_DIRECTION_TEST_MS : LINE_FORWARD_BLOCK_MS) && !fault_mask());
+    // Every leg has a fresh sampler, but the continuous mode spans the route.
+    assert(cruise_enabled == cruise && !scan_active && !motors_on);
+    if (cruise) {
+        assert(colour_polls && strstr(log_text,"NAV MODE: target=1,cruise=1"));
+        assert(strstr(log_text,"NAV MODE: target=2,cruise=1"));
+        assert(strstr(log_text,"CRUISE,heading="));
+    }
 }
 static void check_partial_and_gates(void)
 {
@@ -240,7 +248,8 @@ static void check_route_sampling_policy(void)
 
 int main(void)
 {
-    check_full_route(); check_partial_and_gates(); check_departure_heading_and_budget();
+    check_full_route(false); check_full_route(true);
+    check_partial_and_gates(); check_departure_heading_and_budget();
     check_bounded_trials_and_watchdog(); check_mat_fallback_and_inference();
     check_route_colour_trials();
     check_target_mat_handoff();

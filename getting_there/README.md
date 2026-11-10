@@ -1,6 +1,6 @@
 # Pico approach and payload transfer
 
-> **Continuous driving (CRUISE).** The `route2_cruise` target scans Wi-Fi and reads colour while
+> **Continuous driving (CRUISE).** The `getting_there_route2` target (also `route2_cruise`) scans Wi-Fi and reads colour while
 > driving floor segments of up to 6 s, instead of stopping for two scan batches after every step.
 > Design, host-model results and the hardware test procedure:
 > [docs/dev/continuous-navigation.md](../docs/dev/continuous-navigation.md). Not yet run on the robot.
@@ -13,8 +13,11 @@ contain this branch's new changes. Build this branch and use its fresh output.
 
 ## Two-beacon hardware setup (10 November)
 
-AP1 sits on the **blue** mat and AP2 on **pink**. The two-beacon builds use
-750 ms floor steps and a 2 dB minimum improvement. The measured noise spread
+AP1 sits on the **blue** mat and AP2 on **pink**. The standard two-beacon build
+now uses continuous floor segments up to 6000 ms, bounded to 2400 ms for the
+initial direction trial. It stops early for colour, lost signal, a suspected
+decline, STOP or a fault. Stationary fallback uses 750 ms floor steps.
+The minimum confirmed improvement remains 2 dB. The measured noise spread
 can raise this margin; both fresh batches must support an improvement.
 Return consistency and decline detection retain their 3 dB minimums.
 Mat steps are 250 ms, reducing to 100 ms near arrival. Arrival uses the
@@ -23,12 +26,24 @@ original calibrated rings, followed by the BLE CRC and final acknowledgement.
 The standard two-beacon build collects seven scans per batch, requires five
 valid readings, removes one strongest and one weakest, and averages the rest.
 At the measured scan speed this is about ten seconds per two-batch stop.
+Continuous movement uses two groups of three moving scans (median and spread).
+Only a confirmed new best skips the stationary batches; inconclusive evidence
+is measured with the motors stopped. No bearing or coordinates are supplied.
+
+AP1 must pass its blue arrival-ring check and CRC + final ACK before departure.
+After clearing the old mat, AP2 starts with a fresh Wi-Fi identity, signal
+window and pink-mat history. A timing-triggered stationary fallback persists
+for the rest of the route. The STOP latch and mission clock never reset between legs.
+Completion requires both transfers (`final_mask=3`). The existing compact
+route state remains one byte; no heap allocation or linked list is needed.
 
 ## Route builds
 
 | CMake target | Sequence | Final verified mask | Firmware image |
 | --- | --- | --- | --- |
-| `getting_there_route2` | AP1 → AP2 | `0x3` | `getting_there_route2.uf2` |
+| `getting_there_route2` | AP1 → AP2, continuous floor movement | `0x3` | `getting_there_route2.uf2` |
+| `route2_cruise` | Same continuous route (compatibility name) | `0x3` | `route2_cruise.uf2` |
+| `route2_stationary` | AP1 → AP2, stationary comparison | `0x3` | `route2_stationary.uf2` |
 | `getting_there_route` | AP1 → AP2 → AP3 | `0x7` | `getting_there_route.uf2` |
 
 Both use the same navigation and transfer logic. The two-beacon build ends
@@ -449,9 +464,10 @@ retain their previous tolerances.
 
 ## Moving samples and recorded profiles
 
-The delivered UF2 uses **stationary sampling for navigation decisions**.
-Continuous acquisition is implemented but disabled by default until the robot's
-scan and STOP timing have been measured. Configure `-DLINE_SEARCH_MOVING_SAMPLES=ON`
+The standard two-beacon UF2 enables **CRUISE** as described above. The existing
+three-beacon and single-target builds keep stationary decisions by default.
+The following describes the separate, older moving-hint mode, not CRUISE.
+Configure `-DLINE_SEARCH_MOVING_SAMPLES=ON`
 only after that hardware check. Runtime qualification additionally requires
 three complete, valid five-scan windows of at most 750 ms, with scan-start calls
 of at most 5 ms. Slow or missing readings disable moving acquisition for the

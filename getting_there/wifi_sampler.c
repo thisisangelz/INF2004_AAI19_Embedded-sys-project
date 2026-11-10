@@ -97,7 +97,7 @@ void wifi_sampler_init(bool (*can_continue)(void))
     memset(pending_bssid, 0, sizeof(pending_bssid));
     pending_result = (wifi_record_t){.code = RSSI_MISSING_CODE};
     moving_reference = (wifi_sample_t){.code = RSSI_MISSING_CODE};
-    report_printf("RSSI sampling: trimmed mean, scans=%u,min_valid=%u; stationary decisions; moving acquisition %s\n",
+    report_printf("RSSI stationary sampling: trimmed mean, scans=%u,min_valid=%u; legacy moving hints %s\n",
                   SCANS_PER_SAMPLE, MIN_VALID_SCANS,
                   LINE_SEARCH_MOVING_SAMPLES ? "awaiting timing qualification" : "disabled pending hardware timing checks");
 }
