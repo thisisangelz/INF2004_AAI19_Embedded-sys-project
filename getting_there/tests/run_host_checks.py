@@ -61,14 +61,14 @@ for filter_name in ('KALMAN', 'TRIMMED_MEAN'):
 # Each robot target build (getting_there, robot_ap2, robot_ap3) must look for
 # the Wi-Fi SSID and BLE beacon ID that the matching beacon firmware uses.
 import re
-for beacon, route in ((1, False), (2, False), (3, False), (1, True)):
+for beacon, route in ((1, 0), (2, 0), (3, 0), (1, 3), (1, 2)):
     folder = repo / f"picow_access_point{'' if beacon == 1 else beacon}_powerbank"
     cmake = (folder / 'CMakeLists.txt').read_text()
     ssid = re.search(r'WIFI_SSID="([^"]+)"', cmake).group(1)
     beacon_id = int(re.search(r'BEACON_ID=(\d+)', cmake).group(1))
-    executable = output / f'test_target_{beacon}{"_route" if route else ""}.exe'
+    executable = output / f'test_target_{beacon}_route{route}.exe'
     subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-I', str(tests.parent), '-I', str(tests / 'stubs'),
-                    f'-DTHREE_BEACON_ROUTE={int(route)}',
+                    f'-DROUTE_BEACON_COUNT={route}',
                     f'-DTARGET_BEACON_ID={beacon}', f'-DEXPECTED_ID={beacon_id}',
                     f'-DEXPECTED_SSID="{ssid}"', str(tests / 'test_target.c'), str(tests.parent / 'target_beacon.c'), '-o', str(executable)],
                    check=True)

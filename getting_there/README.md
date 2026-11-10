@@ -6,6 +6,18 @@ The tracked files under `build/` are earlier main's prebuilt images; they do not
 contain this branch's new changes. Build this branch and use its fresh output.
 
 
+## Two-beacon hardware setup (10 November)
+
+AP1 sits on the **blue** mat and AP2 on **pink**. The two-beacon builds use
+750 ms floor steps and a 2 dB minimum improvement. The measured noise spread
+can raise this margin; both fresh batches must support an improvement.
+Return consistency and decline detection retain their 3 dB minimums.
+Mat steps are 250 ms, reducing to 100 ms near arrival. Arrival uses the
+original calibrated rings, followed by the BLE CRC and final acknowledgement.
+
+This comparison build retains nine scans per batch and seven valid readings
+minimum. Its Kalman or trimmed-mean filter remains the selected comparison.
+
 ## Route builds
 
 | CMake target | Sequence | Final verified mask | Firmware image |
@@ -24,7 +36,7 @@ Locally built images in `getting_there/build-v2/` are generated and ignored by G
   +90° and 180°, then the intermediate +45°, −45°, +135° and −135° directions.
   All eight headings together still share the existing travel/run budgets.
   Each trial measures a fresh same-heading baseline; the
-  spread-aware minimum 3 dB margin is unchanged. No coordinates are used.
+  spread-aware minimum is 2 dB for two-beacon routes and 3 dB otherwise. No coordinates are used.
 - After progress, 6000 powered ms or 120 seconds without a supported new best
   triggers a timed return to the retained best and direction reacquisition.
   This watchdog is logged separately from a confirmed signal decline.
@@ -147,7 +159,8 @@ mats ([7 November](../docs/calibration/2026-11-07-tcs34725-blue-purple-mats.md),
 6 rings each). The three mats do not overlap in colour: blue/red splits the
 floor and pink from blue and purple, and green/red splits blue from purple.
 
-Each beacon has its own mat: **AP1 pink (red), AP2 blue, AP3 purple**
+The archived single-target builds use **AP1 pink (red), AP2 blue, AP3 purple**.
+The current two-beacon route uses **AP1 blue, AP2 pink**
 (`target_beacon_mat()` in `target_beacon.h`). The robot build for a beacon treats the
 rings of the other two mats as floor, so they never start colour steering or
 count toward arrival. A white edge always counts as the beacon's own edge,

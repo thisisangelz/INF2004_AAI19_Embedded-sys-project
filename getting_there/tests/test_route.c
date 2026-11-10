@@ -42,7 +42,7 @@ static void check_full_route(void)
            strstr(log_text,"ROUTE: confirmed=2,mask=3"));
     assert((strstr(log_text,"ROUTE: confirmed=3,mask=7") != NULL) == (legs == 3));
     assert(!strstr(log_text,"RESULT: PAYLOAD CONFIRMED"));
-    assert(translation_ms==500 && !fault_mask()); // leg budget resets, mission clock does not
+    assert(translation_ms==LINE_FORWARD_BLOCK_MS && !fault_mask()); // leg budget resets, mission clock does not
 }
 static void check_partial_and_gates(void)
 {
@@ -53,7 +53,7 @@ static void check_partial_and_gates(void)
     assert(!approach_route() && !route.completed_mask && target_beacon_id()==1 && !backwards_count);
     route_reset(); floor_always_mat=true;
     assert(!approach_route() && route.completed_mask==1 && target_beacon_id()==1 && !motors_on);
-    assert(translation_ms<=500+ROUTE_DEPARTURE_MS && !strstr(log_text,"ROUTE: target=2"));
+    assert(translation_ms<=LINE_FORWARD_BLOCK_MS+ROUTE_DEPARTURE_MS && !strstr(log_text,"ROUTE: target=2"));
     route_reset(); floor_read_error=true;
     assert(!approach_route() && route.completed_mask==1 && target_beacon_id()==1 && !motors_on);
     route_reset(); stop_on_reverse=true;
@@ -126,7 +126,7 @@ static void check_bounded_trials_and_watchdog(void)
     static const int gain[]={-70,-70,-65,-65};
     reset(); shipped_steps(); colour_present=true; script=gain; script_length=4; default_rssi=-65;
     assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE);
-    assert(followed.progress && followed.end==FOLLOW_DECLINE && followed.position==500);
+    assert(followed.progress && followed.end==FOLLOW_DECLINE && followed.position==LINE_FORWARD_BLOCK_MS);
     assert(backwards_count && strstr(log_text,"no-new-best watchdog"));
     assert(!strstr(log_text,"decline persisted"));
 }
@@ -156,12 +156,14 @@ static void check_route_colour_trials(void)
     colour_observation_script=foreign_after_step; colour_observation_count=2;
     assert(check_directions(0,&followed,&found)==PAYLOAD_NOT_CLOSE && !found);
     // One step reaches the foreign mat; undo exactly that step before heading 90.
-    assert(moves[0].forwards && moves[0].heading==270 && moves[0].ms==500);
-    assert(!moves[1].forwards && moves[1].heading==270 && moves[1].ms==500);
+    assert(moves[0].forwards && moves[0].heading==270 && moves[0].ms==LINE_FORWARD_BLOCK_MS);
+    assert(!moves[1].forwards && moves[1].heading==270 && moves[1].ms==LINE_FORWARD_BLOCK_MS);
     assert(moves[2].forwards && moves[2].heading==90);
-    assert(forwards_count==31 && backwards_count==25 && move_count==56 && translation_ms==29800);
-    assert(colour_checks==63 && profile_id==7 && current_heading==225);
-    assert(strstr(log_text,"foreign coloured mat at 500 powered ms") && strstr(log_text,"foreign mat rejected"));
+    const unsigned trial_steps = (LINE_DIRECTION_TEST_MS + LINE_FORWARD_BLOCK_MS - 1u) / LINE_FORWARD_BLOCK_MS;
+    assert(forwards_count==1+6*trial_steps && backwards_count==25 && move_count==26+6*trial_steps);
+    assert(translation_ms==28800+2*LINE_FORWARD_BLOCK_MS);
+    assert(colour_checks==(unsigned)move_count+7 && profile_id==7 && current_heading==225);
+    assert(strstr(log_text,"foreign coloured mat at ") && strstr(log_text,"foreign mat rejected"));
     assert(!colour_reads && !mat_scans_used && !ble_calls && !fault_mask());
     assert(!strstr(log_text,"colour steering takes over") && !strstr(log_text,"MAT:"));
 
@@ -171,7 +173,7 @@ static void check_route_colour_trials(void)
     uint32_t position=1500; line_pair_t current; bool recovered;
     assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_NOT_CLOSE);
     assert(!recovered && position==1750 && forwards_count==1 && !backwards_count);
-    assert(moves[0].ms==250 && translation_ms==250 && colour_checks==2 && wifi_calls==10);
+    assert(moves[0].ms==250 && translation_ms==250 && colour_checks==2 && wifi_calls==2*SCANS_PER_SAMPLE);
     assert(colour_foreign_mat_seen() && !colour_reads && !mat_scans_used && !ble_calls);
     assert(strstr(log_text,"foreign coloured mat during probe") && !strstr(log_text,"forward probe 2/2"));
     assert(return_along_line(position,500,0)==PAYLOAD_NOT_CLOSE);
@@ -211,7 +213,29 @@ static void check_target_mat_handoff(void)
     uint32_t position=1500; line_pair_t current; bool recovered;
     assert(recheck_and_probe_dip(0,500,pair(-60,-60),&position,&current,&recovered)==PAYLOAD_NOT_CLOSE);
     assert(position==1750 && forwards_count==1 && !backwards_count);
-    assert(mat_steering_ready() && !recovered && wifi_calls==10 && !ble_calls);
+    assert(mat_steering_ready() && !recovered && wifi_calls==2*SCANS_PER_SAMPLE && !ble_calls);
+}
+
+static void check_route_sampling_policy(void)
+{
+#if ROUTE_BEACON_COUNT == 2
+    assert(LINE_FORWARD_BLOCK_MS == 750 && MIN_PROGRESS_DB == 2);
+    assert(line_compare(pair(-65,-65), pair(-63,-63)) == 1);
+    // A single stronger batch and broad within-batch noise cannot establish gain.
+    assert(line_compare(pair(-65,-65), pair(-61,-65)) == 0);
+    line_pair_t noisy = pair(-63,-63);
+    noisy.first.spread = 4;
+    assert(line_compare(pair(-65,-65), noisy) == 0);
+    assert(!line_reference_declined(pair(-65,-65), pair(-68,-68)));
+    assert(line_reference_declined(pair(-65,-65), pair(-69,-69)));
+#if SCANS_PER_SAMPLE == 7
+    const uint8_t outliers[] = {40,65,65,65,65,65,90};
+    wifi_sample_t filtered = wifi_filter(outliers, 7);
+    assert(filtered.code == 65 && filtered.spread == 0);
+    const uint8_t missing[] = {65,65,65,65,0,127,127};
+    assert(wifi_filter(missing, 7).code == RSSI_MISSING_CODE);
+#endif
+#endif
 }
 
 int main(void)
@@ -220,5 +244,6 @@ int main(void)
     check_bounded_trials_and_watchdog(); check_mat_fallback_and_inference();
     check_route_colour_trials();
     check_target_mat_handoff();
+    check_route_sampling_policy();
     return 0;
 }
