@@ -116,10 +116,12 @@ bool colour_near_arrival(unsigned rings)
 }
 void colour_note_lighter_mats(unsigned mat_mask) { lighter_mats |= mat_mask; }
 
-// Waits one full integration so every reading is fresh, not a repeat.
-static bool read_fresh(colour_reading_t *reading)
+static uint32_t last_read_ms;
+static uint32_t sensor_now_ms(void) { return (uint32_t)(time_us_64() / 1000); }
+
+static bool read_now(colour_reading_t *reading)
 {
-    sleep_ms(INTEGRATION_MS + 12u);
+    last_read_ms = sensor_now_ms();
     uint8_t status = 0, d[8];
     if (!tcs_read(REG_STATUS, &status, 1) || !(status & STATUS_AVALID) ||
         !tcs_read(REG_CDATAL, d, sizeof(d))) return false;
@@ -127,6 +129,23 @@ static bool read_fresh(colour_reading_t *reading)
     reading->r = (uint16_t)(d[2] | d[3] << 8);
     reading->g = (uint16_t)(d[4] | d[5] << 8);
     reading->b = (uint16_t)(d[6] | d[7] << 8);
+    return true;
+}
+
+// Waits one full integration so every reading is fresh, not a repeat.
+static bool read_fresh(colour_reading_t *reading)
+{
+    sleep_ms(INTEGRATION_MS + 12u);
+    return read_now(reading);
+}
+
+bool colour_sensor_poll(colour_reading_t *reading, bool *fresh)
+{
+    *fresh = false;
+    if (!available) return false;
+    if ((uint32_t)(sensor_now_ms() - last_read_ms) < INTEGRATION_MS + 12u) return true;
+    if (!read_now(reading)) return false;
+    *fresh = true;
     return true;
 }
 

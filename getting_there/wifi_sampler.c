@@ -23,7 +23,11 @@ static unsigned record_count;
 // One callback-owned result per scan. Consume only after scan_active is false.
 static volatile wifi_record_t pending_result;
 static uint8_t pending_bssid[6], target_bssid[6];
-static bool identity_locked, scan_open, moving_scan, fallback, sampler_failed;
+// STATIONARY: motors off. MOVING_HINT: the legacy moving acquisition, which
+// may only stop a block early. CRUISE: back-to-back scans that feed decisions.
+typedef enum { SCAN_STATIONARY, SCAN_MOVING_HINT, SCAN_CRUISE } scan_mode_t;
+static scan_mode_t scan_mode;
+static bool identity_locked, scan_open, fallback, sampler_failed;
 static unsigned qualification_windows;
 static uint32_t scan_started_ms, scan_id, position_ms, max_start_ms;
 static float position_heading;
@@ -40,7 +44,7 @@ static uint32_t sampler_position(void)
     // During callbacks this is an estimate at RECEIPT time, not a hardware
     // timestamp of the radio measurement. Turns and stopped time add no travel.
     uint32_t elapsed = motion_drive_elapsed_ms();
-    if (!moving_scan) elapsed = 0;
+    if (scan_mode == SCAN_STATIONARY) elapsed = 0;
     return position_forwards ? position_ms + elapsed :
            elapsed < position_ms ? position_ms - elapsed : 0;
 }
@@ -87,7 +91,8 @@ void wifi_sampler_init(bool (*can_continue)(void))
     scan_id = position_ms = max_start_ms = 0;
     position_heading = 0;
     position_forwards = true;
-    identity_locked = scan_open = moving_scan = fallback = sampler_failed = false;
+    identity_locked = scan_open = fallback = sampler_failed = false;
+    scan_mode = SCAN_STATIONARY;
     memset(target_bssid, 0, sizeof(target_bssid));
     memset(pending_bssid, 0, sizeof(pending_bssid));
     pending_result = (wifi_record_t){.code = RSSI_MISSING_CODE};
@@ -114,7 +119,7 @@ bool wifi_sampler_moving_enabled(void)
     return LINE_SEARCH_MOVING_SAMPLES && !fallback && qualification_windows >= QUALIFICATION_WINDOWS;
 }
 
-static bool sampler_begin(bool moving)
+static bool sampler_begin(scan_mode_t mode)
 {
     if (sampler_failed || scan_open || !sampler_can_continue()) return false;
     if (record_count >= WIFI_RECORD_CAPACITY) {
@@ -127,8 +132,8 @@ static bool sampler_begin(bool moving)
         .scan_id = ++scan_id, .heading = position_heading};
     scan_started_ms = sampler_now_ms();
     scan_open = true;
-    moving_scan = moving;
-    if (moving && moving_count == 0) moving_window_started_ms = scan_started_ms;
+    scan_mode = mode;
+    if (mode == SCAN_MOVING_HINT && moving_count == 0) moving_window_started_ms = scan_started_ms;
     cyw43_wifi_scan_options_t options = {0};
     int error = cyw43_wifi_scan(&cyw43_state, &options, NULL, sampler_result);
     uint32_t elapsed = sampler_now_ms() - scan_started_ms;
@@ -141,7 +146,7 @@ static bool sampler_begin(bool moving)
         report_printf("FAILED: Wi-Fi scan could not start, error %d\n", error);
         return false;
     }
-    if (moving && elapsed > SCAN_START_LIMIT_MS) {
+    if (mode == SCAN_MOVING_HINT && elapsed > SCAN_START_LIMIT_MS) {
         fallback = true;
         motion_stop();
     }
@@ -170,7 +175,7 @@ static bool sampler_collect(void)
     }
     records[record_count++] = record;
     scan_open = false;
-    if (moving_scan) {
+    if (scan_mode == SCAN_MOVING_HINT) {
         if (record.code == RSSI_MISSING_CODE ||
             sampler_now_ms() - moving_window_started_ms > WIFI_MOVING_INTERVAL_MS) {
             fallback = true;
@@ -250,8 +255,24 @@ bool wifi_sampler_poll_moving(void)
     }
     if (!sampler_collect()) return false;
     if (motion_drive_active() && wifi_sampler_moving_enabled() && !scan_open)
-        return sampler_begin(true);
+        return sampler_begin(SCAN_MOVING_HINT);
     return true;
+}
+
+bool wifi_sampler_cruise_poll(wifi_cruise_scan_t *finished)
+{
+    finished->ready = false;
+    if (sampler_failed) return false;
+    if (scan_open) {
+        // A scan that outlives the segment is drained, or timed out, by quiesce.
+        if (cyw43_wifi_scan_active(&cyw43_state)) return true;
+        if (!sampler_collect()) return false;
+        finished->ready = true;
+        finished->code = records[record_count - 1u].code;
+        finished->powered_ms = records[record_count - 1u].powered_ms;
+    }
+    if (!motion_drive_active()) return true;
+    return sampler_begin(SCAN_CRUISE);
 }
 
 bool wifi_sampler_sample(wifi_sample_t *sample)
@@ -263,7 +284,7 @@ bool wifi_sampler_sample(wifi_sample_t *sample)
     unsigned valid = 0;
     uint32_t start = sampler_now_ms();
     for (unsigned i = 0; i < SCANS_PER_SAMPLE; ++i) {
-        if (!sampler_begin(false) || !wifi_sampler_quiesce()) return false;
+        if (!sampler_begin(SCAN_STATIONARY) || !wifi_sampler_quiesce()) return false;
         readings[i] = pending_result.code;
         if (readings[i] != RSSI_MISSING_CODE) ++valid;
     }

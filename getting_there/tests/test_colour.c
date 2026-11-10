@@ -29,7 +29,9 @@ void report_printf(const char *format, ...)
         log_length += (size_t)n < room ? (size_t)n : room - 1;
     }
 }
-void sleep_ms(uint32_t ms) { (void)ms; }
+static uint64_t fake_us;
+uint64_t time_us_64(void) { return fake_us; }
+void sleep_ms(uint32_t ms) { fake_us += (uint64_t)ms * 1000; }
 void gpio_set_function(uint pin, uint function) { (void)pin; (void)function; }
 void gpio_pull_up(uint pin) { (void)pin; }
 uint i2c_init(i2c_inst_t *i2c, uint baud) { assert(i2c == i2c0 && baud == 100000); return baud; }
@@ -511,6 +513,28 @@ static void check_departure_floor(void)
     stopped=true; assert(!colour_floor_check(&clear) && !clear); stopped=false;
     colour_set_target_mat(COLOUR_MAT_NONE);
 }
+// Driving reads never wait: one reading per integration, nothing in between.
+static void check_poll_while_driving(void)
+{
+    sensor_id = 0x44; bus_dead = false; fail_script_at = -1;
+    assert(colour_sensor_init());
+    queue3(at(2700, 900), at(7800, 1015), at(7800, 1015));
+    reads = 0;
+    colour_reading_t r = {0};
+    bool fresh = true;
+    fake_us += 115000;
+    assert(colour_sensor_poll(&r, &fresh) && fresh && r.c == 2700 && reads == 1);
+    uint64_t before = fake_us;
+    assert(colour_sensor_poll(&r, &fresh) && !fresh && reads == 1 && fake_us == before);
+    fake_us += 114000;
+    assert(colour_sensor_poll(&r, &fresh) && !fresh && reads == 1);
+    fake_us += 1000;
+    assert(colour_sensor_poll(&r, &fresh) && fresh && r.c == 7800 && reads == 2);
+    bus_dead = true; fake_us += 115000;
+    assert(!colour_sensor_poll(&r, &fresh) && !fresh);
+    bus_dead = false;
+}
+
 int main(void)
 {
     check_calibration_data();
@@ -519,6 +543,7 @@ int main(void)
     check_fresh_mat_observations();
     check_scan_direction();
     check_departure_floor();
+    check_poll_while_driving();
     puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, blue and purple mats with per-mat arrival, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
     return 0;
 }

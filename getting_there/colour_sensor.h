@@ -92,6 +92,10 @@ bool colour_near_arrival(unsigned rings);
 void colour_note_lighter_mats(unsigned mat_mask);
 // One fresh reading (about 115 ms). False on an I2C error or missing sensor.
 bool colour_sensor_read(colour_reading_t *reading);
+// While driving: never waits. Sets *fresh and fills *reading only when a full
+// integration has passed since the previous read. False on an I2C error or a
+// missing sensor.
+bool colour_sensor_poll(colour_reading_t *reading, bool *fresh);
 
 // Mat depth: 0 floor, 1 white edge, 2-7 rings 1-6; -1 unknown. It orders the
 // surfaces inward on every mat, whichever ratio the mat's colour changes.

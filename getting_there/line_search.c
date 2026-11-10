@@ -78,6 +78,26 @@ line_pair_t line_median_reference(const line_pair_t samples[LINE_REFERENCE_POSIT
     return sorted[1];
 }
 
+static wifi_sample_t moving_batch(const uint8_t *codes)
+{
+    uint8_t sorted[LINE_MOVING_HALF_SCANS];
+    for (unsigned i = 0; i < LINE_MOVING_HALF_SCANS; ++i) {
+        unsigned j = i;
+        while (j && sorted[j - 1] > codes[i]) { sorted[j] = sorted[j - 1]; --j; }
+        sorted[j] = codes[i];
+    }
+    unsigned spread = sorted[LINE_MOVING_HALF_SCANS - 1u] - sorted[0];
+    return (wifi_sample_t){.code = sorted[LINE_MOVING_HALF_SCANS / 2u], .spread = spread > 125u ? 125u : spread};
+}
+
+// The older half was taken further back along the line. Comparisons use the
+// strongest old batch against the weakest new one, so a moving pair can only
+// understate a gain or overstate a decline, never the reverse.
+line_pair_t line_moving_pair(const uint8_t codes[2u * LINE_MOVING_HALF_SCANS])
+{
+    return (line_pair_t){.first = moving_batch(codes), .second = moving_batch(codes + LINE_MOVING_HALF_SCANS)};
+}
+
 bool line_reference_declined(line_pair_t reference, line_pair_t current)
 {
     // Equality remains inside the recovery tolerance. Both current batches

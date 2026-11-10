@@ -40,6 +40,9 @@
 #define MIN_DECLINE_DB 3
 
 typedef struct { wifi_sample_t first, second; } line_pair_t;
+// Cruise evidence: the newest 2 x LINE_MOVING_HALF_SCANS valid scans of one
+// heading, oldest first.
+#define LINE_MOVING_HALF_SCANS 3u
 float line_normalise_heading(float heading);
 int line_pair_margin(line_pair_t previous, line_pair_t current);
 int line_compare(line_pair_t previous, line_pair_t current);
@@ -48,4 +51,5 @@ line_pair_t line_median_reference(const line_pair_t samples[LINE_REFERENCE_POSIT
 bool line_reference_declined(line_pair_t reference, line_pair_t current);
 bool line_return_consistent(line_pair_t best, line_pair_t returned);
 wifi_sample_t line_reference(line_pair_t pair);
+line_pair_t line_moving_pair(const uint8_t codes[2u * LINE_MOVING_HALF_SCANS]);
 #endif

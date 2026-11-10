@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include "pico/cyw43_arch.h"
 #include "pico/stdio_usb.h"
 #include "pico/stdlib.h"
@@ -220,6 +221,136 @@ static payload_result_t translate_block(bool forwards, uint32_t duration, float 
     route.incoming_forwards = forwards;
     route.incoming_valid = true;
 #endif
+    return check_payload();
+}
+
+// ---- CRUISE: one continuous floor segment, scanning and reading colour while driving ----
+#ifndef CONTINUOUS_CRUISE
+#define CONTINUOUS_CRUISE 0
+#endif
+// Longer segments stop helping past 6 s in the host model, and 6 s matches
+// the no-new-best watchdog, so a segment never overshoots further than the
+// stationary search could.
+#ifndef CRUISE_SEGMENT_MS
+#define CRUISE_SEGMENT_MS 6000u
+#endif
+#define CRUISE_CONTROL_MS 5u
+// One missed 5 ms update is tolerable: the gyro integrates over the gap. A
+// longer stall means scanning disturbs heading control, so stop cruising.
+#define CRUISE_MAX_LOOP_GAP_MS 40u
+#define CRUISE_MAX_MISSING 2u
+static bool cruise_enabled = CONTINUOUS_CRUISE;
+
+typedef enum { CRUISE_END_LENGTH, CRUISE_END_COLOUR, CRUISE_END_DECLINE, CRUISE_END_LOST,
+               CRUISE_END_TIMING, CRUISE_END_FAILED } cruise_end_t;
+static const char *const cruise_end_names[] = {"length", "colour", "decline", "lost", "timing", "failed"};
+
+// The newest valid scans of one heading, oldest first. It spans the short
+// stops between segments: those scans are still along the same line, and a
+// segment alone is shorter than the scans a moving pair needs.
+typedef struct {
+    uint8_t codes[2u * LINE_MOVING_HALF_SCANS];
+    unsigned valid;
+} cruise_window_t;
+
+// Drives up to duration ms, then does the same stop as translate_block. Sets
+// *moving_valid only after a full-length segment whose last scans were all
+// valid and showed no decline; otherwise the caller localizes while stopped.
+static payload_result_t cruise_segment(float heading, uint32_t position, uint32_t duration,
+                                       uint32_t reserved_return, line_pair_t best,
+                                       line_pair_t decline_reference, cruise_window_t *window,
+                                       uint32_t *actual, line_pair_t *moving, bool *moving_valid)
+{
+    *actual = 0;
+    *moving_valid = false;
+    if (!reserve_translation(translation_cost(duration) + reserved_return) || !save_checkpoint())
+        return PAYLOAD_FATAL;
+    wifi_sampler_set_position(heading, position, true);
+    if (!motion_drive_start(true, duration, heading)) return PAYLOAD_FATAL;
+    wifi_quiescent = false;
+    const unsigned full = sizeof(window->codes);
+    unsigned scans = 0, missing_run = 0, late_updates = 0;
+    uint64_t last_us = time_us_64(), max_gap_us = 0;
+    cruise_end_t end = CRUISE_END_LENGTH;
+    while (motion_drive_active()) {
+        uint64_t now_us = time_us_64();
+        uint64_t gap_us = now_us - last_us;
+        last_us = now_us;
+        if (gap_us > max_gap_us) max_gap_us = gap_us;
+        if (gap_us > 2u * CRUISE_CONTROL_MS * 1000u) ++late_updates;
+        if (gap_us > CRUISE_MAX_LOOP_GAP_MS * 1000u) { end = CRUISE_END_TIMING; break; }
+        if (!motion_drive_update() || !run_can_continue()) { end = CRUISE_END_FAILED; break; }
+        wifi_cruise_scan_t scan;
+        if (!wifi_sampler_cruise_poll(&scan)) { end = CRUISE_END_FAILED; break; }
+        if (scan.ready) {
+            ++scans;
+            if (scan.code == RSSI_MISSING_CODE) {
+                window->valid = 0;
+                if (++missing_run >= CRUISE_MAX_MISSING) { end = CRUISE_END_LOST; break; }
+            } else {
+                missing_run = 0;
+                if (window->valid == full) {
+                    memmove(window->codes, window->codes + 1, full - 1u);
+                    --window->valid;
+                }
+                window->codes[window->valid++] = scan.code;
+                // A moving decline is only a reason to stop and measure.
+                if (window->valid == full) {
+                    line_pair_t pair = line_moving_pair(window->codes);
+                    if (line_reference_declined(decline_reference, pair) || line_compare(best, pair) < 0) {
+                        end = CRUISE_END_DECLINE;
+                        break;
+                    }
+                }
+            }
+        }
+        if (colour_sensor_available()) {
+            colour_reading_t reading;
+            colour_mat_t mat;
+            bool fresh = false;
+            // Anything but floor, or a failed read, ends the segment; the
+            // stationary arrival check then decides what it was.
+            if (!colour_sensor_poll(&reading, &fresh) ||
+                (fresh && colour_classify_mat(&reading, &mat) != COLOUR_FLOOR)) {
+                end = CRUISE_END_COLOUR;
+                break;
+            }
+        }
+        if (motion_drive_active()) sleep_ms(CRUISE_CONTROL_MS);
+    }
+    motion_stop();
+    *actual = motion_drive_elapsed_ms();
+    translation_ms += *actual;
+    bool finished = motion_drive_finish();
+    // Log before the drain verdict so a stopped or failed segment is still recorded.
+    bool drained = wifi_sampler_quiesce();
+    report_printf("CRUISE,heading=%d,from_ms=%lu,powered_ms=%lu,scans=%u,valid=%u,end=%s,max_gap_ms=%lu,late_updates=%u\n",
+                  (int)heading, (unsigned long)position, (unsigned long)*actual, scans, window->valid,
+                  cruise_end_names[end], (unsigned long)(max_gap_us / 1000u), late_updates);
+    if (!drained) return PAYLOAD_FATAL;
+    wifi_quiescent = true;
+    if (end == CRUISE_END_FAILED || !finished || !run_can_continue()) return PAYLOAD_FATAL;
+    if (*actual == 0 || *actual > duration + BLOCK_RESERVE_MS || translation_ms > LINE_TRANSLATION_MS) {
+        fault_raise(FAULT_TRANSLATION_LIMIT);
+        report_printf("FAILED: unexpected powered duration; no further movement\n");
+        return PAYLOAD_FATAL;
+    }
+    if (end == CRUISE_END_TIMING) {
+        cruise_enabled = false;
+        report_printf("CRUISE: control update gap %lu ms exceeds %u ms; stationary steps for the rest of the run\n",
+                      (unsigned long)(max_gap_us / 1000u), CRUISE_MAX_LOOP_GAP_MS);
+    }
+#if ROUTE_BEACON_COUNT
+    incoming_heading = heading;
+    route.incoming_forwards = true;
+    route.incoming_valid = true;
+#endif
+    // An IMU recovery ends a block early; only a full-length segment counts.
+    if (end == CRUISE_END_LENGTH && window->valid == full &&
+        *actual + 2u * CRUISE_CONTROL_MS >= duration) {
+        *moving = line_moving_pair(window->codes);
+        *moving_valid = true;
+    }
     return check_payload();
 }
 
@@ -577,6 +708,14 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
 
 // Every new heading measures its own baseline. A zero argument uses the same
 // bounded acquisition as any other trial; it never permits flat RSSI drift.
+// A new best point: confirmed above the heading's baseline and above the
+// retained best (or, once the heading has progressed, simply stronger).
+static bool line_new_best(line_pair_t baseline, line_pair_t best, line_pair_t current, bool progress)
+{
+    return line_compare(baseline, current) > 0 &&
+           (line_compare(best, current) > 0 || (progress && line_confirmed_gain(best, current) > 0));
+}
+
 static payload_result_t follow_direction(float heading, uint32_t trial_ms, follow_result_t *followed)
 {
     if (!trial_ms) trial_ms = LINE_DIRECTION_TEST_MS;
@@ -616,10 +755,14 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     unsigned recent_count = 1, recent_next = 1;
     line_pair_t decline_reference = best;
     bool dip_active = false;
+    cruise_window_t cruise_window = {.valid = 0};
     report_printf("FOLLOW: heading %d, blocks at most %u ms on the floor, %u ms on the mat; %s\n",
                   (int)heading, (unsigned)floor_block_ms, LINE_MAT_BLOCK_MS,
                   trial_ms ? "trial until confirmed improvement" :
                   "continue through inconclusive readings within run and travel limits");
+    if (cruise_enabled)
+        report_printf("CRUISE: floor segments up to %u ms, scanning while driving; stop to measure on a moving decline, lost signal or colour\n",
+                      CRUISE_SEGMENT_MS);
     while (run_can_continue()) {
         if (followed->progress && (position - best_position >= LINE_NO_BEST_MS ||
             (uint32_t)(now_ms() - best_wall_ms) >= LINE_NO_BEST_WALL_MS)) {
@@ -640,13 +783,20 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
         }
         // Weak positions must be at least one full step apart to count separately.
         const uint32_t step = forward_block_ms();
-        uint32_t block = step;
+        // CRUISE on the floor only; the mat keeps its short stationary steps.
+        const bool cruising = cruise_enabled && !colour_on_mat();
+        uint32_t block = cruising ? CRUISE_SEGMENT_MS : step;
         if (!followed->progress && position < trial_ms && block > trial_ms - position)
             block = trial_ms - position;
         wifi_sampler_set_reference(line_reference(best));
         uint32_t actual;
-        result = translate_block(true, block, heading, position,
-            translation_cost(position + block + BLOCK_RESERVE_MS - best_position), true, &actual);
+        line_pair_t current;
+        bool moving_evidence = false;
+        const uint32_t reserved = translation_cost(position + block + BLOCK_RESERVE_MS - best_position);
+        result = cruising ?
+            cruise_segment(heading, position, block, reserved, best, decline_reference,
+                           &cruise_window, &actual, &current, &moving_evidence) :
+            translate_block(true, block, heading, position, reserved, true, &actual);
         position += actual;
         followed->position = position;
         if (result != PAYLOAD_NOT_CLOSE) return result;
@@ -662,10 +812,23 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
                           (unsigned long)position);
             return PAYLOAD_NOT_CLOSE;
         }
-        wifi_sampler_set_position(heading, position, true);
-        line_pair_t current;
-        result = measure_pair(&current);
-        if (result != PAYLOAD_NOT_CLOSE) return result;
+        // Moving scans lag the robot, so they understate a gain. Accept them
+        // only when they already confirm a new best; every other verdict
+        // (flat, unconfirmed, the end of a trial) is measured while stopped.
+        if (moving_evidence && !line_new_best(baseline, best, current, followed->progress)) {
+            report_printf("CRUISE: moving pair %d/%d dBm shows no new best; measuring while stopped\n",
+                          rssi_decode(current.first.code), rssi_decode(current.second.code));
+            moving_evidence = false;
+        }
+        if (moving_evidence) {
+            report_printf("CRUISE: moving pair %d/%d dBm confirms a new best at %lu powered ms; no stationary batches\n",
+                          rssi_decode(current.first.code), rssi_decode(current.second.code),
+                          (unsigned long)position);
+        } else {
+            wifi_sampler_set_position(heading, position, true);
+            result = measure_pair(&current);
+            if (result != PAYLOAD_NOT_CLOSE) return result;
+        }
         if (!record_point(heading, position, current)) return PAYLOAD_FATAL;
         int margin = line_pair_margin(best, current);
         int trend = line_compare(best, current);
@@ -729,9 +892,7 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
         }
         // Keep the actual best return point separate from the median reference.
         // A recheck or probe can also discover a new best at the updated position.
-        trend = line_compare(best, current);
-        bool stronger = (trend > 0 && line_compare(baseline, current) > 0) || (followed->progress &&
-            line_compare(baseline, current) > 0 && line_confirmed_gain(best, current) > 0);
+        bool stronger = line_new_best(baseline, best, current, followed->progress);
         if (stronger) {
             dip_active = false;
             decline_positions = 0;

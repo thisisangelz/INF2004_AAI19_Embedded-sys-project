@@ -171,7 +171,7 @@ void cyw43_arch_deinit(void) { ui_radio = scan_active = false; }
 void motion_stop(void) { motors_on = false; }
 bool motion_drive_start(bool forwards, uint32_t ms, float heading)
 {
-    assert(!motors_on && !stopped && ms <= LINE_BLOCK_MS && move_count < 512);
+    assert(!motors_on && !stopped && ms <= (cruise_enabled ? CRUISE_SEGMENT_MS : LINE_BLOCK_MS) && move_count < 512);
     moves[move_count].forwards = forwards;
     moves[move_count].heading = heading;
     moves[move_count].scans_before = (unsigned)wifi_calls;
@@ -282,7 +282,7 @@ void colour_note_lighter_mats(unsigned mask)
 {
     if (mask & (1u << (model_blue ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK))) model_lighter_seen = true;
 }
-bool colour_sensor_read(colour_reading_t *reading)
+static void model_colour_reading(colour_reading_t *reading)
 {
     static const colour_reading_t pink[6] = {
         {7800, 1000, 1015, 970}, {6450, 1000, 927, 910},
@@ -296,12 +296,30 @@ bool colour_sensor_read(colour_reading_t *reading)
         {2577, 518, 799, 1222},
     };
     static const colour_reading_t floor_reading = {2900, 1000, 922, 760};
+    int depth = model ? model_depth() : 0;
+    *reading = depth == 0 ? floor_reading : model_blue ? blue[depth - 1] : pink[depth - 1];
+}
+bool colour_sensor_read(colour_reading_t *reading)
+{
     assert(!motors_on);
     ++colour_reads;
     if (fail_colour_read_at && colour_reads == fail_colour_read_at) return false;
-    int depth = model ? model_depth() : 0;
-    *reading = depth == 0 ? floor_reading : model_blue ? blue[depth - 1] : pink[depth - 1];
+    model_colour_reading(reading);
     return colour_present;
+}
+// Driving reads: one per 115 ms integration, from wherever the sensor is now.
+static uint64_t colour_poll_next_us;
+static unsigned colour_polls;
+bool colour_sensor_poll(colour_reading_t *reading, bool *fresh)
+{
+    *fresh = false;
+    if (!colour_present) return false;
+    if (sim_time < colour_poll_next_us) return true;
+    colour_poll_next_us = sim_time + 115000;
+    ++colour_polls;
+    model_colour_reading(reading);
+    *fresh = true;
+    return true;
 }
 // Scripted arrival by check number (0 = never), or the model's mat rule: the
 // arrival ring or darker after a lighter surface of the mat at an earlier check.
@@ -414,11 +432,14 @@ static void deliver_scan(void)
     // Inject this only after the first scan has locked AP1.
     if (wifi_calls > 1) scan_callback(scan_context, &result);
 }
+// Time the scan start call itself blocks the caller (the control loop).
+static unsigned scan_start_ms;
 int cyw43_wifi_scan(int *state, cyw43_wifi_scan_options_t *options, void *context,
                    int (*callback)(void *, const cyw43_ev_scan_result_t *))
 {
     (void)state; (void)options;
     assert(!scan_active);
+    sim_time += (uint64_t)scan_start_ms * 1000;
     unsigned reading = (unsigned)wifi_calls++;
     unsigned group = raw_script_mode ? reading : reading / SCANS_PER_SAMPLE;
     if (fail_scan) return -1;
@@ -445,7 +466,8 @@ static void reset(void)
     ui_hold_start = ui_cal_failure = ui_stop_calibration = ui_stop_on_arm = false;
     ui_bt_failure = ui_bt_timeout = false;
     ui_radio_error = 0;
-    sim_time = scan_finish_us = 0;
+    sim_time = scan_finish_us = colour_poll_next_us = 0;
+    cruise_enabled = false; scan_start_ms = colour_polls = 0;
     direction.learned = false;
     payload_idle = true; attempt_continue = NULL; attempt_override = NULL;
     mock_limit_start = mock_limit_duration = radio_lock_depth = 0;
@@ -1277,6 +1299,96 @@ static void check_v18_steps(void)
 
 static int sensor_depth_now(void) { return model_depth(); }
 
+static void dump_log(const char *const *prefixes, unsigned count)
+{
+    for (char *row = strtok(log_text, "\n"); row; row = strtok(NULL, "\n"))
+        for (unsigned p = 0; p < count; ++p)
+            if (!strncmp(row, prefixes[p], strlen(prefixes[p]))) { fprintf(stderr, "  %s\n", row); break; }
+}
+
+static payload_result_t run_segment(line_pair_t best, uint32_t *actual, bool *moving_valid)
+{
+    cruise_window_t window = {.valid = 0};
+    line_pair_t moving;
+    cruise_enabled = true;
+    return cruise_segment(0, 0, CRUISE_SEGMENT_MS, translation_cost(CRUISE_SEGMENT_MS), best, best,
+                          &window, actual, &moving, moving_valid);
+}
+
+static void check_cruise(void)
+{
+    // Moving pair: median and range of each half, older half first.
+    const int dbm[6] = {-70, -64, -66, -60, -61, -59};
+    uint8_t codes[6];
+    for (unsigned i = 0; i < 6; ++i) codes[i] = (uint8_t)rssi_encode(dbm[i]);
+    line_pair_t moving = line_moving_pair(codes);
+    assert(rssi_decode(moving.first.code) == -66 && moving.first.spread == 6);
+    assert(rssi_decode(moving.second.code) == -60 && moving.second.spread == 2);
+
+    // Each way a segment ends. Realistic 710 ms scans; AP1 reads -70 dBm.
+    uint32_t actual;
+    bool moving_valid;
+    reset(); scan_delay_ms = 710;
+    assert(run_segment(pair(-71,-71), &actual, &moving_valid) == PAYLOAD_NOT_CLOSE);
+    assert(actual == CRUISE_SEGMENT_MS && moving_valid && strstr(log_text, "end=length"));
+    assert(!motors_on && !scan_active && checkpoint_calls >= 2);
+    // Six scans 6 dB under the best point: stop and measure, no moving evidence.
+    reset(); scan_delay_ms = 710;
+    assert(run_segment(pair(-64,-64), &actual, &moving_valid) == PAYLOAD_NOT_CLOSE);
+    assert(actual < CRUISE_SEGMENT_MS && !moving_valid && strstr(log_text, "end=decline,"));
+    // Two missing scans in a row.
+    reset(); scan_delay_ms = 710; wifi_missing = true;
+    assert(run_segment(pair(-71,-71), &actual, &moving_valid) == PAYLOAD_NOT_CLOSE);
+    assert(actual < 1500 && !moving_valid && strstr(log_text, "end=lost,"));
+    // A scan start that stalls the control loop turns cruise off for the run.
+    reset(); scan_delay_ms = 710; scan_start_ms = 50;
+    assert(run_segment(pair(-71,-71), &actual, &moving_valid) == PAYLOAD_NOT_CLOSE);
+    assert(!moving_valid && !cruise_enabled && strstr(log_text, "end=timing,max_gap_ms=55"));
+    assert(strstr(log_text, "stationary steps for the rest of the run"));
+    // GP21 while a scan is in flight: fatal for the run, but not a radio fault.
+    reset(); scan_delay_ms = 710; stop_at_scan = 2;
+    assert(run_segment(pair(-71,-71), &actual, &moving_valid) == PAYLOAD_FATAL);
+    assert(!motors_on && !fault_test(FAULT_WIFI_SCAN) && strstr(log_text, "end=failed"));
+    assert(strstr(log_text, "STOPPED: GP21 STOP during Wi-Fi scan 2"));
+    // The colour sensor sees the mat while driving.
+    reset(); model = true; colour_present = true; beacon_x = 0.7; scan_delay_ms = 710;
+    assert(run_segment(pair(-90,-90), &actual, &moving_valid) == PAYLOAD_NOT_CLOSE);
+    assert(actual < CRUISE_SEGMENT_MS && !moving_valid && strstr(log_text, "end=colour,") && colour_polls);
+    assert(model_raw_depth() >= 1);
+
+    // Same model and start, realistic 710 ms scans: stationary steps against
+    // cruise. Cruise must reach every target the same way (same travel, same
+    // reversals) in at most half the time.
+    const double targets[7][2] = {{2,0},{0,2},{-2,0},{0,-2},{4,0},{6,0},{3,3}};
+    const char *dump = getenv("CRUISE_DUMP");
+    for (unsigned i = 0; i < 7; ++i) {
+        uint64_t took[2];
+        uint32_t powered[2];
+        int reversed[2];
+        for (unsigned cruise = 0; cruise < 2; ++cruise) {
+            reset(); shipped_steps(); model = true; colour_present = true; scan_delay_ms = 710;
+            beacon_x = targets[i][0]; beacon_y = targets[i][1]; cruise_enabled = cruise;
+            bool arrived = approach_beacon();
+            if (!arrived) print_model_failure(i);
+            if (dump)
+                fprintf(stderr, "MODEL target=(%g,%g) cruise=%u arrived=%d time=%.1f s powered=%lu ms share=%.1f%% wifi_scans=%d\n",
+                        targets[i][0], targets[i][1], cruise, arrived, sim_time / 1e6, (unsigned long)translation_ms,
+                        100.0 * translation_ms * 1000.0 / (double)sim_time, wifi_calls);
+            assert(arrived && hypot(robot_x - beacon_x, robot_y - beacon_y) < 0.25);
+            took[cruise] = sim_time; powered[cruise] = translation_ms; reversed[cruise] = backwards_count;
+            if (cruise && i == 0) assert(strstr(log_text, "end=colour,"));
+            if (cruise && i == 5) assert(strstr(log_text, "confirms a new best") && strstr(log_text, "measuring while stopped"));
+            if (dump && cruise && (unsigned)atoi(dump) == i) {
+                static const char *const rows[] = {"CRUISE", "LINE_POINT", "FOLLOW", "TRIAL", "DIP", "RETURN", "MAT", "STEP"};
+                dump_log(rows, sizeof(rows) / sizeof(*rows));
+            }
+        }
+        uint32_t diff = powered[1] > powered[0] ? powered[1] - powered[0] : powered[0] - powered[1];
+        assert(diff * 50u <= powered[0] && reversed[1] == reversed[0]);
+        assert(took[1] * 2u <= took[0]);
+    }
+}
+
 static void check_mat_steering(void)
 {
     // Colour gate: with a working sensor, BLE is not even tried before
@@ -1473,6 +1585,7 @@ int NAVIGATION_TEST_MAIN(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
+    check_cruise();
     puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, seven cardinal/diagonal trials, diagonal fallback, foreign-mat rejection, white-only steering refusal, unchanged 3 dB progress margin, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from coloured-ring starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }
