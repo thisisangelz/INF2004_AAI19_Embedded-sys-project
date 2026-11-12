@@ -1,0 +1,211 @@
+IMU WHO_AM_I=0x70 | gyro +/- 1000 dps | turns 25% (slow 20%), drive 35%
+IMU I2C: 100000 Hz, 5 ms transaction timeout, 2 stopped recovery attempts
+Getting there | bounded eight-heading acquisition, foreign-mat guard, no-new-best watchdog | AP1 -> AP2 route
+Colour mat: BLUE (AP1); other mats read as floor
+Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log
+Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.
+Move using Wi-Fi direction; on the mat, steer by colour scans
+NAV SETTINGS: floor_step_ms=750,minimum_improvement_db=2
+Transfer only on the arrival ring (pink ring 4, blue or purple ring 5) or darker after a lighter ring, with BLE >= -85 dBm
+Without a working colour sensor: transfer after BLE averages >= -58 dBm
+Waiting for GP20: press to start; GP21 replays the previous run.
+GP20 START: preparing persistent log; motors remain stopped.
+Preparing persistent log: erasing 128 sectors in the reserved 512 KiB region
+Preparing persistent log: 16/128 flash sectors erased
+Preparing persistent log: 32/128 flash sectors erased
+Preparing persistent log: 48/128 flash sectors erased
+Preparing persistent log: 64/128 flash sectors erased
+Preparing persistent log: 80/128 flash sectors erased
+Preparing persistent log: 96/128 flash sectors erased
+Preparing persistent log: 112/128 flash sectors erased
+Preparing persistent log: 128/128 flash sectors erased
+Release GP20 to continue. Waiting at most 10 seconds; GP21 stops startup.
+GP20 released. Persistent log ready.
+COLOUR SENSOR: TCS34725 ID 0x44 ready on GP0/GP1; pink, blue and purple mats; arrival on the arrival ring (pink ring 4, blue or purple ring 5) or darker after a lighter ring of the same mat
+Starting gyro calibration before Wi-Fi/Bluetooth. Keep the robot still.
+Keep robot still: calibrating gyro for 2 seconds
+Gyro Z bias calibrated
+Starting Wi-Fi/Bluetooth hardware.
+Wi-Fi hardware initialised; starting Bluetooth.
+Bluetooth ready
+Bluetooth ready; beginning AP1 approach.
+RSSI sampling: trimmed mean, scans=7,min_valid=5; stationary decisions; moving acquisition disabled pending hardware timing checks
+ROUTE: target=1
+ROUTE: leg=AP1,mat=BLUE,translation_limit_ms=60000,mission_limit_ms=900000
+RSSI sampling: trimmed mean, scans=7,min_valid=5; stationary decisions; moving acquisition disabled pending hardware timing checks
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1303,r=478,g=428,b=374,gr=895,br=782,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=1,t_ms=11503,powered_ms=0,heading=0,dbm=-69,stopped=1,dur_ms=712
+RSSI_RAW,scan=2,t_ms=12178,powered_ms=0,heading=0,dbm=-68,stopped=1,dur_ms=716
+RSSI_RAW,scan=3,t_ms=12897,powered_ms=0,heading=0,dbm=-73,stopped=1,dur_ms=711
+RSSI_RAW,scan=4,t_ms=14232,powered_ms=0,heading=0,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=5,t_ms=14332,powered_ms=0,heading=0,dbm=-69,stopped=1,dur_ms=732
+RSSI_RAW,scan=6,t_ms=15069,powered_ms=0,heading=0,dbm=-72,stopped=1,dur_ms=717
+RSSI_RAW,scan=7,t_ms=15797,powered_ms=0,heading=0,dbm=-72,stopped=1,dur_ms=717
+RSSI_SAMPLE,scan=7,valid=6,dbm=-71,spread=3,duration_ms=5026,moving=0,fallback=0
+Learning gyro direction: 15 degree turn, then return to original heading
+TURN OK: commanded 15 degrees, settled gyro rotation 15 degrees, error +0 degrees, elapsed 521 ms, peak gyro Z 94 dps, corrections 0
+TURN OK: commanded -15 degrees, settled gyro rotation -16 degrees, error +1 degrees, elapsed 509 ms, peak gyro Z 100 dps, corrections 0
+Gyro direction learnt: positive motor turn gives gyro Z sign +1
+APPROACH: bounded initial heading, cardinal then diagonal trials; reject foreign mats, return before each new baseline; steer only on the target's coloured rings
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1363,r=502,g=447,b=390,gr=890,br=776,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=8,t_ms=18505,powered_ms=0,heading=-1,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=9,t_ms=19217,powered_ms=0,heading=-1,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=10,t_ms=19934,powered_ms=0,heading=-1,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=11,t_ms=20053,powered_ms=0,heading=-1,dbm=-73,stopped=1,dur_ms=718
+RSSI_RAW,scan=12,t_ms=20744,powered_ms=0,heading=-1,dbm=-70,stopped=1,dur_ms=707
+RSSI_RAW,scan=13,t_ms=21452,powered_ms=0,heading=-1,dbm=-68,stopped=1,dur_ms=718
+RSSI_RAW,scan=14,t_ms=22188,powered_ms=0,heading=-1,dbm=-66,stopped=1,dur_ms=707
+RSSI_SAMPLE,scan=14,valid=4,dbm=-127,spread=0,duration_ms=4996,moving=0,fallback=0
+AP1 Wi-Fi missing; checking BLE while remaining stopped
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1363,r=502,g=447,b=390,gr=890,br=776,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=15,t_ms=24357,powered_ms=0,heading=-1,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=16,t_ms=24475,powered_ms=0,heading=-1,dbm=-69,stopped=1,dur_ms=727
+RSSI_RAW,scan=17,t_ms=25796,powered_ms=0,heading=-1,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=18,t_ms=25963,powered_ms=0,heading=-1,dbm=-72,stopped=1,dur_ms=728
+RSSI_RAW,scan=19,t_ms=26622,powered_ms=0,heading=-1,dbm=-67,stopped=1,dur_ms=717
+RSSI_RAW,scan=20,t_ms=27356,powered_ms=0,heading=-1,dbm=-70,stopped=1,dur_ms=717
+RSSI_RAW,scan=21,t_ms=28053,powered_ms=0,heading=-1,dbm=-71,stopped=1,dur_ms=717
+RSSI_SAMPLE,scan=21,valid=5,dbm=-70,spread=2,duration_ms=5036,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=22,t_ms=28807,powered_ms=0,heading=-1,dbm=-72,stopped=1,dur_ms=708
+RSSI_RAW,scan=23,t_ms=30109,powered_ms=0,heading=-1,dbm=-127,stopped=1,dur_ms=722
+RSSI_RAW,scan=24,t_ms=30234,powered_ms=0,heading=-1,dbm=-69,stopped=1,dur_ms=717
+RSSI_RAW,scan=25,t_ms=30954,powered_ms=0,heading=-1,dbm=-71,stopped=1,dur_ms=712
+RSSI_RAW,scan=26,t_ms=31640,powered_ms=0,heading=-1,dbm=-69,stopped=1,dur_ms=717
+RSSI_RAW,scan=27,t_ms=32973,powered_ms=0,heading=-1,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=28,t_ms=33093,powered_ms=0,heading=-1,dbm=-69,stopped=1,dur_ms=717
+RSSI_SAMPLE,scan=28,valid=5,dbm=-70,spread=2,duration_ms=5011,moving=0,fallback=0
+LINE_POINT,line=1,point=0,t_ms=33693,powered_ms=0,heading=-1,scan=28,dbm1=-70,dbm2=-70
+FOLLOW: heading -1, blocks at most 750 ms on the floor, 250 ms on the mat; trial until confirmed improvement
+CRUISE: floor segments up to 6000 ms, scanning while driving; stop to measure on a moving decline, lost signal or colour
+DRIVE: forwards, base duty 35%, duration 2400 ms, heading -1 degrees, gyro correction on
+DRIVE OK: forwards, powered 2401 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 4 duty points
+RSSI_RAW,scan=29,t_ms=33791,powered_ms=95,heading=-1,dbm=-71,stopped=0,dur_ms=725
+RSSI_RAW,scan=30,t_ms=34602,powered_ms=906,heading=-1,dbm=-67,stopped=0,dur_ms=725
+RSSI_RAW,scan=31,t_ms=35264,powered_ms=1568,heading=-1,dbm=-66,stopped=0,dur_ms=718
+RSSI_RAW,scan=32,t_ms=35984,powered_ms=2288,heading=-1,dbm=-71,stopped=0,dur_ms=717
+CRUISE,heading=-1,from_ms=0,powered_ms=2401,scans=3,valid=3,end=length,max_gap_ms=9,late_updates=0
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1628,r=610,g=535,b=449,gr=877,br=736,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=33,t_ms=37061,powered_ms=2401,heading=-1,dbm=-73,stopped=1,dur_ms=718
+RSSI_RAW,scan=34,t_ms=37819,powered_ms=2401,heading=-1,dbm=-71,stopped=1,dur_ms=712
+RSSI_RAW,scan=35,t_ms=38477,powered_ms=2401,heading=-1,dbm=-73,stopped=1,dur_ms=723
+RSSI_RAW,scan=36,t_ms=39811,powered_ms=2401,heading=-1,dbm=-127,stopped=1,dur_ms=722
+RSSI_RAW,scan=37,t_ms=39936,powered_ms=2401,heading=-1,dbm=-67,stopped=1,dur_ms=712
+RSSI_RAW,scan=38,t_ms=40634,powered_ms=2401,heading=-1,dbm=-68,stopped=1,dur_ms=717
+RSSI_RAW,scan=39,t_ms=41361,powered_ms=2401,heading=-1,dbm=-73,stopped=1,dur_ms=732
+RSSI_SAMPLE,scan=39,valid=6,dbm=-71,spread=5,duration_ms=5036,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=40,t_ms=42704,powered_ms=2401,heading=-1,dbm=-127,stopped=1,dur_ms=727
+RSSI_RAW,scan=41,t_ms=42799,powered_ms=2401,heading=-1,dbm=-75,stopped=1,dur_ms=718
+RSSI_RAW,scan=42,t_ms=44139,powered_ms=2401,heading=-1,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=43,t_ms=44256,powered_ms=2401,heading=-1,dbm=-68,stopped=1,dur_ms=722
+RSSI_RAW,scan=44,t_ms=45573,powered_ms=2401,heading=-1,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=45,t_ms=45665,powered_ms=2401,heading=-1,dbm=-72,stopped=1,dur_ms=717
+RSSI_RAW,scan=46,t_ms=47007,powered_ms=2401,heading=-1,dbm=-127,stopped=1,dur_ms=717
+RSSI_SAMPLE,scan=46,valid=3,dbm=-127,spread=0,duration_ms=5030,moving=0,fallback=0
+AP1 Wi-Fi missing; checking BLE while remaining stopped
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1627,r=610,g=535,b=449,gr=877,br=736,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=47,t_ms=47958,powered_ms=2401,heading=-1,dbm=-69,stopped=1,dur_ms=722
+RSSI_RAW,scan=48,t_ms=49301,powered_ms=2401,heading=-1,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=49,t_ms=50024,powered_ms=2401,heading=-1,dbm=-127,stopped=1,dur_ms=723
+RSSI_RAW,scan=50,t_ms=50118,powered_ms=2401,heading=-1,dbm=-70,stopped=1,dur_ms=722
+RSSI_RAW,scan=51,t_ms=50850,powered_ms=2401,heading=-1,dbm=-72,stopped=1,dur_ms=717
+RSSI_RAW,scan=52,t_ms=51607,powered_ms=2401,heading=-1,dbm=-72,stopped=1,dur_ms=722
+RSSI_RAW,scan=53,t_ms=52306,powered_ms=2401,heading=-1,dbm=-65,stopped=1,dur_ms=718
+RSSI_SAMPLE,scan=53,valid=5,dbm=-70,spread=3,duration_ms=5041,moving=0,fallback=0
+LINE_POINT,line=1,point=1,t_ms=52907,powered_ms=2401,heading=-1,scan=53,dbm1=-71,dbm2=-70
+FOLLOW_POINT,powered_ms=2401,best_ms=0,gain_db=-1,margin_db=6,baseline_gain_db=-1,baseline_margin_db=6,trend=0
+FOLLOW: no confirmed improvement after 2401 powered ms; trial ended at current position
+TRIAL: initial/current no-gain heading returns to start before trying others
+RETURN: approximate reverse from 2401 to 0 powered ms, same heading 358
+DRIVE: backwards, base duty 35%, duration 750 ms, heading 358 degrees, gyro correction on
+DRIVE OK: backwards, powered 754 ms, settled rotation -1 degrees, heading error +0 degrees, peak correction 3 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1627,r=610,g=535,b=450,gr=877,br=737,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+DRIVE: backwards, base duty 35%, duration 750 ms, heading 358 degrees, gyro correction on
+DRIVE OK: backwards, powered 754 ms, settled rotation +0 degrees, heading error +0 degrees, peak correction 4 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1220,r=446,g=401,b=354,gr=899,br=793,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+DRIVE: backwards, base duty 35%, duration 750 ms, heading 358 degrees, gyro correction on
+DRIVE OK: backwards, powered 754 ms, settled rotation -1 degrees, heading error -2 degrees, peak correction 4 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1379,r=516,g=452,b=386,gr=875,br=748,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+DRIVE: backwards, base duty 35%, duration 139 ms, heading 358 degrees, gyro correction on
+DRIVE OK: backwards, powered 139 ms, settled rotation +0 degrees, heading error -2 degrees, peak correction 3 duty points
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1341,r=497,g=440,b=381,gr=885,br=766,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=54,t_ms=58060,powered_ms=0,heading=358,dbm=-65,stopped=1,dur_ms=737
+RSSI_RAW,scan=55,t_ms=58799,powered_ms=0,heading=358,dbm=-64,stopped=1,dur_ms=712
+RSSI_RAW,scan=56,t_ms=59452,powered_ms=0,heading=358,dbm=-66,stopped=1,dur_ms=722
+RSSI_RAW,scan=57,t_ms=60232,powered_ms=0,heading=358,dbm=-67,stopped=1,dur_ms=718
+RSSI_RAW,scan=58,t_ms=60968,powered_ms=0,heading=358,dbm=-68,stopped=1,dur_ms=717
+RSSI_RAW,scan=59,t_ms=61667,powered_ms=0,heading=358,dbm=-69,stopped=1,dur_ms=712
+RSSI_RAW,scan=60,t_ms=62374,powered_ms=0,heading=358,dbm=-62,stopped=1,dur_ms=717
+RSSI_SAMPLE,scan=60,valid=7,dbm=-66,spread=4,duration_ms=5036,moving=0,fallback=0
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=61,t_ms=63119,powered_ms=0,heading=358,dbm=-63,stopped=1,dur_ms=743
+RSSI_RAW,scan=62,t_ms=63890,powered_ms=0,heading=358,dbm=-67,stopped=1,dur_ms=712
+RSSI_RAW,scan=63,t_ms=64505,powered_ms=0,heading=358,dbm=-67,stopped=1,dur_ms=727
+RSSI_RAW,scan=64,t_ms=65270,powered_ms=0,heading=358,dbm=-68,stopped=1,dur_ms=722
+RSSI_RAW,scan=65,t_ms=66017,powered_ms=0,heading=358,dbm=-64,stopped=1,dur_ms=717
+RSSI_RAW,scan=66,t_ms=66713,powered_ms=0,heading=358,dbm=-64,stopped=1,dur_ms=727
+RSSI_RAW,scan=67,t_ms=68054,powered_ms=0,heading=358,dbm=-127,stopped=1,dur_ms=722
+RSSI_SAMPLE,scan=67,valid=6,dbm=-66,spread=3,duration_ms=5070,moving=0,fallback=0
+DIRECTION SEARCH: both perpendiculars, straight back, then four diagonals; origin 358 degrees; minimum improvement 2 dB
+DIRECTION TRIAL: 1/7, offset=-90, heading=268
+TURN OK: commanded -87 degrees, settled gyro rotation -88 degrees, error +0 degrees, elapsed 1021 ms, peak gyro Z 162 dps, corrections 0
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1472,r=553,g=484,b=410,gr=875,br=741,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=68,t_ms=70170,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=738
+RSSI_RAW,scan=69,t_ms=70897,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=727
+RSSI_RAW,scan=70,t_ms=71609,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=71,t_ms=71703,powered_ms=0,heading=268,dbm=-69,stopped=1,dur_ms=713
+RSSI_RAW,scan=72,t_ms=73044,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=722
+RSSI_RAW,scan=73,t_ms=73761,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=74,t_ms=73884,powered_ms=0,heading=268,dbm=-76,stopped=1,dur_ms=727
+RSSI_SAMPLE,scan=74,valid=2,dbm=-127,spread=0,duration_ms=5056,moving=0,fallback=0
+AP1 Wi-Fi missing; checking BLE while remaining stopped
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1455,r=546,g=478,b=405,gr=875,br=741,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=75,t_ms=76062,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=718
+RSSI_RAW,scan=76,t_ms=76789,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=727
+RSSI_RAW,scan=77,t_ms=77511,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=722
+RSSI_RAW,scan=78,t_ms=78233,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=722
+RSSI_RAW,scan=79,t_ms=78961,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=728
+RSSI_RAW,scan=80,t_ms=79683,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=722
+RSSI_RAW,scan=81,t_ms=79819,powered_ms=0,heading=268,dbm=-79,stopped=1,dur_ms=727
+RSSI_SAMPLE,scan=81,valid=1,dbm=-127,spread=0,duration_ms=5066,moving=0,fallback=0
+AP1 Wi-Fi missing; checking BLE while remaining stopped
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1471,r=552,g=483,b=409,gr=875,br=740,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+AP1 Wi-Fi sample: collecting 7 fresh scans (5 required); motors stopped
+RSSI_RAW,scan=82,t_ms=82009,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=743
+RSSI_RAW,scan=83,t_ms=82219,powered_ms=0,heading=268,dbm=-78,stopped=1,dur_ms=727
+RSSI_RAW,scan=84,t_ms=83453,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=717
+RSSI_RAW,scan=85,t_ms=84165,powered_ms=0,heading=268,dbm=-127,stopped=1,dur_ms=712
+RSSI_RAW,scan=86,t_ms=84295,powered_ms=0,heading=268,dbm=-75,stopped=1,dur_ms=726
+RSSI_RAW,scan=87,t_ms=85019,powered_ms=0,heading=268,dbm=-75,stopped=1,dur_ms=717
+RSSI_RAW,scan=88,t_ms=85711,powered_ms=0,heading=268,dbm=-73,stopped=1,dur_ms=727
+RSSI_SAMPLE,scan=88,valid=4,dbm=-127,spread=0,duration_ms=5071,moving=0,fallback=0
+AP1 Wi-Fi missing; checking BLE while remaining stopped
+COLOUR,zones=FLOOR/FLOOR/FLOOR,mats=NONE/NONE/NONE,c=1452,r=545,g=477,b=404,gr=875,br=741,lighter_seen=0,arrived=0,target_ring=0,foreign_mat=0
+ARRIVAL: not on the arrival ring (pink ring 4, blue or purple ring 5) or darker yet; BLE transfer waits for the colour mat
+FAILED: AP1 missing from three fresh Wi-Fi samples; no blind movement
+RESULT: ROUTE STOPPED
+ROUTE: final_mask=0
+FAULT MASK: 0x010
+FAULT: WIFI_LOST
+Run ended. Log survives power-off. Next boot: open serial, press GP21 BEFORE GP20.
