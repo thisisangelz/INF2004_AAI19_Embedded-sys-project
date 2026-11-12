@@ -72,17 +72,34 @@
     return out;
   }
 
-  // ---------- run list ----------
-  function renderSide() {
-    $('#side').innerHTML = runs.map((r, i) => {
-      const share = r.stats.driveShare;
-      return '<button class="run" data-i="' + i + '"' + (i === current ? ' aria-current="true"' : '') + '>' +
-        '<span class="t">' + esc(r.title) + '</span>' +
-        '<span class="m"><span class="chip ' + r.resultKind + '">' + (r.resultKind === 'ok' ? 'completed' : r.resultKind === 'fail' ? 'no payload' : 'no result') + '</span>' +
-        '<span>' + esc(r.date) + '</span>' + (r.timed ? '<span>' + duration(r.stats.wallMs) + '</span>' : '<span>no timing</span>') + '</span>' +
-        (share !== null ? '<span class="minibar" title="Time spent moving"><i style="width:' + Math.max(1, share * 100 * 4) + '%"></i></span>' : '') +
-        '</button>';
-    }).join('');
+  // ---------- links to the saved files ----------
+  // Notes open on GitHub, which renders Markdown; raw logs sit next to this page in runs/.
+  const NOTE_BASE = 'https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/blob/main/docs/runs/';
+  function fileLinks(r) {
+    if (!r.embedded) return '<span class="muted">opened from this computer</span>';
+    return (r.note ? '<a href="' + NOTE_BASE + encodeURIComponent(r.note) + '" target="_blank" rel="noopener">Notes</a>' : '') +
+      '<a href="runs/' + encodeURIComponent(r.name) + '" target="_blank" rel="noopener">Raw log</a>';
+  }
+  const resultLabel = (r) => (r.resultKind === 'ok' ? 'completed' : r.resultKind === 'fail' ? 'no payload' : 'no result');
+
+  // ---------- all runs ----------
+  function renderRuns() {
+    const byDate = {};
+    runs.forEach((r, i) => { (byDate[r.date || 'Undated'] = byDate[r.date || 'Undated'] || []).push(i); });
+    const dates = Object.keys(byDate).sort().reverse();
+    const fmtDate = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) : d);
+    $('#main').innerHTML = '<section class="head"><h2>All runs</h2><p class="sub">' + runs.length + ' saved logs, newest first. Open a run to see its timeline, path and colour scans. Notes are the written analysis of each run.</p></section>' +
+      dates.map((d) => '<section><h3 class="day">' + esc(fmtDate(d)) + '</h3><div class="runs">' + byDate[d].map((i) => {
+        const r = runs[i];
+        const share = r.stats.driveShare;
+        return '<article class="runcard"><button class="run" data-i="' + i + '">' +
+          '<span class="t">' + esc(r.title) + '</span>' +
+          '<span class="m"><span class="chip ' + r.resultKind + '">' + resultLabel(r) + '</span>' +
+          (r.timed ? '<span>' + duration(r.stats.wallMs) + '</span><span>' + pct(share, 1) + ' moving</span>' : '<span>no timing</span>') + '</span>' +
+          (share !== null ? '<span class="minibar" title="Time spent moving"><i style="width:' + Math.max(1, share * 100 * 4) + '%"></i></span>' : '') +
+          '</button><div class="links">' + fileLinks(r) + '</div></article>';
+      }).join('') + '</div></section>').join('');
+    $('#main').querySelectorAll('.run').forEach((b) => b.addEventListener('click', () => { current = +b.dataset.i; setView('run'); }));
   }
 
   // ---------- run view ----------
@@ -346,7 +363,9 @@
   function renderRun() {
     const run = runs[current];
     const parts = [];
-    parts.push('<section class="head"><h2>' + esc(run.title) + '</h2><div class="meta"><span class="chip ' + run.resultKind + '">' + esc(run.result || 'no result line') + '</span><span>' + esc(run.date) + '</span><span class="mono">' + esc(run.name) + '</span></div>' +
+    parts.push('<div class="picker"><label for="pick">Run</label><select id="pick">' + runs.map((r, i) => '<option value="' + i + '"' + (i === current ? ' selected' : '') + '>' + esc((r.date ? r.date + ' · ' : '') + r.title) + '</option>').join('') + '</select>' +
+      '<button id="prev" aria-label="Previous run"' + (current === 0 ? ' disabled' : '') + '>‹</button><button id="next" aria-label="Next run"' + (current === runs.length - 1 ? ' disabled' : '') + '>›</button></div>');
+    parts.push('<section class="head"><h2>' + esc(run.title) + '</h2><div class="meta"><span class="chip ' + run.resultKind + '">' + esc(run.result || 'no result line') + '</span><span>' + esc(run.date) + '</span><span class="mono">' + esc(run.name) + '</span><span class="links">' + fileLinks(run) + '</span></div>' +
       (run.banner ? '<div class="meta"><span>Firmware:</span><span class="mono">' + esc(run.banner) + '</span></div>' : '') + '</section>');
     parts.push(tiles(run));
     const ins = insights(run);
@@ -366,6 +385,9 @@
       wrap.innerHTML = tl.svg + '<div class="tip" hidden></div>';
       attachCrosshair(wrap, run, tl);
     }
+    $('#pick').addEventListener('change', (e) => { current = +e.target.value; setView('run'); });
+    $('#prev').addEventListener('click', () => { current--; setView('run'); });
+    $('#next').addEventListener('click', () => { current++; setView('run'); });
     $('#chips').addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
@@ -392,10 +414,11 @@
 
   function setView(v) {
     view = v;
-    $('#tab-run').setAttribute('aria-selected', v === 'run');
-    $('#tab-compare').setAttribute('aria-selected', v === 'compare');
-    renderSide();
-    if (v === 'run') renderRun(); else renderCompare();
+    ['runs', 'run', 'compare'].forEach((name) => $('#tab-' + name).setAttribute('aria-selected', v === name));
+    if (v === 'run') renderRun(); else if (v === 'compare') renderCompare(); else renderRuns();
+    // Keep the address shareable: #runs, #compare, or #run=<file name without .txt>.
+    const hash = v === 'run' ? 'run=' + runs[current].name.replace(/\.txt$/, '') : v;
+    try { history.replaceState(null, '', '#' + hash); } catch (e) { /* file:// in some browsers */ }
     window.scrollTo({ top: 0 });
   }
 
@@ -418,16 +441,16 @@
   }
 
   function init() {
-    runs = (window.RUNS || []).map((r) => LogParser.parse(r.text, r));
-    if (!runs.length) { $('#main').innerHTML = '<p class="empty">No logs embedded. Run <code>node dashboard/build_runs.js</code> or open a log file.</p>'; }
-    // Open the first log that has timing, so the first screen shows the timeline.
-    const firstTimed = runs.findIndex((r) => r.timed && r.resultKind === 'ok');
-    current = Math.max(0, firstTimed);
-    // Deep links: index.html#run=purple opens the first run whose file name contains "purple"; #compare opens the comparison.
+    runs = (window.RUNS || []).map((r) => Object.assign(LogParser.parse(r.text, r), { note: r.note, embedded: true }));
+    if (!runs.length) { $('#main').innerHTML = '<p class="empty">No logs embedded. Run <code>node docs/tools/build_runs.js</code> or open a log file.</p>'; }
+    // The Run tab starts on the newest run.
+    current = Math.max(0, runs.length - 1);
+    // Deep links: #run=purple opens the first run whose file name contains "purple"; #compare and #runs open those tabs.
     const hash = decodeURIComponent(location.hash.slice(1));
     const wanted = /^run=(.+)$/.exec(hash);
-    if (wanted) { const hit = runs.findIndex((r) => r.name.includes(wanted[1])); if (hit >= 0) current = hit; }
-    $('#side').addEventListener('click', (e) => { const b = e.target.closest('.run'); if (b) { current = +b.dataset.i; setView('run'); } });
+    const hit = wanted ? runs.findIndex((r) => r.name.includes(wanted[1])) : -1;
+    if (hit >= 0) current = hit;
+    $('#tab-runs').addEventListener('click', () => setView('runs'));
     $('#tab-run').addEventListener('click', () => setView('run'));
     $('#tab-compare').addEventListener('click', () => setView('compare'));
     $('#file').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
@@ -436,7 +459,7 @@
     window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) $('#drop').hidden = true; });
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; $('#drop').hidden = true; addFiles(e.dataTransfer.files); });
-    if (runs.length) setView(hash === 'compare' ? 'compare' : 'run');
+    if (runs.length) setView(hit >= 0 ? 'run' : hash === 'compare' ? 'compare' : 'runs');
   }
   init();
 }());

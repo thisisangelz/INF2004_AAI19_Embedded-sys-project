@@ -1,11 +1,11 @@
-// Checks the parser against every saved log:  node dashboard/test_logparser.js
+// Checks the parser against every saved log:  node docs/tools/test_logparser.js
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { parse } = require('./logparser.js');
+const { parse } = require('../assets/logparser.js');
 
-const dir = path.join(__dirname, '..', 'docs', 'runs');
+const dir = path.join(__dirname, '..', 'runs');
 const logs = fs.readdirSync(dir).filter((f) => f.endsWith('.txt')).sort();
 assert(logs.length > 0, 'no logs found');
 

@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Run Log Dashboard</title>
-<link rel="stylesheet" href="style.css">
+<meta name="description" content="Saved run logs of the INF2004 beacon robot: timelines, colour scans and run comparisons.">
+<link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
 <header class="bar">
@@ -13,20 +14,18 @@
     <p>Beacon robot · saved runs from <code>docs/runs</code></p>
   </div>
   <nav class="tabs" role="tablist" aria-label="View">
-    <button role="tab" id="tab-run" aria-selected="true">Run</button>
+    <button role="tab" id="tab-runs" aria-selected="true">All runs</button>
+    <button role="tab" id="tab-run" aria-selected="false">Run</button>
     <button role="tab" id="tab-compare" aria-selected="false">Compare runs</button>
   </nav>
   <label class="open" for="file">Open log file…</label>
   <input id="file" type="file" accept=".txt,text/plain" multiple hidden>
 </header>
-<div class="layout">
-  <aside id="side" aria-label="Runs"></aside>
-  <main id="main"></main>
-</div>
+<main id="main"></main>
 <div id="drop" hidden>Drop robot log files to add them</div>
 <div id="toast" role="status" hidden></div>
-<script src="logparser.js"></script>
-<script src="runs.js"></script>
-<script src="app.js"></script>
+<script src="assets/logparser.js"></script>
+<script src="assets/runs.js"></script>
+<script src="assets/app.js"></script>
 </body>
 </html>
