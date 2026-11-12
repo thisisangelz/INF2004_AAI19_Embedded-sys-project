@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="firmware-qa" tests="40" failures="0" skipped="3">
+<testcase name="QA tooling regression tests" time="0.101"></testcase>
+<testcase name="Pico SDK baseline" time="0.0"></testcase>
+<testcase name="host test build: packed-bit fields" time="0.198"></testcase>
+<testcase name="host test run: packed-bit fields" time="2.8"></testcase>
+<testcase name="host test build: transfer protocol" time="0.195"></testcase>
+<testcase name="host test run: transfer protocol" time="1.51"></testcase>
+<testcase name="host test build: shared state" time="0.193"></testcase>
+<testcase name="host test run: shared state" time="2.684"></testcase>
+<testcase name="host test build: IMU processing" time="0.214"></testcase>
+<testcase name="host test run: IMU processing" time="2.643"></testcase>
+<testcase name="host test build: motor safety" time="0.248"></testcase>
+<testcase name="host test run: motor safety" time="2.891"></testcase>
+<testcase name="existing host test: navigation" time="3.12"></testcase>
+<testcase name="existing host test: BLE payload protocol" time="2.924"></testcase>
+<testcase name="configure build group: root-firmware" time="5.042"></testcase>
+<testcase name="firmware build: pico_rssi_tracker" time="0.127"></testcase>
+<testcase name="firmware artifacts: pico_rssi_tracker" time="0.0"></testcase>
+<testcase name="firmware build: picow_access_point" time="0.135"></testcase>
+<testcase name="firmware artifacts: picow_access_point" time="0.0"></testcase>
+<testcase name="firmware build: picow_access_point2" time="0.128"></testcase>
+<testcase name="firmware artifacts: picow_access_point2" time="0.0"></testcase>
+<testcase name="firmware build: picow_access_point3" time="0.13"></testcase>
+<testcase name="firmware artifacts: picow_access_point3" time="0.0"></testcase>
+<testcase name="firmware build: tcs34725_diag" time="0.119"></testcase>
+<testcase name="firmware artifacts: tcs34725_diag" time="0.0"></testcase>
+<testcase name="configure build group: getting-there" time="4.215"></testcase>
+<testcase name="firmware build: getting_there" time="48.194"></testcase>
+<testcase name="firmware artifacts: getting_there" time="0.0"></testcase>
+<testcase name="configure build group: rssi-environment" time="4.287"></testcase>
+<testcase name="firmware build: rssi_env_test" time="32.424"></testcase>
+<testcase name="firmware artifacts: rssi_env_test" time="0.0"></testcase>
+<testcase name="configure build group: wheel-rssi" time="3.926"></testcase>
+<testcase name="firmware build: wheel_rssi_test" time="31.623"></testcase>
+<testcase name="firmware artifacts: wheel_rssi_test" time="0.0"></testcase>
+<testcase name="configure build group: wheel-turn" time="3.841"></testcase>
+<testcase name="firmware build: wheel_turn_check" time="11.684"></testcase>
+<testcase name="firmware artifacts: wheel_turn_check" time="0.0"></testcase>
+<testcase name="Cppcheck advisory" time="0.0"><skipped message="cppcheck not installed; set --cppcheck or QA_CPPCHECK" /></testcase>
+<testcase name="Clang-Tidy advisory" time="0.0"><skipped message="clang-tidy not installed; set --clang-tidy or QA_CLANG_TIDY" /></testcase>
+<testcase name="Gcovr advisory" time="0.0"><skipped message="gcovr not installed; set --gcovr or QA_GCOVR" /></testcase>
+</testsuite>
