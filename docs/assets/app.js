@@ -564,6 +564,9 @@
       out.push('<text class="f-lab" x="' + (c + 0.5) * G.tileCm + '" y="' + 20 + '" text-anchor="middle">' + String.fromCharCode(65 + c) + '</text>');
     }
     for (let r = 0; r < G.rows; r++) out.push('<text class="f-lab" x="-14" y="' + (-(r + 0.5) * G.tileCm + 5) + '" text-anchor="middle">' + (r + 1) + '</text>');
+    // A beacon is one tile across. Draw it under the paths so the route into it stays visible.
+    const apKeys = layout ? ['ap1', 'ap2'].filter((k) => layout[k]) : [];
+    apKeys.forEach((k) => out.push('<circle class="f-' + k + '" cx="' + X(layout[k].x) + '" cy="' + Y(layout[k].y) + '" r="' + G.tileCm / 2 + '"><title>' + k.toUpperCase() + ', ' + G.tileCm + ' cm across</title></circle>'));
     paths.forEach((p) => {
       const m = p.mapped; if (!m) return;
       const cls = p.cls || '';
@@ -581,10 +584,7 @@
       out.push('<path class="f-end ' + cls + '" d="M' + (X(e.x) - 5) + ' ' + (Y(e.y) - 5) + 'l10 10m0 -10l-10 10"><title>' + esc(p.title || 'End of the run') + '</title></path>');
     });
     if (layout) {
-      ['ap1', 'ap2'].forEach((k) => {
-        const ap = layout[k]; if (!ap) return;
-        out.push('<circle class="f-' + k + '" cx="' + X(ap.x) + '" cy="' + Y(ap.y) + '" r="9"/><text class="f-aplab" x="' + X(ap.x) + '" y="' + (Y(ap.y) - 13) + '" text-anchor="middle">' + k.toUpperCase() + '</text>');
-      });
+      apKeys.forEach((k) => out.push('<text class="f-aplab" x="' + X(layout[k].x) + '" y="' + (Y(layout[k].y) + 4.5) + '" text-anchor="middle">' + k.toUpperCase() + '</text>'));
       const s = layout.start;
       if (s) {
         out.push('<circle class="f-start" cx="' + X(s.x) + '" cy="' + Y(s.y) + '" r="7"/>');
