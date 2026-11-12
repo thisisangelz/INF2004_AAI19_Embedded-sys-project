@@ -491,15 +491,33 @@
     discard() { this.draft = { settings: {}, runs: {} }; this.save(); },
   };
 
+  const layoutsText = () => JSON.stringify(Store.merged(), null, 2) + '\n';
   function exportLayouts() {
-    const blob = new Blob([JSON.stringify(Store.merged(), null, 2) + '\n'], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'layouts.json';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    download('layouts.json', layoutsText(), 'application/json');
     toast('Saved layouts.json. Put it in docs/runs/, rebuild with docs/tools/build_runs.js, then commit.');
   }
+  function copyLayouts() {
+    const text = layoutsText();
+    const done = () => toast('Copied layouts.json. Paste it over docs/runs/layouts.json.');
+    const fallback = () => {
+      const t = document.createElement('textarea');
+      t.value = text; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0';
+      document.body.appendChild(t); t.select();
+      const ok = document.execCommand('copy');
+      t.remove();
+      if (ok) done(); else toast('This browser blocked copying. Use the download button.');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+  // Icon buttons, handled by the delegated click listener on #main.
+  const ICON = {
+    copy: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
+  };
+  const layoutButtons = () => '<span class="iconbtns">' +
+    '<button class="iconbtn" data-act="copy-layouts" title="Copy layouts.json" aria-label="Copy layouts.json">' + ICON.copy + '</button>' +
+    '<button class="iconbtn" data-act="export-layouts" title="Download layouts.json" aria-label="Download layouts.json">' + ICON.download + '</button></span>';
   function importLayouts(file) {
     file.text().then((text) => {
       const data = JSON.parse(text);
@@ -513,7 +531,7 @@
   }
   const pendingNote = () => {
     const n = Store.pending();
-    return n ? '<span class="warn">' + n + ' change' + (n > 1 ? 's' : '') + ' saved in this browser only.</span> Export, then commit <code>docs/runs/layouts.json</code> so everyone sees ' + (n > 1 ? 'them' : 'it') + '.' : 'All positions match the committed <code>layouts.json</code>.';
+    return n ? '<span class="warn">' + n + ' change' + (n > 1 ? 's' : '') + ' saved in this browser only.</span> Copy or download layouts.json, then commit it as <code>docs/runs/layouts.json</code> so everyone sees ' + (n > 1 ? 'them' : 'it') + '.' : 'All positions match the committed <code>layouts.json</code>.';
   };
 
   function fieldParams() {
@@ -616,7 +634,7 @@
       '<div class="actions">' + (prevIdx >= 0 ? '<button id="copy-layout">Copy from ' + esc(runs[prevIdx].date + ' · ' + runs[prevIdx].title.slice(0, 40)) + (runs[prevIdx].title.length > 40 ? '…' : '') + '</button>' : '') +
       '<button id="clear-layout"' + (Store.get(run.name) ? '' : ' disabled') + '>Clear</button></div>' +
       '<ul class="insights">' + facts.map((f) => '<li>' + f + '</li>').join('') + '</ul>' +
-      '<p class="foot">' + pendingNote() + ' <button class="linkbtn" id="export-layouts">Export layouts.json</button></p></div></div>';
+      '<div class="layout-out"><p class="foot">' + pendingNote() + '</p>' + layoutButtons() + '</div></div></div>';
 
     const update = (fn) => {
       const next = JSON.parse(JSON.stringify(Store.get(run.name) || {}));
@@ -648,7 +666,6 @@
     const copy = host.querySelector('#copy-layout');
     if (copy) copy.addEventListener('click', () => update((l) => { Object.assign(l, JSON.parse(JSON.stringify(Store.get(runs[prevIdx].name)))); }));
     host.querySelector('#clear-layout').addEventListener('click', () => update((l) => { delete l.start; delete l.ap1; delete l.ap2; }));
-    host.querySelector('#export-layouts').addEventListener('click', exportLayouts);
   }
 
   // ---------- Field tab: calibration and numbers across runs ----------
@@ -709,7 +726,7 @@
         '<label>Drive speed <input id="speed" type="number" min="1" max="200" step="0.5" placeholder="' + (P.cal.speed ? P.cal.speed.toFixed(1) : 'auto') + '" value="' + (P.manual || '') + '"> cm/s <small>Leave empty to use the calibration.</small></label>' +
         '<label><input id="sign" type="checkbox"' + (P.headingSign === 1 ? ' checked' : '') + '> A positive log heading turns the robot anticlockwise <small>From the motor wiring in motion.c. Untick if the paths come out mirrored.</small></label>' +
         '<label><input id="reanchor" type="checkbox"' + (P.reanchor ? ' checked' : '') + '> Snap the path onto AP1 at the transfer <small>The AP2 leg then starts from where the robot really was.</small></label>' +
-        '<p class="foot">' + pendingNote() + '</p><div class="actions"><button id="export-layouts">Export layouts.json</button><label class="btn">Import…<input id="import-layouts" type="file" accept=".json,application/json" hidden></label>' + (Store.pending() ? '<button id="discard">Discard browser changes</button>' : '') + '</div></div></div></section>';
+        '<p class="foot">' + pendingNote() + '</p><div class="actions">' + layoutButtons() + '<label class="btn">Import…<input id="import-layouts" type="file" accept=".json,application/json" hidden></label>' + (Store.pending() ? '<button id="discard">Discard browser changes</button>' : '') + '</div></div></div></section>';
 
     const main = $('#main');
     main.querySelectorAll('tr.link').forEach((tr) => tr.addEventListener('click', () => { current = +tr.dataset.i; setView('run'); }));
@@ -718,7 +735,6 @@
     $('#speed').addEventListener('change', (e) => { const v = parseFloat(e.target.value); Store.setSetting('speed_cm_s', v > 0 ? v : null); renderField(); });
     $('#sign').addEventListener('change', (e) => { Store.setSetting('heading_sign', e.target.checked ? 1 : -1); renderField(); });
     $('#reanchor').addEventListener('change', (e) => { Store.setSetting('reanchor', e.target.checked); renderField(); });
-    $('#export-layouts').addEventListener('click', exportLayouts);
     $('#import-layouts').addEventListener('change', (e) => { if (e.target.files[0]) importLayouts(e.target.files[0]); e.target.value = ''; });
     const discard = $('#discard'); if (discard) discard.addEventListener('click', () => { if (confirm('Discard every position and setting changed in this browser?')) { Store.discard(); renderField(); } });
   }
@@ -789,6 +805,9 @@
       if (dl) { const d = Drafts.list.find((x) => x.name === dl.dataset.dl); if (d) download(d.name, d.text); }
       const rm = e.target.closest('[data-rm]');
       if (rm) removeDraft(rm.dataset.rm);
+      const act = e.target.closest('[data-act]');
+      if (act && act.dataset.act === 'copy-layouts') copyLayouts();
+      if (act && act.dataset.act === 'export-layouts') exportLayouts();
     });
   }
 

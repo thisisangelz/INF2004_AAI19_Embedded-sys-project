@@ -243,3 +243,11 @@ svg .f-aplab { font-size: 12px; font-weight: 700; fill: var(--fg); paint-order: 
   .tabs { margin-left: 0; }
 }
 @media (prefers-reduced-motion: no-preference) { .tabs button, .runcard { transition: border-color .15s; } }
+
+/* icon buttons */
+.iconbtns { display: inline-flex; gap: 6px; }
+.iconbtn { width: 34px; height: 32px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); border-radius: 6px; cursor: pointer; }
+.iconbtn:hover { border-color: var(--accent); color: var(--accent); }
+.iconbtn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.layout-out { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.layout-out .foot { margin-top: 0; }

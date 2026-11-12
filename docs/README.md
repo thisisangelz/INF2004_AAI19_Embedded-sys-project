@@ -52,8 +52,8 @@ read them.
 1. In the dashboard, open **Add run…** and paste the serial monitor output. Check the event log.
 2. Click **Download .txt**, or **Download all** on the All runs tab, and put the file in
    `docs/runs/`. Its name is `YYYY-MM-DD-short-name.txt`.
-3. Optional: place the run on the field in the Run tab. Then click **Export layouts.json** and
-   replace `docs/runs/layouts.json` with the downloaded file.
+3. Optional: place the run on the field in the Run tab. Then use the copy or download icon next to the positions and
+   replace `docs/runs/layouts.json` with it.
 4. Rebuild with `DASHBOARD_PASSWORD=<password> node docs/tools/build_runs.js`, then check with
    `node docs/tools/test_logparser.js`.
 5. Commit and push to `main`. Once a log is committed, its draft disappears from the browser.
