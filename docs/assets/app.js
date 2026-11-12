@@ -76,9 +76,68 @@
   // Notes open on GitHub, which renders Markdown; raw logs sit next to this page in runs/.
   const NOTE_BASE = 'https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/blob/main/docs/runs/';
   function fileLinks(r) {
-    if (!r.embedded) return '<span class="muted">opened from this computer</span>';
-    return (r.note ? '<a href="' + NOTE_BASE + encodeURIComponent(r.note) + '" target="_blank" rel="noopener">Notes</a>' : '') +
+    if (r.draft) {
+      return '<span class="chip draft" title="Only in this browser until it is committed to docs/runs/">draft</span>' +
+        '<button class="linkbtn" data-dl="' + esc(r.name) + '">Download .txt</button><button class="linkbtn" data-rm="' + esc(r.name) + '">Remove</button>';
+    }
+    return (r.note ? '<a href="' + NOTE_BASE + encodeURIComponent(r.note) + '" target="_blank" rel="noopener">Notes</a>' : '<span class="muted">No notes yet</span>') +
       '<a href="runs/' + encodeURIComponent(r.name) + '" target="_blank" rel="noopener">Raw log</a>';
+  }
+
+  function download(name, text, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: type || 'text/plain' }));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ---------- pasted runs, kept in this browser until committed ----------
+  const DRAFTS_KEY = 'runlog.drafts.v1';
+  const sameLog = (a, b) => a.replace(/\r\n/g, '\n').trim() === b.replace(/\r\n/g, '\n').trim();
+  const Drafts = {
+    list: [],
+    load() { try { this.list = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '[]'); } catch (e) { this.list = []; } },
+    save() { try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(this.list)); return true; } catch (e) { return false; } },
+  };
+  const draftRun = (d) => Object.assign(LogParser.parse(d.text, { name: d.name, title: d.name.replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.txt$/, '').replace(/-/g, ' ') }), { draft: true, source: d.text });
+
+  // Adds pasted or opened logs. Returns how many were added.
+  function addLogs(items) {
+    let added = 0;
+    items.forEach((item) => {
+      const parsed = LogParser.parse(item.text, { name: item.name });
+      if (!parsed.banner && parsed.events.length < 5) { toast(item.name + ': this does not look like robot output'); return; }
+      const dup = runs.findIndex((r) => sameLog(r.source, item.text));
+      if (dup >= 0) { current = dup; toast('That log is already here: ' + runs[dup].title); return; }
+      let name = item.name;
+      for (let k = 2; runs.some((r) => r.name === name); k++) name = item.name.replace(/(-\d+)?\.txt$/, '-' + k + '.txt');
+      const d = { name, text: item.text, added: new Date().toISOString() };
+      Drafts.list.push(d);
+      runs.push(draftRun(d));
+      current = runs.length - 1;
+      added++;
+    });
+    if (added && !Drafts.save()) toast('This browser will not keep the run after you close the page. Download it now.');
+    else if (added) toast('Added. Download the .txt into docs/runs/ and commit it to keep it.');
+    if (added || items.length) setView('run');
+    return added;
+  }
+
+  function removeDraft(name) {
+    if (!confirm('Remove ' + name + ' from this browser? Download it first if you still need it.')) return;
+    Drafts.list = Drafts.list.filter((d) => d.name !== name);
+    Drafts.save();
+    runs = runs.filter((r) => r.name !== name);
+    current = Math.min(current, runs.length - 1);
+    setView('runs');
+  }
+
+  function draftBanner() {
+    const n = Drafts.list.length;
+    if (!n) return '';
+    return '<div class="card notice"><p><b>' + n + ' run' + (n > 1 ? 's are' : ' is') + ' only in this browser.</b> Download ' + (n > 1 ? 'them' : 'it') + ', put the file' + (n > 1 ? 's' : '') + ' in <code>docs/runs/</code>, then commit. Ask Claude to write the notes once the logs are in the repo.</p>' +
+      '<div class="actions"><button id="dl-all">Download ' + (n > 1 ? 'all ' + n : 'it') + '</button></div></div>';
   }
   const resultLabel = (r) => (r.resultKind === 'ok' ? 'completed' : r.resultKind === 'fail' ? 'no payload' : 'no result');
 
@@ -88,7 +147,7 @@
     runs.forEach((r, i) => { (byDate[r.date || 'Undated'] = byDate[r.date || 'Undated'] || []).push(i); });
     const dates = Object.keys(byDate).sort().reverse();
     const fmtDate = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) : d);
-    $('#main').innerHTML = '<section class="head"><h2>All runs</h2><p class="sub">' + runs.length + ' saved logs, newest first. Open a run to see its timeline, path and colour scans. Notes are the written analysis of each run.</p></section>' +
+    $('#main').innerHTML = draftBanner() + '<section class="head"><h2>All runs</h2><p class="sub">' + runs.length + ' logs, newest first. Open a run to see its timeline, path and colour scans. Notes are the written analysis of each run.</p></section>' +
       dates.map((d) => '<section><h3 class="day">' + esc(fmtDate(d)) + '</h3><div class="runs">' + byDate[d].map((i) => {
         const r = runs[i];
         const share = r.stats.driveShare;
@@ -100,6 +159,8 @@
           '</button><div class="links">' + fileLinks(r) + '</div></article>';
       }).join('') + '</div></section>').join('');
     $('#main').querySelectorAll('.run').forEach((b) => b.addEventListener('click', () => { current = +b.dataset.i; setView('run'); }));
+    const all = $('#dl-all');
+    if (all) all.addEventListener('click', () => Drafts.list.forEach((d, k) => setTimeout(() => download(d.name, d.text), k * 400)));
   }
 
   // ---------- run view ----------
@@ -373,8 +434,10 @@
     parts.push(timeUse(run));
     if (run.timed) {
       parts.push('<section><h2>Timeline</h2><p class="sub">Top strip: what the robot was doing. Hover the charts for values at that moment.</p><div class="card chart" id="tl"></div></section>');
-      parts.push('<section class="two"><div><h2>Estimated path</h2><p class="sub">Dead-reckoned from drive commands and headings, relative to the start. Darker stop = stronger Wi-Fi. Dashed red = reversing. Sign of heading may be mirrored.</p><div class="card">' + pathSVG(run) + '</div></div>' +
-        '<div><h2>Stops</h2><p class="sub">The wait is the time since the previous stop, almost all scanning and checking.</p><div class="card">' + stepsTable(run) + '</div></div></section>');
+      parts.push('<section><h2>Field map</h2><p class="sub">Where the robot went on the ' + FieldMap.GRID.cols + ' × ' + FieldMap.GRID.rows + ' grid of ' + FieldMap.GRID.tileCm + ' cm tiles. Enter the start, the way the robot faced, and both beacons.</p><div id="field"></div></section>');
+      const stopsCard = '<div><h2>Stops</h2><p class="sub">The wait is the time since the previous stop, almost all scanning and checking.</p><div class="card">' + stepsTable(run) + '</div></div>';
+      parts.push(FieldMap.complete(Store.get(run.name)) ? '<section>' + stopsCard + '</section>' :
+        '<section class="two"><div><h2>Estimated path</h2><p class="sub">Without field positions: dead-reckoned from motor time and headings, relative to the start. Dashed red = reversing. May be mirrored.</p><div class="card">' + pathSVG(run) + '</div></div>' + stopsCard + '</section>');
     }
     if (run.scans.length) parts.push('<section><h2>Colour scans</h2><p class="sub">Ring depth read at each 30° step while turning on the spot. The arrow is the direction the robot would steer.</p><div class="scans">' + run.scans.map(scanSVG).join('') + '</div></section>');
     parts.push('<section><h2>Event log</h2><div class="chips" id="chips">' + Object.keys(CATS).map((c) => '<button data-cat="' + c + '" aria-pressed="' + eventFilter[c] + '">' + CAT_LABEL[c] + '</button>').join('') + '</div><div class="card events" id="events">' + eventRows(run) + '</div><p class="foot">Times marked ~ are estimated between stamped Wi-Fi lines.</p></section>');
@@ -384,6 +447,7 @@
       const wrap = $('#tl');
       wrap.innerHTML = tl.svg + '<div class="tip" hidden></div>';
       attachCrosshair(wrap, run, tl);
+      renderFieldEditor(run);
     }
     $('#pick').addEventListener('change', (e) => { current = +e.target.value; setView('run'); });
     $('#prev').addEventListener('click', () => { current--; setView('run'); });
@@ -395,6 +459,268 @@
       b.setAttribute('aria-pressed', eventFilter[b.dataset.cat]);
       $('#events').innerHTML = eventRows(run);
     });
+  }
+
+  // ---------- field positions: committed layouts.json plus this browser's edits ----------
+  const DRAFT_KEY = 'runlog.layouts.v1';
+  const Store = {
+    base: { settings: {}, runs: {} },
+    draft: { settings: {}, runs: {} },
+    load() {
+      try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); if (d && d.runs) this.draft = { settings: d.settings || {}, runs: d.runs }; } catch (e) { /* storage blocked */ }
+    },
+    save() { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(this.draft)); } catch (e) { toast('This browser will not keep edits. Export them before leaving.'); } },
+    get(name) { return name in this.draft.runs ? this.draft.runs[name] : this.base.runs[name] || null; },
+    set(name, layout) { this.draft.runs[name] = layout; this.save(); },
+    settings() { return Object.assign({}, this.base.settings, this.draft.settings); },
+    setSetting(k, v) { this.draft.settings[k] = v; this.save(); },
+    pending() {
+      const runsChanged = Object.keys(this.draft.runs).filter((k) => JSON.stringify(this.draft.runs[k]) !== JSON.stringify(this.base.runs[k] || null)).length;
+      const settingsChanged = Object.keys(this.draft.settings).filter((k) => JSON.stringify(this.draft.settings[k]) !== JSON.stringify(this.base.settings[k])).length;
+      return runsChanged + settingsChanged;
+    },
+    merged() {
+      const runsOut = {};
+      const all = Object.assign({}, this.base.runs, this.draft.runs);
+      Object.keys(all).sort().forEach((k) => { if (all[k]) runsOut[k] = all[k]; });
+      return {
+        grid: { cols: FieldMap.GRID.cols, rows: FieldMap.GRID.rows, tile_cm: FieldMap.GRID.tileCm, origin: 'bottom-left corner of A1', x: 'cm to the right', y: 'cm up', bearing: 'degrees clockwise from up' },
+        settings: this.settings(), runs: runsOut,
+      };
+    },
+    discard() { this.draft = { settings: {}, runs: {} }; this.save(); },
+  };
+
+  function exportLayouts() {
+    const blob = new Blob([JSON.stringify(Store.merged(), null, 2) + '\n'], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'layouts.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Saved layouts.json. Put it in docs/runs/, rebuild with docs/tools/build_runs.js, then commit.');
+  }
+  function importLayouts(file) {
+    file.text().then((text) => {
+      const data = JSON.parse(text);
+      if (!data || typeof data.runs !== 'object') throw new Error('no runs');
+      Object.keys(data.runs).forEach((k) => { Store.draft.runs[k] = data.runs[k]; });
+      Object.assign(Store.draft.settings, data.settings || {});
+      Store.save();
+      toast('Imported positions for ' + Object.keys(data.runs).length + ' runs');
+      setView(view);
+    }).catch(() => toast('That file is not a layouts.json'));
+  }
+  const pendingNote = () => {
+    const n = Store.pending();
+    return n ? '<span class="warn">' + n + ' change' + (n > 1 ? 's' : '') + ' saved in this browser only.</span> Export, then commit <code>docs/runs/layouts.json</code> so everyone sees ' + (n > 1 ? 'them' : 'it') + '.' : 'All positions match the committed <code>layouts.json</code>.';
+  };
+
+  function fieldParams() {
+    const s = Store.settings();
+    const sign = s.heading_sign === -1 ? -1 : 1;
+    const layoutOf = (r) => Store.get(r.name);
+    const cal = FieldMap.calibrate(runs, layoutOf, sign);
+    const mirrored = FieldMap.calibrate(runs, layoutOf, -sign);
+    const manual = typeof s.speed_cm_s === 'number' && s.speed_cm_s > 0 ? s.speed_cm_s : null;
+    const speed = manual || cal.speed || FieldMap.DEFAULT_SPEED_CM_S;
+    const source = manual ? 'set by hand' : cal.speed ? 'calibrated from ' + cal.fits.length + ' run' + (cal.fits.length > 1 ? 's' : '') + ' that reached AP1' : 'assumed. No placed run that reached AP1 gives a usable fit yet';
+    return { speedCmS: speed, headingSign: sign, reanchor: s.reanchor !== false, cal, mirrored, manual, source, calibrated: !!(manual || cal.speed) };
+  }
+
+  // ---------- field drawing ----------
+  // paths: [{ mapped, layout, cls }] · layout: markers to draw · opts.edit: clickable
+  function fieldSVG(layout, paths, opts) {
+    opts = opts || {};
+    const G = FieldMap.GRID; const size = FieldMap.sizeCm();
+    let minx = 0; let miny = 0; let maxx = size.w; let maxy = size.h;
+    paths.forEach((p) => p.mapped && p.mapped.trail.forEach((q) => { minx = Math.min(minx, q.x); maxx = Math.max(maxx, q.x); miny = Math.min(miny, q.y); maxy = Math.max(maxy, q.y); }));
+    const lim = (v, a, b) => Math.max(a, Math.min(b, v));
+    minx = lim(minx, -size.w, 0) - 34; miny = lim(miny, -size.h, 0) - 34;
+    maxx = lim(maxx, size.w, 2 * size.w) + 20; maxy = lim(maxy, size.h, 2 * size.h) + 20;
+    const X = (x) => x; const Y = (y) => -y;
+    const out = [];
+    out.push('<rect class="f-out" x="' + minx + '" y="' + (-maxy) + '" width="' + (maxx - minx) + '" height="' + (maxy - miny) + '"/>');
+    for (let c = 0; c < G.cols; c++) {
+      for (let r = 0; r < G.rows; r++) out.push('<rect class="f-tile' + ((c + r) % 2 ? ' alt' : '') + '" x="' + c * G.tileCm + '" y="' + (-(r + 1) * G.tileCm) + '" width="' + G.tileCm + '" height="' + G.tileCm + '"/>');
+      out.push('<text class="f-lab" x="' + (c + 0.5) * G.tileCm + '" y="' + 20 + '" text-anchor="middle">' + String.fromCharCode(65 + c) + '</text>');
+    }
+    for (let r = 0; r < G.rows; r++) out.push('<text class="f-lab" x="-14" y="' + (-(r + 0.5) * G.tileCm + 5) + '" text-anchor="middle">' + (r + 1) + '</text>');
+    paths.forEach((p) => {
+      const m = p.mapped; if (!m) return;
+      const cls = p.cls || '';
+      m.segs.forEach((s) => out.push('<line class="f-seg ' + (s.dir > 0 ? 'fwd' : 'rev') + ' ' + cls + '" x1="' + X(s.x0) + '" y1="' + Y(s.y0) + '" x2="' + X(s.x1) + '" y2="' + Y(s.y1) + '"/>'));
+      m.arrivals.forEach((a) => {
+        const ap = p.layout && p.layout['ap' + a.ap];
+        if (a.anchored && ap && a.errorCm > 1) out.push('<line class="f-jump ' + cls + '" x1="' + X(a.at.x) + '" y1="' + Y(a.at.y) + '" x2="' + X(ap.x) + '" y2="' + Y(ap.y) + '"><title>Path snapped ' + a.errorCm.toFixed(0) + ' cm onto AP' + a.ap + ' at the transfer</title></line>');
+      });
+      if (!opts.overlay) {
+        const dbms = m.stops.map((s) => s.dbm); const lo = Math.min.apply(null, dbms); const hi = Math.max.apply(null, dbms);
+        m.stops.forEach((s, i) => out.push('<circle class="f-stop" cx="' + X(s.x) + '" cy="' + Y(s.y) + '" r="3.6" style="fill-opacity:' + (hi > lo ? 0.25 + 0.75 * (s.dbm - lo) / (hi - lo) : 1).toFixed(2) + '"><title>Stop ' + (i + 1) + ': ' + s.dbm.toFixed(0) + ' dBm</title></circle>'));
+      }
+      if (opts.overlay && p.layout && p.layout.start) out.push('<circle class="f-start small ' + cls + '" cx="' + X(p.layout.start.x) + '" cy="' + Y(p.layout.start.y) + '" r="5"><title>Start of ' + esc(p.title || 'run') + '</title></circle>');
+      const e = m.end;
+      out.push('<path class="f-end ' + cls + '" d="M' + (X(e.x) - 5) + ' ' + (Y(e.y) - 5) + 'l10 10m0 -10l-10 10"><title>' + esc(p.title || 'End of the run') + '</title></path>');
+    });
+    if (layout) {
+      ['ap1', 'ap2'].forEach((k) => {
+        const ap = layout[k]; if (!ap) return;
+        out.push('<circle class="f-' + k + '" cx="' + X(ap.x) + '" cy="' + Y(ap.y) + '" r="9"/><text class="f-aplab" x="' + X(ap.x) + '" y="' + (Y(ap.y) - 13) + '" text-anchor="middle">' + k.toUpperCase() + '</text>');
+      });
+      const s = layout.start;
+      if (s) {
+        out.push('<circle class="f-start" cx="' + X(s.x) + '" cy="' + Y(s.y) + '" r="7"/>');
+        if (typeof s.bearing === 'number') {
+          const b = (s.bearing * Math.PI) / 180;
+          out.push('<line class="f-arrow" x1="' + X(s.x) + '" y1="' + Y(s.y) + '" x2="' + X(s.x + 26 * Math.sin(b)) + '" y2="' + Y(s.y + 26 * Math.cos(b)) + '" marker-end="url(#f-head)"/>');
+        }
+        out.push('<text class="f-aplab" x="' + X(s.x) + '" y="' + (Y(s.y) + 21) + '" text-anchor="middle">Start</text>');
+      }
+    }
+    const defs = '<defs><marker id="f-head" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="f-headfill"/></marker></defs>';
+    return '<svg class="field' + (opts.edit ? ' edit' : '') + '" viewBox="' + minx + ' ' + (-maxy) + ' ' + (maxx - minx) + ' ' + (maxy - miny) + '" role="img" aria-label="' + esc(opts.label || 'Field map') + '">' + defs + out.join('') + '</svg>';
+  }
+
+  // ---------- field editor in the Run tab ----------
+  let placing = 'start';
+  const BEARINGS = [[0, '↑'], [45, '↗'], [90, '→'], [135, '↘'], [180, '↓'], [225, '↙'], [270, '←'], [315, '↖']];
+  const posText = (p) => (p ? FieldMap.tileName(p) + ' · ' + p.x + ', ' + p.y + ' cm' : 'not set');
+
+  function renderFieldEditor(run) {
+    const host = $('#field'); if (!host) return;
+    const layout = Store.get(run.name) || {};
+    const P = fieldParams();
+    const mapped = FieldMap.mapRun(run, layout, P);
+    const met = FieldMap.metrics(run, layout, mapped);
+    const prevIdx = (() => { for (let i = current - 1; i >= 0; i--) if (FieldMap.complete(Store.get(runs[i].name))) return i; for (let i = runs.length - 1; i > current; i--) if (FieldMap.complete(Store.get(runs[i].name))) return i; return -1; })();
+    const facts = [];
+    if (mapped) {
+      facts.push('Drive speed <b>' + P.speedCmS.toFixed(1) + ' cm/s</b> (' + P.source + ').');
+      mapped.arrivals.forEach((a) => { if (a.errorCm !== null) facts.push('At the AP' + a.ap + ' transfer the path was <b>' + a.errorCm.toFixed(0) + ' cm</b> from AP' + a.ap + (a.anchored ? ' and was snapped onto it.' : '.')); });
+      met.legs.forEach((l) => facts.push('<b>Leg ' + l.leg + '</b> (to AP' + l.leg + ', ' + l.straightCm.toFixed(0) + ' cm straight): ' +
+        (l.reached ? 'reached in <b>' + (l.timeMs !== null ? secs(l.timeMs, 0) : '?') + '</b>, ' + l.drivenCm.toFixed(0) + ' cm driven' + (l.efficiency && P.calibrated ? ' (' + pct(Math.min(1, l.efficiency)) + ' direct)' : '') + '.'
+          : 'not reached. Closest <b>' + l.closestCm.toFixed(0) + ' cm</b>, ended ' + l.endCm.toFixed(0) + ' cm away after ' + l.drivenCm.toFixed(0) + ' cm driven.')));
+      const ownFit = FieldMap.fitRun(run, layout, P.headingSign);
+      if (ownFit && !ownFit.speed) facts.unshift('<span class="warn">At the AP1 transfer the path heads away from AP1.</span> Check the start position and the way it faced. This run is left out of the calibration.');
+      if (!P.calibrated) facts.push('<span class="warn">Distances are not calibrated yet.</span> Enter positions for a run that reached AP1.');
+    } else {
+      facts.push('Place the start and pick the way the robot faced to draw the path on the grid.');
+    }
+    host.innerHTML = '<div class="field-wrap"><div class="card fieldcard">' + fieldSVG(layout, mapped ? [{ mapped, layout }] : [], { edit: true, label: 'Field map of this run' }) + '</div>' +
+      '<div class="card editor">' +
+      '<p class="sub">Choose what to place, then click the grid. Points snap to ' + FieldMap.SNAP_CM + ' cm.</p>' +
+      '<div class="place" role="radiogroup" aria-label="What to place">' +
+      [['start', 'Start'], ['ap1', 'AP1 · blue'], ['ap2', 'AP2 · red']].map((m) => '<button role="radio" data-place="' + m[0] + '" aria-checked="' + (placing === m[0]) + '"><span class="dot ' + m[0] + '"></span><span>' + m[1] + '</span><small>' + posText(m[0] === 'start' ? layout.start : layout[m[0]]) + '</small></button>').join('') + '</div>' +
+      '<div class="facing"><span class="sub">Start facing</span><div class="compass">' + BEARINGS.map((b) => '<button data-bearing="' + b[0] + '" aria-pressed="' + (!!layout.start && layout.start.bearing === b[0]) + '" title="' + b[0] + '°"' + (layout.start ? '' : ' disabled') + '>' + b[1] + '</button>').join('') +
+      '</div><label class="deg">or <input id="bearing" type="number" min="0" max="359" step="5" value="' + (layout.start && typeof layout.start.bearing === 'number' ? layout.start.bearing : '') + '"' + (layout.start ? '' : ' disabled') + '> °</label></div>' +
+      '<div class="actions">' + (prevIdx >= 0 ? '<button id="copy-layout">Copy from ' + esc(runs[prevIdx].date + ' · ' + runs[prevIdx].title.slice(0, 40)) + (runs[prevIdx].title.length > 40 ? '…' : '') + '</button>' : '') +
+      '<button id="clear-layout"' + (Store.get(run.name) ? '' : ' disabled') + '>Clear</button></div>' +
+      '<ul class="insights">' + facts.map((f) => '<li>' + f + '</li>').join('') + '</ul>' +
+      '<p class="foot">' + pendingNote() + ' <button class="linkbtn" id="export-layouts">Export layouts.json</button></p></div></div>';
+
+    const update = (fn) => {
+      const next = JSON.parse(JSON.stringify(Store.get(run.name) || {}));
+      fn(next);
+      const wasComplete = FieldMap.complete(layout);
+      Store.set(run.name, Object.keys(next).length ? next : null);
+      if (wasComplete !== FieldMap.complete(next)) { const y = window.scrollY; renderRun(); window.scrollTo(0, y); } else renderFieldEditor(run);
+    };
+    const svg = host.querySelector('svg.field');
+    svg.addEventListener('click', (evt) => {
+      const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+      const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const size = FieldMap.sizeCm();
+      const x = Math.max(0, Math.min(size.w, FieldMap.snap(p.x)));
+      const y = Math.max(0, Math.min(size.h, FieldMap.snap(-p.y)));
+      update((l) => {
+        if (placing === 'start') l.start = { x, y, bearing: l.start && typeof l.start.bearing === 'number' ? l.start.bearing : 0 };
+        else l[placing] = { x, y };
+      });
+      // After placing one thing, move on to the next missing one.
+      const l = Store.get(run.name) || {};
+      placing = !l.start ? 'start' : !l.ap1 ? 'ap1' : !l.ap2 ? 'ap2' : placing;
+      renderFieldEditor(run);
+    });
+    host.querySelectorAll('[data-place]').forEach((b) => b.addEventListener('click', () => { placing = b.dataset.place; renderFieldEditor(run); }));
+    host.querySelectorAll('[data-bearing]').forEach((b) => b.addEventListener('click', () => update((l) => { l.start.bearing = +b.dataset.bearing; })));
+    const deg = host.querySelector('#bearing');
+    deg.addEventListener('change', () => { const v = ((Math.round(+deg.value) % 360) + 360) % 360; if (deg.value !== '' && isFinite(v)) update((l) => { l.start.bearing = v; }); });
+    const copy = host.querySelector('#copy-layout');
+    if (copy) copy.addEventListener('click', () => update((l) => { Object.assign(l, JSON.parse(JSON.stringify(Store.get(runs[prevIdx].name)))); }));
+    host.querySelector('#clear-layout').addEventListener('click', () => update((l) => { delete l.start; delete l.ap1; delete l.ap2; }));
+    host.querySelector('#export-layouts').addEventListener('click', exportLayouts);
+  }
+
+  // ---------- Field tab: calibration and numbers across runs ----------
+  let fieldSetup = null;
+  function renderField() {
+    const P = fieldParams();
+    const rows = runs.map((r, i) => {
+      const layout = Store.get(r.name);
+      const mapped = FieldMap.mapRun(r, layout, P);
+      return { r, i, layout, mapped, met: FieldMap.metrics(r, layout, mapped), key: FieldMap.setupKey(layout) };
+    });
+    const placed = rows.filter((x) => x.mapped);
+    const missing = rows.filter((x) => !x.mapped && x.r.timed);
+    const leg1 = placed.map((x) => x.met.legs.find((l) => l.leg === 1)).filter(Boolean);
+    const reached = leg1.filter((l) => l.reached);
+    const med = (xs) => { const s = xs.filter((v) => v !== null).sort((a, b) => a - b); return s.length ? s[s.length >> 1] : null; };
+    const best = reached.filter((l) => l.timeMs !== null).sort((a, b) => a.timeMs - b.timeMs)[0];
+
+    const tiles = [
+      ['Runs on the field', placed.length + ' / ' + rows.filter((x) => x.r.timed).length, missing.length ? missing.length + ' still need positions' : 'every timed run placed'],
+      ['AP1 reached', leg1.length ? reached.length + ' / ' + leg1.length : '–', leg1.length ? pct(reached.length / leg1.length) + ' of placed runs' : ''],
+      ['Time to AP1', med(reached.map((l) => l.timeMs)) !== null ? secs(med(reached.map((l) => l.timeMs)), 0) : '–', best ? 'median · best ' + secs(best.timeMs, 0) : 'median of runs that reached it'],
+      ['Path directness', P.calibrated && med(reached.map((l) => l.efficiency)) !== null ? pct(Math.min(1, med(reached.map((l) => l.efficiency)))) : '–', 'straight line ÷ distance driven'],
+      ['Closest miss', med(leg1.filter((l) => !l.reached).map((l) => l.closestCm)) !== null ? med(leg1.filter((l) => !l.reached).map((l) => l.closestCm)).toFixed(0) + ' cm' : '–', 'median, runs that missed AP1'],
+    ];
+
+    const setups = {};
+    placed.forEach((x) => { if (x.key) (setups[x.key] = setups[x.key] || []).push(x); });
+    const keys = Object.keys(setups).sort((a, b) => setups[b].length - setups[a].length);
+    if (!keys.includes(fieldSetup)) fieldSetup = keys[0] || null;
+    const group = fieldSetup ? setups[fieldSetup] : [];
+    const overlay = fieldSetup ? fieldSVG({ ap1: group[0].layout.ap1, ap2: group[0].layout.ap2 }, group.map((x) => ({ mapped: x.mapped, layout: x.layout, cls: x.met.legs.some((l) => l.leg === 1 && l.reached) ? 'hit' : 'miss', title: x.r.title })), { overlay: true, label: 'All runs with this beacon setup' }) : '';
+
+    const cm = (v) => (v === null || v === undefined ? '–' : v.toFixed(0) + ' cm');
+    const table = '<table><thead><tr><th>Run</th><th>Start</th><th>AP1</th><th>AP2</th><th>Start→AP1</th><th>AP1</th><th>Time to AP1</th><th>Driven</th><th>Direct</th><th>Closest AP1</th><th>Closest AP2</th></tr></thead><tbody>' +
+      placed.slice().reverse().map((x) => {
+        const l1 = x.met.legs.find((l) => l.leg === 1); const l2 = x.met.legs.find((l) => l.leg === 2);
+        return '<tr class="link" data-i="' + x.i + '"><td style="white-space:normal;min-width:220px">' + esc(x.r.date + ' · ' + x.r.title) + '</td><td>' + FieldMap.tileName(x.layout.start) + ' ' + x.layout.start.bearing + '°</td><td>' + FieldMap.tileName(x.layout.ap1) + '</td><td>' + FieldMap.tileName(x.layout.ap2) + '</td><td>' + cm(x.met.startToAp1Cm) + '</td>' +
+          '<td>' + (l1 ? '<span class="chip ' + (l1.reached ? 'ok' : 'fail') + '">' + (l1.reached ? 'reached' : 'missed') + '</span>' : '–') + '</td><td>' + (l1 && l1.timeMs !== null ? secs(l1.timeMs, 0) : '–') + '</td><td>' + cm(l1 && l1.drivenCm) + '</td><td>' + (l1 && l1.efficiency && P.calibrated ? pct(Math.min(1, l1.efficiency)) : '–') + '</td>' +
+          '<td>' + (l1 ? (l1.reached ? '0 cm' : cm(l1.closestCm)) : '–') + '</td><td>' + (l2 ? (l2.reached ? '0 cm' : cm(l2.closestCm)) : '–') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+
+    const s = Store.settings();
+    const calRows = P.cal.fits.map((f) => '<tr><td style="white-space:normal">' + esc(f.title) + '</td><td>' + f.speed.toFixed(1) + ' cm/s</td><td>' + f.errorCm.toFixed(0) + ' cm</td></tr>').join('');
+    const mirrorHint = P.cal.fits.length >= 2 && P.mirrored.fits.length && P.mirrored.errorCm < P.cal.errorCm * 0.7
+      ? '<p class="warn">Turning the headings the other way fits better (median ' + P.mirrored.errorCm.toFixed(0) + ' cm against ' + P.cal.errorCm.toFixed(0) + ' cm). Check the setting below.</p>' : '';
+
+    $('#main').innerHTML = '<section class="head"><h2>Field</h2><p class="sub">Runs placed on the ' + FieldMap.GRID.cols + ' × ' + FieldMap.GRID.rows + ' grid of ' + FieldMap.GRID.tileCm + ' cm tiles. Use this to see how far each run got and what to optimise next. Enter positions in the Run tab.</p></section>' +
+      '<div class="tiles">' + tiles.map((t) => '<div class="tile"><span class="k">' + t[0] + '</span><span class="v">' + esc(t[1]) + '</span><span class="s">' + esc(t[2]) + '</span></div>').join('') + '</div>' +
+      (keys.length ? '<section><h2>Paths by beacon setup</h2><p class="sub">Every placed run with these beacon positions. Green = reached AP1, red = did not. × marks where each run ended.</p>' +
+        '<div class="picker"><label for="setup">Setup</label><select id="setup">' + keys.map((k) => '<option' + (k === fieldSetup ? ' selected' : '') + '>' + esc(k + ' · ' + setups[k].length + ' run' + (setups[k].length > 1 ? 's' : '')) + '</option>').join('') + '</select></div>' +
+        '<div class="card fieldcard wide">' + overlay + '</div></section>' : '') +
+      '<section><h2>Runs on the field</h2>' + (placed.length ? '<p class="sub">Newest first. Click a row to open the run.</p><div class="card"><div class="scroll" style="max-height:none">' + table + '</div></div>' : '<p class="empty">No run has field positions yet. Open a run, then place the start, its facing and both beacons.</p>') +
+      (missing.length ? '<p class="foot">Still to place: ' + missing.map((x) => '<button class="linkbtn" data-open="' + x.i + '">' + esc(x.r.date + ' · ' + x.r.title.slice(0, 48)) + '</button>').join(' · ') + '</p>' : '') + '</section>' +
+      '<section class="two"><div><h2>Distance calibration</h2><p class="sub">The log has no position sensor, so distance is motor time × drive speed. Each run that reached AP1 gives the speed that puts its path on AP1. The leftover is the error that speed cannot remove (turns, slip, the arrival ring\'s offset from the beacon).</p>' +
+        '<div class="card">' + (calRows ? '<table><thead><tr><th>Run</th><th>Speed</th><th>Leftover</th></tr></thead><tbody>' + calRows + '</tbody></table><p class="foot">Median: ' + P.cal.speed.toFixed(1) + ' cm/s, leftover ' + P.cal.errorCm.toFixed(0) + ' cm. A run used to calibrate itself will look more direct than it was. Trust the numbers once several runs are placed.</p>' : '<p class="empty">No placed run has reached AP1 yet. Until one does, the map assumes ' + FieldMap.DEFAULT_SPEED_CM_S + ' cm/s.</p>') + mirrorHint + '</div></div>' +
+        '<div><h2>Settings</h2><p class="sub">Saved with the positions in layouts.json.</p><div class="card settings">' +
+        '<label>Drive speed <input id="speed" type="number" min="1" max="200" step="0.5" placeholder="' + (P.cal.speed ? P.cal.speed.toFixed(1) : 'auto') + '" value="' + (P.manual || '') + '"> cm/s <small>Leave empty to use the calibration.</small></label>' +
+        '<label><input id="sign" type="checkbox"' + (P.headingSign === 1 ? ' checked' : '') + '> A positive log heading turns the robot anticlockwise <small>From the motor wiring in motion.c. Untick if the paths come out mirrored.</small></label>' +
+        '<label><input id="reanchor" type="checkbox"' + (P.reanchor ? ' checked' : '') + '> Snap the path onto AP1 at the transfer <small>The AP2 leg then starts from where the robot really was.</small></label>' +
+        '<p class="foot">' + pendingNote() + '</p><div class="actions"><button id="export-layouts">Export layouts.json</button><label class="btn">Import…<input id="import-layouts" type="file" accept=".json,application/json" hidden></label>' + (Store.pending() ? '<button id="discard">Discard browser changes</button>' : '') + '</div></div></div></section>';
+
+    const main = $('#main');
+    main.querySelectorAll('tr.link').forEach((tr) => tr.addEventListener('click', () => { current = +tr.dataset.i; setView('run'); }));
+    main.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => { current = +b.dataset.open; setView('run'); }));
+    const setup = $('#setup'); if (setup) setup.addEventListener('change', () => { fieldSetup = keys[setup.selectedIndex]; renderField(); });
+    $('#speed').addEventListener('change', (e) => { const v = parseFloat(e.target.value); Store.setSetting('speed_cm_s', v > 0 ? v : null); renderField(); });
+    $('#sign').addEventListener('change', (e) => { Store.setSetting('heading_sign', e.target.checked ? 1 : -1); renderField(); });
+    $('#reanchor').addEventListener('change', (e) => { Store.setSetting('reanchor', e.target.checked); renderField(); });
+    $('#export-layouts').addEventListener('click', exportLayouts);
+    $('#import-layouts').addEventListener('change', (e) => { if (e.target.files[0]) importLayouts(e.target.files[0]); e.target.value = ''; });
+    const discard = $('#discard'); if (discard) discard.addEventListener('click', () => { if (confirm('Discard every position and setting changed in this browser?')) { Store.discard(); renderField(); } });
   }
 
   function renderCompare() {
@@ -414,9 +740,9 @@
 
   function setView(v) {
     view = v;
-    ['runs', 'run', 'compare'].forEach((name) => $('#tab-' + name).setAttribute('aria-selected', v === name));
-    if (v === 'run') renderRun(); else if (v === 'compare') renderCompare(); else renderRuns();
-    // Keep the address shareable: #runs, #compare, or #run=<file name without .txt>.
+    ['runs', 'run', 'compare', 'field'].forEach((name) => $('#tab-' + name).setAttribute('aria-selected', v === name));
+    if (v === 'run') renderRun(); else if (v === 'compare') renderCompare(); else if (v === 'field') renderField(); else renderRuns();
+    // Keep the address shareable: #runs, #compare, #field, or #run=<file name without .txt>.
     const hash = v === 'run' ? 'run=' + runs[current].name.replace(/\.txt$/, '') : v;
     try { history.replaceState(null, '', '#' + hash); } catch (e) { /* file:// in some browsers */ }
     window.scrollTo({ top: 0 });
@@ -432,17 +758,51 @@
   function addFiles(files) {
     const list = Array.from(files).filter((f) => /\.txt$|text\//.test(f.name + f.type));
     if (!list.length) { toast('Choose a robot log (.txt)'); return; }
-    Promise.all(list.map((f) => f.text().then((text) => ({ name: f.name, text })))).then((loaded) => {
-      loaded.forEach((l) => runs.push(LogParser.parse(l.text, { name: l.name, title: l.name.replace(/\.txt$/, '') })));
-      current = runs.length - 1;
-      toast('Added ' + loaded.length + ' log' + (loaded.length > 1 ? 's' : ''));
-      setView('run');
+    Promise.all(list.map((f) => f.text().then((text) => ({ name: /^\d{4}-\d{2}-\d{2}-/.test(f.name) ? f.name : today() + '-' + slug(f.name.replace(/\.txt$/, '')) + '.txt', text })))).then(addLogs);
+  }
+  const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+  function setupAddDialog() {
+    const dlg = $('#add-dialog');
+    const open = () => {
+      $('#add-date').value = $('#add-date').value || today();
+      const t = new Date();
+      $('#add-name').placeholder = 'run-' + String(t.getHours()).padStart(2, '0') + String(t.getMinutes()).padStart(2, '0');
+      if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+      $('#add-text').focus();
+    };
+    $('#add-run').addEventListener('click', open);
+    $('#add-cancel').addEventListener('click', () => dlg.close());
+    $('#add-files').addEventListener('click', () => { dlg.close(); $('#file').click(); });
+    $('#add-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = $('#add-text').value;
+      if (!text.trim()) return;
+      const name = $('#add-date').value + '-' + (slug($('#add-name').value) || $('#add-name').placeholder) + '.txt';
+      dlg.close();
+      if (addLogs([{ name, text }])) { $('#add-text').value = ''; $('#add-name').value = ''; }
+    });
+    // Delegated so the run list, run header and banner can all use them.
+    $('#main').addEventListener('click', (e) => {
+      const dl = e.target.closest('[data-dl]');
+      if (dl) { const d = Drafts.list.find((x) => x.name === dl.dataset.dl); if (d) download(d.name, d.text); }
+      const rm = e.target.closest('[data-rm]');
+      if (rm) removeDraft(rm.dataset.rm);
     });
   }
 
   function init() {
-    runs = (window.RUNS || []).map((r) => Object.assign(LogParser.parse(r.text, r), { note: r.note, embedded: true }));
-    if (!runs.length) { $('#main').innerHTML = '<p class="empty">No logs embedded. Run <code>node docs/tools/build_runs.js</code> or open a log file.</p>'; }
+    Store.base = window.LAYOUTS || { settings: {}, runs: {} };
+    Store.load();
+    runs = (window.RUNS || []).map((r) => Object.assign(LogParser.parse(r.text, r), { note: r.note, embedded: true, source: r.text }));
+    // Pasted runs from earlier visits. Once a log is committed, its draft is dropped.
+    Drafts.load();
+    const before = Drafts.list.length;
+    Drafts.list = Drafts.list.filter((d) => !runs.some((r) => r.name === d.name || sameLog(r.source, d.text)));
+    if (Drafts.list.length !== before) Drafts.save();
+    Drafts.list.forEach((d) => runs.push(draftRun(d)));
+    if (!runs.length) { $('#main').innerHTML = '<p class="empty">No logs yet. Use <b>Add run…</b> to paste serial monitor output.</p>'; }
     // The Run tab starts on the newest run.
     current = Math.max(0, runs.length - 1);
     // Deep links: #run=purple opens the first run whose file name contains "purple"; #compare and #runs open those tabs.
@@ -452,14 +812,23 @@
     if (hit >= 0) current = hit;
     $('#tab-runs').addEventListener('click', () => setView('runs'));
     $('#tab-run').addEventListener('click', () => setView('run'));
+    $('#tab-field').addEventListener('click', () => setView('field'));
     $('#tab-compare').addEventListener('click', () => setView('compare'));
+    setupAddDialog();
     $('#file').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
     let depth = 0;
     window.addEventListener('dragenter', (e) => { e.preventDefault(); depth++; $('#drop').hidden = false; });
     window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) $('#drop').hidden = true; });
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; $('#drop').hidden = true; addFiles(e.dataTransfer.files); });
-    if (runs.length) setView(hit >= 0 ? 'run' : hash === 'compare' ? 'compare' : 'runs');
+    window.addEventListener('hashchange', () => {
+      const h = decodeURIComponent(location.hash.slice(1));
+      const m = /^run=(.+)$/.exec(h);
+      const i = m ? runs.findIndex((r) => r.name.includes(m[1])) : -1;
+      if (i >= 0 && !(view === 'run' && i === current)) { current = i; setView('run'); } else if (['runs', 'compare', 'field'].includes(h) && h !== view) setView(h);
+    });
+    if (runs.length) setView(hit >= 0 ? 'run' : hash === 'compare' || hash === 'field' ? hash : 'runs');
   }
-  init();
+  // gate.js calls this once the password has decrypted the data.
+  window.startDashboard = init;
 }());

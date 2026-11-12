@@ -52,3 +52,23 @@ for (const name of logs) {
 console.log('run'.padEnd(38) + '   total   moving  share  stops  s/step  result');
 rows.forEach((r) => console.log(r));
 console.log('\nall ' + logs.length + ' logs parsed');
+
+// Field map: placing AP1 straight ahead of the start on a run that drove
+// straight to AP1 must calibrate with no leftover error, and every saved log
+// must map to finite positions.
+const FieldMap = require('../assets/fieldmap.js');
+const straight = parse(fs.readFileSync(path.join(dir, '2026-11-12-ap1-ap2-route-ap1-done-ap2-wifi-lost.txt'), 'utf8'), { name: 'x' });
+const layout = { start: { x: 150, y: 30, bearing: 0 }, ap1: { x: 150, y: 270 }, ap2: { x: 270, y: 150 } };
+const fit = FieldMap.fitRun(straight, layout, 1);
+assert(fit && fit.speed > 0 && fit.errorCm < 1, 'field map: straight AP1 approach should fit exactly');
+const onField = FieldMap.mapRun(straight, layout, { speedCmS: fit.speed, headingSign: 1, reanchor: true });
+assert.strictEqual(onField.arrivals.length, 1, 'field map: one AP1 arrival');
+assert(Math.abs(onField.arrivals[0].drivenCm - 240) < 1, 'field map: AP1 reached after 240 cm');
+const legs = FieldMap.metrics(straight, layout, onField).legs;
+assert(legs[0].reached && !legs[1].reached, 'field map: leg 1 reached, leg 2 not');
+for (const name of logs) {
+  const run = parse(fs.readFileSync(path.join(dir, name), 'utf8'), { name });
+  const m = FieldMap.mapRun(run, layout, { speedCmS: 20, headingSign: -1, reanchor: true });
+  assert(m.trail.every((q) => isFinite(q.x) && isFinite(q.y)), name + ': field map produced a non-finite point');
+}
+console.log('field map checks passed');

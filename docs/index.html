@@ -3,29 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Run Log Dashboard</title>
+<title>RUN LOG DASHBOARD</title>
 <meta name="description" content="Saved run logs of the INF2004 beacon robot: timelines, colour scans and run comparisons.">
 <link rel="stylesheet" href="assets/style.css">
 </head>
-<body>
+<body class="locked">
+<section id="gate" aria-labelledby="gate-title">
+  <form id="gate-form" hidden>
+    <h1 id="gate-title">RUN LOG DASHBOARD</h1>
+    <p class="sub">Enter the password to view the runs.</p>
+    <label for="gate-pass" class="field-label">Password</label>
+    <input id="gate-pass" type="password" autocomplete="current-password" required>
+    <button type="submit">Open dashboard</button>
+  </form>
+  <p id="gate-msg" role="status"></p>
+</section>
 <header class="bar">
   <div class="brand">
-    <h1>Run log dashboard</h1>
+    <h1>RUN LOG DASHBOARD</h1>
     <p>Beacon robot · saved runs from <code>docs/runs</code></p>
   </div>
   <nav class="tabs" role="tablist" aria-label="View">
     <button role="tab" id="tab-runs" aria-selected="true">All runs</button>
     <button role="tab" id="tab-run" aria-selected="false">Run</button>
     <button role="tab" id="tab-compare" aria-selected="false">Compare runs</button>
+    <button role="tab" id="tab-field" aria-selected="false">Field</button>
   </nav>
-  <label class="open" for="file">Open log file…</label>
+  <button class="open" id="add-run">Add run…</button>
   <input id="file" type="file" accept=".txt,text/plain" multiple hidden>
 </header>
+<dialog id="add-dialog" aria-labelledby="add-title">
+  <form method="dialog" id="add-form">
+    <h2 id="add-title">Add a run</h2>
+    <p class="sub">Paste everything from the serial monitor: a live run or a GP21 replay. The run opens straight away with its timeline and event log. It stays in this browser until you download it into <code>docs/runs/</code> and commit it.</p>
+    <label class="field-label" for="add-text">Serial monitor output</label>
+    <textarea id="add-text" rows="12" spellcheck="false" placeholder="IMU WHO_AM_I=0x70 | gyro +/- 1000 dps | …" required></textarea>
+    <div class="add-row">
+      <label>Date <input id="add-date" type="date" required></label>
+      <label class="grow">Short name <input id="add-name" type="text" placeholder="ap1-ap2-route" pattern="[A-Za-z0-9 _-]*"></label>
+    </div>
+    <p class="foot" id="add-file-name"></p>
+    <div class="actions">
+      <button type="submit" id="add-submit" value="add">Add run</button>
+      <button type="button" id="add-files">Choose .txt files instead…</button>
+      <button type="button" id="add-cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
 <main id="main"></main>
 <div id="drop" hidden>Drop robot log files to add them</div>
 <div id="toast" role="status" hidden></div>
 <script src="assets/logparser.js"></script>
-<script src="assets/runs.js"></script>
+<script src="assets/fieldmap.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/gate.js"></script>
 </body>
 </html>

@@ -1,0 +1,13 @@
+{
+  "grid": {
+    "cols": 5,
+    "rows": 5,
+    "tile_cm": 60,
+    "origin": "bottom-left corner of A1",
+    "x": "cm to the right",
+    "y": "cm up",
+    "bearing": "degrees clockwise from up"
+  },
+  "settings": {},
+  "runs": {}
+}
