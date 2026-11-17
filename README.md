@@ -39,7 +39,7 @@ second leg alone from AP1's ring 4. See
 [the robot instructions](getting_there/README.md#ap1-then-ap2-from-one-flash-branch-featureap1-to-ap2-route).
 On 17 November it completed the full route three times (7.23-10.49 minutes,
 both payloads verified, no faults); see
-[route run 1](docs/runs/2026-11-17-route-complete-ap1-1oclock-ap2-10oclock.md).
+[route run 1](docs/runs/2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.md).
 
 Each robot build ignores the other two mats (they read as floor). Confirm the
 banner `line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat`

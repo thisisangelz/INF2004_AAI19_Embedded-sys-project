@@ -1,8 +1,8 @@
 # Leg 2 test: beside AP2's mat, stopped by a 2-degree turn error (17 November)
 
-Log: [2026-11-17-leg2-fail-turn-fault.txt](2026-11-17-leg2-fail-turn-fault.txt).
+Log: [2026-11-17-04-leg2-fail-turn-fault.txt](2026-11-17-04-leg2-fail-turn-fault.txt).
 Firmware: `robot_leg2` (`getting_there_leg2.uf2`), branch `feature/ap1-to-ap2-route` at 7065aa2. Same set-up as
-[the run that reached AP2](2026-11-17-leg2-reached-ap2.md): start on AP1's ring 4 facing AP1, AP2 two tiles away.
+[the run that reached AP2](2026-11-17-03-leg2-reached-ap2.md): start on AP1's ring 4 facing AP1, AP2 two tiles away.
 The robot ended right next to AP2's mat without touching it.
 
 | Phase | What the log shows |

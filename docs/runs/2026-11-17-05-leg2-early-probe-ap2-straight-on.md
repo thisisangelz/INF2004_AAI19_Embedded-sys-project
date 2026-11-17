@@ -1,9 +1,9 @@
 # Leg 2 with the three fixes: early probe, then AP2 straight on (17 November, run 1)
 
-Log: [2026-11-17-leg2-early-probe-ap2-straight-on.txt](2026-11-17-leg2-early-probe-ap2-straight-on.txt).
+Log: [2026-11-17-05-leg2-early-probe-ap2-straight-on.txt](2026-11-17-05-leg2-early-probe-ap2-straight-on.txt).
 Firmware: `robot_leg2` (`getting_there_leg2.uf2`), branch `feature/ap1-to-ap2-route` at 09527ae, banner
 `... side-probe early-probe mat-steer ... route | AP1 -> AP2 (test: start on the first mat)`. Same set-up as
-[the failed run](2026-11-17-leg2-fail-turn-fault.md): start on AP1's ring 4 facing AP1, AP2 two tiles away.
+[the failed run](2026-11-17-04-leg2-fail-turn-fault.md): start on AP1's ring 4 facing AP1, AP2 two tiles away.
 A little over 7 minutes (last Wi-Fi sample at 430 s).
 
 | Phase | What the log shows |

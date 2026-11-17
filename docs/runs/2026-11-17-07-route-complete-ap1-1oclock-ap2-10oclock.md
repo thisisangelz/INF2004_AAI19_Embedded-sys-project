@@ -1,6 +1,6 @@
 # Full route AP1 then AP2: AP1 at 1 o'clock, AP2 at 10 o'clock (17 November, route run 1)
 
-Log: [2026-11-17-route-complete-ap1-1oclock-ap2-10oclock.txt](2026-11-17-route-complete-ap1-1oclock-ap2-10oclock.txt).
+Log: [2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.txt](2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.txt).
 Firmware: `robot_route` (`getting_there_route.uf2`), branch `feature/ap1-to-ap2-route` at 09527ae, banner
 `... side-probe early-probe mat-steer ... route | AP1 -> AP2`. From the robot's start: AP1 at about 1 o'clock,
 AP2 at about 10 o'clock. 10.49 minutes for both beacons (leg 2 began at 340 s).

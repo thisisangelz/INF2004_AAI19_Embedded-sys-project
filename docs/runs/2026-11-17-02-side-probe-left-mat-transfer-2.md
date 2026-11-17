@@ -1,7 +1,7 @@
 # Side probe repeat: mat on the left again, transfer on ring 4 (17 November, run 2)
 
-Log: [2026-11-17-side-probe-left-mat-transfer-2.txt](2026-11-17-side-probe-left-mat-transfer-2.txt).
-Same firmware and similar start as [run 1](2026-11-17-side-probe-left-mat-transfer.md): banner
+Log: [2026-11-17-02-side-probe-left-mat-transfer-2.txt](2026-11-17-02-side-probe-left-mat-transfer-2.txt).
+Same firmware and similar start as [run 1](2026-11-17-01-side-probe-left-mat-transfer.md): banner
 `line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues`, AP1, pink mat,
 about 3 tiles from AP1 and facing along the side of the mat. Saved run replayed with GP21. About 4.25 minutes from
 start to transfer.

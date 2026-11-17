@@ -1,6 +1,6 @@
 # Side probe finds the mat on the left, transfer on ring 4 (17 November)
 
-Log: [2026-11-17-side-probe-left-mat-transfer.txt](2026-11-17-side-probe-left-mat-transfer.txt).
+Log: [2026-11-17-01-side-probe-left-mat-transfer.txt](2026-11-17-01-side-probe-left-mat-transfer.txt).
 Firmware banner: `line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues`,
 AP1, pink mat. Branch `feature/side-probe-direction-search` (commit 2b081ef). Saved run replayed with GP21.
 

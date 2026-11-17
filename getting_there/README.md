@@ -20,7 +20,7 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 ## Three fixes from the 17 November leg-2 runs (branch feature/ap1-to-ap2-route)
 
 Two leg-2 test runs: one reached AP2, one stopped beside it. See
-[the run notes](../docs/runs/2026-11-17-leg2-fail-turn-fault.md).
+[the run notes](../docs/runs/2026-11-17-04-leg2-fail-turn-fault.md).
 
 1. **A small leftover turn error no longer stops the run.** The failed run
    ended with a turn 2.3 degrees short: three correction nudges were too weak
@@ -52,11 +52,11 @@ Banner: `... side-probe early-probe mat-steer ...`.
 **Hardware results (17 November, at 09527ae):** two leg-2 tests and three full
 routes, all five completed with fault mask `0x000`. The full routes took 10.49,
 7.23 and 7.23 minutes, with AP2 at 10, 4 and 6 o'clock from the start. See
-[route run 1](../docs/runs/2026-11-17-route-complete-ap1-1oclock-ap2-10oclock.md),
-[route run 2](../docs/runs/2026-11-17-route-complete-ap1-12oclock-ap2-4oclock.md),
-[route run 3](../docs/runs/2026-11-17-route-complete-ap1-12oclock-ap2-6oclock.md) and the leg-2 tests
-([1](../docs/runs/2026-11-17-leg2-early-probe-ap2-straight-on.md),
-[2](../docs/runs/2026-11-17-leg2-early-probe-ap2-side.md)). Open point: in three
+[route run 1](../docs/runs/2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.md),
+[route run 2](../docs/runs/2026-11-17-08-route-complete-ap1-12oclock-ap2-4oclock.md),
+[route run 3](../docs/runs/2026-11-17-09-route-complete-ap1-12oclock-ap2-6oclock.md) and the leg-2 tests
+([1](../docs/runs/2026-11-17-05-leg2-early-probe-ap2-straight-on.md),
+[2](../docs/runs/2026-11-17-06-leg2-early-probe-ap2-side.md)). Open point: in three
 of the five runs the early probe fired on a flat stretch while AP2 was still
 ahead; the side lines failed and "straight on" then reached the mat, at a cost
 of about 2.5-3 minutes.
