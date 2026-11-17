@@ -49,6 +49,18 @@ Two leg-2 test runs: one reached AP2, one stopped beside it. See
 
 Banner: `... side-probe early-probe mat-steer ...`.
 
+**Hardware results (17 November, at 09527ae):** two leg-2 tests and three full
+routes, all five completed with fault mask `0x000`. The full routes took 10.49,
+7.23 and 7.23 minutes, with AP2 at 10, 4 and 6 o'clock from the start. See
+[route run 1](../docs/runs/2026-11-17-route-complete-ap1-1oclock-ap2-10oclock.md),
+[route run 2](../docs/runs/2026-11-17-route-complete-ap1-12oclock-ap2-4oclock.md),
+[route run 3](../docs/runs/2026-11-17-route-complete-ap1-12oclock-ap2-6oclock.md) and the leg-2 tests
+([1](../docs/runs/2026-11-17-leg2-early-probe-ap2-straight-on.md),
+[2](../docs/runs/2026-11-17-leg2-early-probe-ap2-side.md)). Open point: in three
+of the five runs the early probe fired on a flat stretch while AP2 was still
+ahead; the side lines failed and "straight on" then reached the mat, at a cost
+of about 2.5-3 minutes.
+
 ## AP1 then AP2 from one flash (branch feature/ap1-to-ap2-route)
 
 `getting_there_route.uf2` visits both beacons in one run. AP1 is on the pink
