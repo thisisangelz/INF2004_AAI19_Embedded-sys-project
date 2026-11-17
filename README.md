@@ -39,7 +39,7 @@ second leg alone from AP1's ring 4. See
 [the robot instructions](getting_there/README.md#ap1-then-ap2-from-one-flash-branch-featureap1-to-ap2-route).
 
 Each robot build ignores the other two mats (they read as floor). Confirm the
-banner `line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat`
+banner `line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat`
 and the line `Colour mat: PINK (AP1)` (or BLUE (AP2), PURPLE (AP3)).
 Flat readings no longer end the initial forward trial or an improving line.
 The 60-second combined powered travel budget, reserved return travel, 15-minute

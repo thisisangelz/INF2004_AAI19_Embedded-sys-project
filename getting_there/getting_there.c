@@ -267,7 +267,9 @@ static bool record_point(float heading, uint32_t powered, line_pair_t readings)
 typedef enum { FOLLOW_NO_GAIN, FOLLOW_DECLINE, FOLLOW_MAT } follow_end_t;
 typedef struct {
     float heading;
-    bool progress, consistent;
+    // early: the line ended at its best point because the signal stopped
+    // rising, not after a confirmed decline (see LINE_EARLY_PROBE_GAIN_DB).
+    bool progress, consistent, early;
     follow_end_t end;
     uint32_t position;
     line_pair_t baseline;
@@ -559,6 +561,20 @@ static payload_result_t end_line_at_best(follow_result_t *followed, float headin
     return PAYLOAD_NOT_CLOSE;
 }
 
+// Early side probe (17 November): each time a line passed beside a mat, the
+// signal rose, went flat for two to five stops, then fell. Waiting for the
+// confirmed decline (three weak stops, a recheck, two probes and the drive
+// back) cost about 1-1.5 minutes per line. Once the line has risen at least
+// LINE_EARLY_PROBE_GAIN_DB and then found no new best for
+// LINE_EARLY_PROBE_FLAT_POINTS stops, it ends at its best point and the side
+// probe runs. Set side_probe_enabled to use it (the shipped robot does).
+// skip_early_probe: the next line must not end early (it continues a line
+// whose early probe found no clear side).
+static bool skip_early_probe;
+// Side probe after a line ends (see "Side probe" below). Tests replaying
+// earlier runs turn it off; the robot always uses it.
+static bool side_probe_enabled = true;
+
 // A zero trial_ms keeps the initial heading through inconclusive readings.
 // Side probes retain a finite trial until they establish progress. Every mode
 // still reserves return travel and checks the run, STOP, radio and fault limits.
@@ -584,6 +600,10 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
     unsigned recent_count = 1, recent_next = 1;
     line_pair_t decline_reference = best;
     bool dip_active = false;
+    // Stops since the last new best; the early probe needs a few in a row.
+    unsigned since_best = 0;
+    const bool early_allowed = side_probe_enabled && !skip_early_probe;
+    skip_early_probe = false;
     report_printf("FOLLOW: heading %d, blocks at most %u ms on the floor, %u ms on the mat; %s\n",
                   (int)heading, (unsigned)floor_block_ms, LINE_MAT_BLOCK_MS,
                   trial_ms ? "trial until confirmed improvement" :
@@ -678,7 +698,18 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
             best = current;
             best_position = position;
             followed->progress = true;
+            since_best = 0;
             report_printf("FOLLOW: new confirmed best at %lu powered ms\n", (unsigned long)best_position);
+        } else {
+            ++since_best;
+        }
+        if (early_allowed && since_best >= LINE_EARLY_PROBE_FLAT_POINTS &&
+            line_confirmed_gain(baseline, best) >= LINE_EARLY_PROBE_GAIN_DB) {
+            followed->early = true;
+            report_printf("FOLLOW: no new best for %u stops after rising %d dB; the beacon is beside this line, return %lu powered ms to best point %lu and probe the sides now\n",
+                          since_best, line_confirmed_gain(baseline, best),
+                          (unsigned long)(position - best_position), (unsigned long)best_position);
+            return end_line_at_best(followed, heading, position, best_position, best);
         }
         if (!dip_active) {
             recent[recent_next] = current;
@@ -721,13 +752,15 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
 #define SEARCH_DIRECTIONS 3u
 // first_side (-90 or +90) is the perpendicular tried first: a side probe's
 // stronger side, or -90 by default.
-static payload_result_t check_directions_from(float origin, float first_side,
+// last: 180 (straight back) after a confirmed decline, 0 (straight on) after
+// an early side probe, when the line had not declined.
+static payload_result_t check_directions_from(float origin, float first_side, float last,
                                               follow_result_t *followed, bool *found)
 {
-    const float offsets[SEARCH_DIRECTIONS] = {first_side, -first_side, 180.0f};
+    const float offsets[SEARCH_DIRECTIONS] = {first_side, -first_side, last};
     *found = false;
-    report_printf("DIRECTION SEARCH: perpendicular %+d first, then %+d, then straight back, origin %d degrees; follow first confirmed improvement\n",
-                  (int)first_side, (int)-first_side, (int)origin);
+    report_printf("DIRECTION SEARCH: perpendicular %+d first, then %+d, then straight %s, origin %d degrees; follow first confirmed improvement\n",
+                  (int)first_side, (int)-first_side, last == 0.0f ? "on" : "back", (int)origin);
     for (unsigned i = 0; i < SEARCH_DIRECTIONS; ++i) {
         float heading = line_normalise_heading(origin + offsets[i]);
         payload_result_t result = follow_direction(heading, LINE_DIRECTION_TEST_MS, followed);
@@ -755,7 +788,34 @@ static payload_result_t check_directions_from(float origin, float first_side,
 // The default order (-90 first); kept for the host tests of that order.
 static inline payload_result_t check_directions(float origin, follow_result_t *followed, bool *found)
 {
-    return check_directions_from(origin, -90.0f, followed, found);
+    return check_directions_from(origin, -90.0f, 180.0f, followed, found);
+}
+
+static int pair_sum(line_pair_t pair)
+{
+    return rssi_decode(pair.first.code) + rssi_decode(pair.second.code);
+}
+
+// Which of two places is stronger, for choosing a direction: +1 when b is,
+// -1 when a is, 0 when unclear. First the usual rule (line_compare: both
+// batches at least 3 dB better). When the batches disagree, the average
+// decides if it is at least LINE_SIDE_AVERAGE_DB better and neither batch
+// points the other way. On 17 November the 271 side read -63 then -56
+// against -65/-67: one batch 2 dB, the other 11 dB, "no clear side"; on
+// average it was 6 dB stronger, the side the mat was on.
+static int side_compare(line_pair_t a, line_pair_t b, bool *by_average)
+{
+    *by_average = false;
+    int verdict = line_compare(a, b);
+    if (verdict || a.first.code == RSSI_MISSING_CODE || a.second.code == RSSI_MISSING_CODE ||
+        b.first.code == RSSI_MISSING_CODE || b.second.code == RSSI_MISSING_CODE) return verdict;
+    int first = rssi_decode(b.first.code) - rssi_decode(a.first.code);
+    int second = rssi_decode(b.second.code) - rssi_decode(a.second.code);
+    int sum = first + second; // twice the average difference
+    if (sum >= 2 * LINE_SIDE_AVERAGE_DB && first >= 0 && second >= 0) verdict = 1;
+    else if (sum <= -2 * LINE_SIDE_AVERAGE_DB && first <= 0 && second <= 0) verdict = -1;
+    *by_average = verdict != 0;
+    return verdict;
 }
 
 // ---- Side probe ----
@@ -767,8 +827,8 @@ static inline payload_result_t check_directions(float origin, follow_result_t *f
 // AP1 was on). So each probe drives a short way to one side, turns back to
 // the line's heading, and measures there; both sides are compared facing the
 // same way. The stronger side is tried first; a tie keeps the old order.
-// Tests replaying earlier runs turn it off (reset); the robot always uses it.
-static bool side_probe_enabled = true;
+// Tests replaying earlier runs turn it off (reset); the robot always uses it
+// (side_probe_enabled, declared with the early probe above).
 typedef enum { PROBE_UNDECIDED, PROBE_DECIDED, PROBE_MAT } probe_outcome_t;
 
 // Drives LINE_SIDE_PROBE_MS along side_heading, measures facing origin, and
@@ -828,17 +888,20 @@ static payload_result_t side_probe(float origin, float *first_side, probe_outcom
         }
     }
     if (!motion_turn_to_heading(origin)) return PAYLOAD_FATAL;
-    // Same noise margin as every other gain decision (at least 3 dB).
-    int verdict = line_compare(readings[0], readings[1]);
+    // Same noise margin as every other gain decision (at least 3 dB), or the
+    // average when the two batches disagree.
+    bool by_average;
+    int verdict = side_compare(readings[0], readings[1], &by_average);
     if (verdict != 0) {
         *first_side = verdict > 0 ? sides[1] : sides[0];
         *outcome = PROBE_DECIDED;
     }
-    report_printf("SIDE PROBE: %+d side %d/%d dBm, %+d side %d/%d dBm; %s\n",
+    report_printf("SIDE PROBE: %+d side %d/%d dBm, %+d side %d/%d dBm; %s%s\n",
                   (int)sides[0], rssi_decode(readings[0].first.code), rssi_decode(readings[0].second.code),
                   (int)sides[1], rssi_decode(readings[1].first.code), rssi_decode(readings[1].second.code),
                   *outcome == PROBE_DECIDED ? (*first_side > 0 ? "try +90 first" : "try -90 first")
-                                            : "no clear side, keep the usual order");
+                                            : "no clear side, keep the usual order",
+                  by_average ? " (batches disagree; decided on the average)" : "");
     return PAYLOAD_NOT_CLOSE;
 }
 
@@ -907,6 +970,7 @@ static bool approach_loop(follow_result_t followed)
         if (!followed.consistent)
             report_printf("RETURN: RSSI inconsistent with best point; searching from here\n");
         float origin = followed.heading;
+        const bool early = followed.early; // the trials below overwrite followed
         bool found = false;
         float first_side = -90.0f;
         if (side_probe_enabled) {
@@ -918,13 +982,28 @@ static bool approach_loop(follow_result_t followed)
                 followed.end = FOLLOW_MAT;
                 continue;
             }
+            // The line had not declined: with no clear side, the beacon may
+            // still be ahead, so carry on along it as before.
+            if (outcome == PROBE_UNDECIDED && early) {
+                report_printf("APPROACH: no clear side after the early probe; continue heading %d from the best point\n",
+                              (int)origin);
+                skip_early_probe = true;
+                result = follow_direction(origin, 0, &followed);
+                if (result == PAYLOAD_COMPLETE) return true;
+                if (result == PAYLOAD_FATAL) return false;
+                continue;
+            }
         }
-        result = check_directions_from(origin, first_side, &followed, &found);
+        // After an early probe the line had not declined, so the last try is
+        // straight on rather than straight back.
+        result = check_directions_from(origin, first_side, early ? 0.0f : 180.0f,
+                                       &followed, &found);
         if (result == PAYLOAD_COMPLETE) return true;
         if (result == PAYLOAD_FATAL) return false;
         if (!found) {
             fault_raise(FAULT_NO_DIRECTION);
-            report_printf("FAILED: no direction confirmed improvement (both perpendiculars and straight back)\n");
+            report_printf("FAILED: no direction confirmed improvement (both perpendiculars and straight %s)\n",
+                          early ? "on" : "back");
             return false;
         }
     }
@@ -1034,11 +1113,6 @@ static payload_result_t leave_mat(float heading)
     return result;
 }
 
-static int pair_sum(line_pair_t pair)
-{
-    return rssi_decode(pair.first.code) + rssi_decode(pair.second.code);
-}
-
 // From just off the visited mat, facing it. The next beacon may be anywhere
 // except beyond the visited one, so probe straight back and both sides, the
 // same way as the side probe: drive out, turn to face the same heading every
@@ -1065,10 +1139,13 @@ static payload_result_t start_next_leg(float facing, follow_result_t *followed)
         }
         if (pair_sum(readings[i]) > pair_sum(readings[best])) best = i;
     }
-    // Clear when the strongest beats both others by the usual 3 dB margin.
+    // Clear when the strongest beats both others by the usual 3 dB margin, or
+    // on average when the batches disagree (side_compare).
     bool clear = true;
-    for (unsigned i = 0; i < LEG_DIRECTIONS; ++i)
-        if (i != best && line_compare(readings[i], readings[best]) <= 0) clear = false;
+    for (unsigned i = 0; i < LEG_DIRECTIONS; ++i) {
+        bool by_average;
+        if (i != best && side_compare(readings[i], readings[best], &by_average) <= 0) clear = false;
+    }
     float heading = line_normalise_heading(facing + offsets[best]);
     report_printf("ROUTE: %s %+d: %d/%d dBm, %+d: %d/%d dBm, %+d: %d/%d dBm; follow %+d, heading %d (%s)\n",
                   target_name(),
@@ -1188,11 +1265,11 @@ int main(void)
     cues_init();
     sleep_ms(2000);
     if (route_next)
-        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues route | %s -> %s%s\n",
+        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat ble-minus58 cues route | %s -> %s%s\n",
                       target_name(), target_name_of(route_next),
                       route_start_on_mat ? " (test: start on the first mat)" : "");
     else
-        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues | %s only\n",
+        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat ble-minus58 cues | %s only\n",
                       target_name());
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");

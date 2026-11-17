@@ -32,6 +32,11 @@
 #define TURN_SLOW_DUTY_PERCENT 20
 #define TURN_SLOW_ZONE_DEGREES 25.0f
 #define TURN_TOLERANCE_DEGREES 2.0f
+// After the corrections run out, a turn this close still counts. On 17
+// November a turn settled about 2.3 degrees short; three correction nudges
+// were too weak to move the robot, and FAULT: TURN ended the run. Driving
+// holds its heading with the gyro, so a few degrees do not matter.
+#define TURN_ACCEPT_DEGREES 5.0f
 #define TURN_COAST_SECONDS 0.03f
 #define TURN_MAX_CORRECTIONS 2
 #define TURN_CORRECTION_MAX_MS 200
@@ -376,6 +381,13 @@ bool motion_drive_finish(void)
 }
 
 // Relative heading only: the Z gyro controls a turn, but gives no distance.
+// Whether a turn that ran out of corrections still counts (the sign must be
+// known: the direction check turn has no heading to be close to yet).
+static bool turn_close_enough(float error)
+{
+    return turn_sign() != 0.0f && error <= TURN_ACCEPT_DEGREES && error >= -TURN_ACCEPT_DEGREES;
+}
+
 static bool turn_degrees(float degrees)
 {
     if (stop_pressed()) { motors_stop(); return false; }
@@ -483,9 +495,17 @@ static bool turn_degrees(float degrees)
                       attempt < TURN_MAX_CORRECTIONS ? "correcting" : "correction limit reached");
     }
     motors_stop();
+    float progress = turn_sign() * (gyro_heading_degrees - start_heading);
+    float error = degrees - progress;
+    if (turn_close_enough(error)) {
+        report_printf("TURN OK: commanded %d degrees, settled gyro rotation %d degrees, error %+d degrees, elapsed %lu ms, peak gyro Z %d dps, corrections %d; accepted within %d degrees\n",
+                      (int)degrees, (int)progress, (int)error, (unsigned long)(now_ms() - start),
+                      (int)peak_rate, TURN_MAX_CORRECTIONS, (int)TURN_ACCEPT_DEGREES);
+        return true;
+    }
     fault_raise(FAULT_TURN);
-    report_printf("TURN FAILED: settled heading outside %d degree tolerance\n",
-                  (int)TURN_TOLERANCE_DEGREES);
+    report_printf("TURN FAILED: settled heading %+d degrees off, outside %d degrees after corrections\n",
+                  (int)error, (int)TURN_ACCEPT_DEGREES);
     return false;
 }
 

@@ -1364,6 +1364,74 @@ static void check_side_probe(void)
     assert(first_search_side()==-90);
 }
 
+// Index of the first occurrence of text in the log, or the log length.
+static size_t log_at(const char *text)
+{
+    const char *found = strstr(log_text, text);
+    return found ? (size_t)(found - log_text) : log_length;
+}
+
+// 17 November leg 2 (failed run): fixes for the side choice and early probe.
+static void check_side_choice_and_early_probe(void)
+{
+    // Side choice. The 271 side read -63 then -56 against -65/-67: one batch
+    // 2 dB better, the other 11 dB, so line_compare says "no clear side".
+    // On average it is 6.5 dB stronger.
+    bool by_average;
+    assert(line_compare(pair(-65,-67), pair(-63,-56)) == 0);
+    assert(side_compare(pair(-65,-67), pair(-63,-56), &by_average) == 1 && by_average);
+    assert(side_compare(pair(-63,-56), pair(-65,-67), &by_average) == -1 && by_average);
+    // Both batches clearly better: the usual rule, not the average.
+    assert(side_compare(pair(-70,-70), pair(-64,-64), &by_average) == 1 && !by_average);
+    // A batch pointing the other way, or less than 3 dB on average: unclear.
+    assert(side_compare(pair(-60,-60), pair(-52,-63), &by_average) == 0 && !by_average);
+    assert(side_compare(pair(-66,-66), pair(-65,-62), &by_average) == 0);
+    assert(side_compare(pair(-66,-66), pair(-127,-50), &by_average) == 0);
+
+    // Early probe, clear side. The line rises 10 dB, then reads the same for
+    // two stops: it returns to its best point and probes the sides without
+    // waiting for a decline. +90 is clearly stronger, so the trials go +90,
+    // -90, then straight on (the line never declined).
+    static const int clear_side[] = {
+        -80,            // start
+        -80, -80,       // line start
+        -74, -74, -70, -70, -70, -70, -70, -70, // rise, then flat twice
+        -70, -70,       // back at the best point
+        -72, -72,       // -90 side
+        -64, -64,       // +90 side
+    };
+    reset(); shipped_steps(); script=clear_side; script_length=sizeof(clear_side)/sizeof(*clear_side);
+    default_rssi=-60; complete_after_step=12;
+    assert(approach_beacon());
+    assert(strstr(log_text,"FOLLOW: no new best for 2 stops after rising 10 dB"));
+    assert(log_at("probe the sides now") < log_at("SIDE PROBE: from the best point"));
+    assert(!strstr(log_text,"decline position"));
+    assert(strstr(log_text,"try +90 first") && strstr(log_text,"then -90, then straight on"));
+
+    // Early probe, no clear side: the beacon may still be ahead, so the robot
+    // carries on along the same heading instead of trying perpendiculars.
+    static const int no_side[] = {
+        -80, -80, -80, -74, -74, -70, -70, -70, -70, -70, -70,
+        -70, -70,       // back at the best point
+        -70, -70,       // -90 side
+        -70, -70,       // +90 side
+    };
+    reset(); shipped_steps(); script=no_side; script_length=sizeof(no_side)/sizeof(*no_side);
+    default_rssi=-70; complete_after_step=14;
+    assert(approach_beacon());
+    assert(strstr(log_text,"no clear side after the early probe; continue heading 0 from the best point"));
+    assert(!strstr(log_text,"DIRECTION SEARCH"));
+
+    // Model: the beacon beside the first line, as in both 17 November leg-2
+    // runs. The early probe ends that line before any decline is confirmed,
+    // and the robot still reaches the beacon.
+    reset(); shipped_steps(); model=true; colour_present=true; beacon_x=1.6; beacon_y=0.8;
+    bool arrived=approach_beacon();
+    if (!arrived || !strstr(log_text,"probe the sides now")) { print_model_failure(9); assert(false); }
+    assert(log_at("probe the sides now") < log_at("decline position 3/3"));
+    assert(hypot(robot_x-beacon_x,robot_y-beacon_y)<0.25);
+}
+
 // Prints the route lines and the end of the robot's path for a failed case.
 static void print_route_failure(const char *name)
 {
@@ -1453,7 +1521,7 @@ int main(void)
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
-    check_v18_steps(); check_mat_steering(); check_near_centre_steps(); check_side_probe(); check_route();
+    check_v18_steps(); check_mat_steering(); check_near_centre_steps(); check_side_probe(); check_side_choice_and_early_probe(); check_route();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     tone_stops=0;
     uint64_t before=sim_time; completion_sound();
@@ -1494,6 +1562,6 @@ int main(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, side probe choosing the first perpendicular facing the line heading, AP1 to AP2 route (backing off the pink mat, retargeting, three-direction probe, keeping off the visited mat, leg-2 test start, firmware result), v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, side probe choosing the first perpendicular facing the line heading, side choice on the average when batches disagree, early side probe once a line stops rising, AP1 to AP2 route (backing off the pink mat, retargeting, three-direction probe, keeping off the visited mat, leg-2 test start, firmware result), v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }

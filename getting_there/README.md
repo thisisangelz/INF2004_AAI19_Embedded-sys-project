@@ -8,7 +8,7 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 
 | Board | File | What it is |
 |---|---|---|
-| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
+| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
 | Robot, going to AP2 (blue mat) | `build/getting_there_ap2.uf2` | The same firmware aimed at AP2 (`I AM PICO W 2`, beacon ID 2, blue mat); banner ends `AP2 only` |
 | Robot, going to AP3 (purple mat) | `build/getting_there_ap3.uf2` | The same firmware aimed at AP3 (`I AM PICO W 3`, beacon ID 3, purple mat); banner ends `AP3 only` |
 | Robot, AP1 then AP2 (one flash) | `build/getting_there_route.uf2` | AP1 on the pink mat, then backs off and goes to AP2 on the blue mat. Banner ends `cues route \| AP1 -> AP2` |
@@ -16,6 +16,38 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 | Robot (test) | `build/getting_there_colour_scan.uf2` | Colour scan test only: turns on the spot, no Wi-Fi, BLE or driving |
 | Robot (tool) | `../tcs34725_calib/build/tcs34725_calib.uf2`, `tcs34725_calib6.uf2` | Colour sensor calibration tool: pink 5-ring mat, blue and purple 6-ring mats |
 | AP1-AP3 | `../picow_access_point*_powerbank/build/picow_access_point*_powerbank.uf2` | Current beacon firmware with buzzer sounds |
+
+## Three fixes from the 17 November leg-2 runs (branch feature/ap1-to-ap2-route)
+
+Two leg-2 test runs: one reached AP2, one stopped beside it. See
+[the run notes](../docs/runs/2026-11-17-leg2-fail-turn-fault.md).
+
+1. **A small leftover turn error no longer stops the run.** The failed run
+   ended with a turn 2.3 degrees short: three correction nudges were too weak
+   to move the robot, so the 2-degree limit raised `FAULT: TURN`. After its
+   corrections a turn now counts if it is within 5 degrees
+   (`TURN OK: ... accepted within 5 degrees`); driving holds the heading with
+   the gyro anyway. Further off is still a fault.
+2. **Side choice on the average.** Each probe position is measured twice.
+   A side used to win only if both measurements were at least 3 dB stronger.
+   In the failed run one side read −63 then −56 against −65 and −67: one
+   measurement only 2 dB better, so "no clear side". Now, when the two
+   measurements disagree, the average decides if it is at least 3 dB
+   stronger and neither measurement points the other way (here about −60
+   against −66). The log adds `(batches disagree; decided on the average)`.
+   The three-direction probe at the start of leg 2 uses the same rule.
+3. **Early side probe.** Every time a line passed beside a mat, the signal
+   rose, went flat for two to five stops, then fell, and the robot drove on
+   until the fall was confirmed (three weak stops, a recheck, two small
+   probes, the drive back): about 1-1.5 minutes per line. Now, once a line
+   has risen at least 6 dB and then finds no new best for 2 stops, it goes
+   back to its best point and probes the sides straight away
+   (`FOLLOW: no new best for 2 stops after rising ... probe the sides now`).
+   A clear side is tried first, then the other side, then **straight on**
+   (the line never declined, so not straight back). With no clear side the
+   robot carries on along the same line as before.
+
+Banner: `... side-probe early-probe mat-steer ...`.
 
 ## AP1 then AP2 from one flash (branch feature/ap1-to-ap2-route)
 
