@@ -1,0 +1,26 @@
+# Leg 2 test: off the pink mat, AP2 reached on the blue mat (17 November)
+
+Log: [2026-11-17-leg2-reached-ap2.txt](2026-11-17-leg2-reached-ap2.txt).
+Firmware: `robot_leg2` (`getting_there_leg2.uf2`), banner
+`... cues route | AP1 -> AP2 (test: start on the first mat)`, branch `feature/ap1-to-ap2-route` at 7065aa2.
+The robot started on AP1's ring 4, facing AP1, and skipped AP1's transfer. AP2 (blue mat) was two tiles from AP1.
+
+| Phase | What the log shows |
+|---|---|
+| Leaving the pink mat | Reversed on heading 1: ring 3, ring 2, white, white, floor, floor, then 500 ms more. Off after 2014 ms. |
+| Switch to AP2 | `I AM PICO W 2`, blue mat. First AP2 sample −68 dBm. |
+| Three-direction probe | +180: −69/−68, +90: −66/−67, −90: −71/−72 dBm. Followed +90 (heading 91), "strongest, not by 3 dB". |
+| Line, heading 91 | −78/−78 at the start (facing AP2 reads weaker), best −66/−66 at 6542 ms, flat for five stops, then down to −76. Back to the best point: −68/−67, consistent. |
+| Side probe | −90 side (heading 1): −73/−75. +90 side (heading 181): blue ring 1 at 2005 ms, colour steering took over. |
+| Mat | One scan, turned to heading 221, four steps (250, 100, 100, 100 ms): ring 3, ring 3, ring 4, ring 4, ring 5. |
+| Arrival | Ring 5 (`arrived=1`), BLE −57 dBm, AP2 payload verified. `RESULT: ROUTE COMPLETE, AP2 payload confirmed`, fault mask `0x000`. |
+
+## What it showed
+
+1. **Backing off the mat works.** Two floor stops in a row, about 2 s of reversing, no turn next to the box.
+2. **Retargeting works.** Every Wi-Fi sample, BLE reading and the transfer were AP2's (`d8:3a:dd:ae:56:56`).
+3. **The three-direction probe was close** (−66 against −68 and −71). The chosen line passed beside AP2, and
+   the side probe after it found the mat.
+4. **The line went flat for five stops before it fell** (−67, −68, −66, −68, −69). Confirming the fall and
+   driving back took about 1.5 minutes; the early side probe added afterwards starts the side probe once a line
+   stops rising.
