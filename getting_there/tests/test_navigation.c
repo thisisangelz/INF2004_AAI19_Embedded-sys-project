@@ -405,6 +405,7 @@ static void reset(void)
     // Recorded-run and v16 regression checks keep their 250/100 ms steps;
     // shipped_steps() selects the robot's v18 sizes.
     floor_block_ms = 250; dip_probe_ms = 100; step_on_mat = mat_stub = false; mat_from_check = 0;
+    side_probe_enabled = false; // recorded runs predate it; shipped_steps() turns it on
     colour_present = model_lighter_seen = colour_arrived = false; colour_reads = mat_scans_used = 0;
     model_last_depth = -1; ble_never = false;
     model_blue = false; model_min_sensor_d = 1e9; mat_near_block_ms = LINE_MAT_NEAR_BLOCK_MS;
@@ -415,7 +416,10 @@ static void reset(void)
     wifi_sampler_init(run_can_continue);
 }
 // The step sizes the robot actually uses (reset() selects v16's).
-static void shipped_steps(void) { floor_block_ms = LINE_FORWARD_BLOCK_MS; dip_probe_ms = LINE_DIP_PROBE_MS; }
+static void shipped_steps(void)
+{
+    floor_block_ms = LINE_FORWARD_BLOCK_MS; dip_probe_ms = LINE_DIP_PROBE_MS; side_probe_enabled = true;
+}
 static line_pair_t pair(int first, int second)
 {
     return (line_pair_t){.first = {.code = rssi_encode(first)}, .second = {.code = rssi_encode(second)}};
@@ -679,7 +683,7 @@ static void check_recorded_run(void)
     assert(!moves[19].forwards && moves[19].ms==450);
     assert(moves[20].forwards && moves[20].heading==270);
     assert(strstr(log_text,"return only 1200 powered ms to best point 3010"));
-    assert(!strstr(log_text,"FALLBACK:") && strstr(log_text,"both perpendiculars"));
+    assert(!strstr(log_text,"FALLBACK:") && strstr(log_text,"perpendicular -90 first, then +90"));
 }
 
 static void check_decline_positions(void)
@@ -1266,12 +1270,55 @@ static void check_near_centre_steps(void)
     assert(strstr(log_text,"at the mat centre") && moves_at_stop>0);
 }
 
+// First DIRECTION SEARCH line's first side, or 0 when there is none.
+static int first_search_side(void)
+{
+    const char *line = strstr(log_text, "DIRECTION SEARCH: perpendicular ");
+    if (!line) return 0;
+    return atoi(line + strlen("DIRECTION SEARCH: perpendicular "));
+}
+
+// 17 November: the robot passed AP1 with the mat on its left, came back to
+// its strongest point, and the fixed order turned right (-90) first. The
+// model's heading bias (+10 dB facing 90, -10 dB facing 270) makes readings
+// taken facing different ways misleading, as on the robot. The side probe
+// measures both sides facing the line's own heading, so the bias cancels.
+static void check_side_probe(void)
+{
+    // AP1 ahead and to the left of the first line, then ahead and to the right.
+    static const double ys[2] = {1.2, -1.2};
+    for (unsigned i=0;i<2;++i) {
+        reset(); shipped_steps(); model=true; beacon_x=1.8; beacon_y=ys[i];
+        bool arrived=approach_beacon();
+        int expected = ys[i] > 0 ? 90 : -90;
+        if (!arrived || first_search_side()!=expected) {
+            fprintf(stderr,"Side probe, AP1 at y=%.1f: arrived %d, first side %d, expected %d\n",
+                    ys[i],arrived,first_search_side(),expected);
+            print_model_failure(i);
+            assert(false);
+        }
+        assert(strstr(log_text, expected > 0 ? "try +90 first" : "try -90 first"));
+        // Both probe readings were taken facing the line's heading (0).
+        assert(strstr(log_text,"SIDE_PROBE,side_heading=270,moved_ms=2000,facing=0") &&
+               strstr(log_text,"SIDE_PROBE,side_heading=90,moved_ms=2000,facing=0"));
+    }
+    // Without the probe, the same left-hand layout tries -90 (away) first.
+    reset(); model=true; beacon_x=1.8; beacon_y=1.2;
+    assert(approach_beacon() && first_search_side()==-90 && !strstr(log_text,"SIDE PROBE"));
+
+    // AP1 straight behind the start: both sides read the same, so the usual
+    // order stands and the trial straight back reaches it.
+    reset(); shipped_steps(); model=true; beacon_x=-2;
+    assert(approach_beacon() && strstr(log_text,"no clear side, keep the usual order"));
+    assert(first_search_side()==-90);
+}
+
 int main(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
-    check_v18_steps(); check_mat_steering(); check_near_centre_steps();
+    check_v18_steps(); check_mat_steering(); check_near_centre_steps(); check_side_probe();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     tone_stops=0;
     uint64_t before=sim_time; completion_sound();
@@ -1312,6 +1359,6 @@ int main(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, side probe choosing the first perpendicular facing the line heading, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }

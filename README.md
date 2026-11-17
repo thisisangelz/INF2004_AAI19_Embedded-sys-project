@@ -16,7 +16,8 @@ including when AP1 RSSI changes are inconclusive. A median reference from
 three positions reduces the effect of an isolated strong point. After three weak
 positions, it rechecks while stopped, then allows up to two 250 ms forward probes.
 Recovery resumes the same heading. Persistent decline returns only to the retained
-best point, then tries both perpendicular directions and then straight back.
+best point, probes about 40-50 cm to each side (measuring facing the same way
+both times), tries the stronger side first, then the other side and straight back.
 An inconsistent return no longer stops the run; three unsuccessful trials do.
 Once the colour sensor sees the beacon's mat, colour scans steer the robot to
 its arrival ring (pink ring 4, blue or purple ring 5), and with a working sensor
@@ -31,7 +32,7 @@ sampling settings and the hardware test procedure.
 | AP3 | Purple | `getting_there/build/getting_there_ap3.uf2` |
 
 Each robot build ignores the other two mats (they read as floor). Confirm the
-banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat`
+banner `line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat`
 and the line `Colour mat: PINK (AP1)` (or BLUE (AP2), PURPLE (AP3)).
 Flat readings no longer end the initial forward trial or an improving line.
 The 60-second combined powered travel budget, reserved return travel, 15-minute

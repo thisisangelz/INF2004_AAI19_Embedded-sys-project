@@ -659,12 +659,15 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
 // RSSI disagrees with the best point no longer stops the search: the next
 // trial measures its own starting baseline, so it does not depend on it.
 #define SEARCH_DIRECTIONS 3u
-static payload_result_t check_directions(float origin, follow_result_t *followed, bool *found)
+// first_side (-90 or +90) is the perpendicular tried first: a side probe's
+// stronger side, or -90 by default.
+static payload_result_t check_directions_from(float origin, float first_side,
+                                              follow_result_t *followed, bool *found)
 {
-    static const float offsets[SEARCH_DIRECTIONS] = {-90.0f, 90.0f, 180.0f};
+    const float offsets[SEARCH_DIRECTIONS] = {first_side, -first_side, 180.0f};
     *found = false;
-    report_printf("DIRECTION SEARCH: both perpendiculars, then straight back, origin %d degrees; follow first confirmed improvement\n",
-                  (int)origin);
+    report_printf("DIRECTION SEARCH: perpendicular %+d first, then %+d, then straight back, origin %d degrees; follow first confirmed improvement\n",
+                  (int)first_side, (int)-first_side, (int)origin);
     for (unsigned i = 0; i < SEARCH_DIRECTIONS; ++i) {
         float heading = line_normalise_heading(origin + offsets[i]);
         payload_result_t result = follow_direction(heading, LINE_DIRECTION_TEST_MS, followed);
@@ -689,6 +692,94 @@ static payload_result_t check_directions(float origin, follow_result_t *followed
     return PAYLOAD_NOT_CLOSE;
 }
 
+// The default order (-90 first); kept for the host tests of that order.
+static inline payload_result_t check_directions(float origin, follow_result_t *followed, bool *found)
+{
+    return check_directions_from(origin, -90.0f, followed, found);
+}
+
+// ---- Side probe ----
+// After a line declines, the robot is back at its strongest point on that
+// line, so AP1 lies roughly to one side of it. The fixed order then tried
+// -90 first: on 17 November that turned away from the mat on the left. The
+// heading itself cannot pick the side: the robot's body changes the reading
+// by up to 17 dB (same spot: -61 dBm facing 0, -78 dBm facing 270, the side
+// AP1 was on). So each probe drives a short way to one side, turns back to
+// the line's heading, and measures there; both sides are compared facing the
+// same way. The stronger side is tried first; a tie keeps the old order.
+// Tests replaying earlier runs turn it off (reset); the robot always uses it.
+static bool side_probe_enabled = true;
+typedef enum { PROBE_UNDECIDED, PROBE_DECIDED, PROBE_MAT } probe_outcome_t;
+
+// Drives LINE_SIDE_PROBE_MS along side_heading, measures facing origin, and
+// drives back. Stops at the mat (mat set) without returning, so colour
+// steering can take over from there.
+static payload_result_t probe_one_side(float origin, float side_heading, line_pair_t *reading, bool *mat)
+{
+    *mat = false;
+    if (!motion_turn_to_heading(side_heading)) return PAYLOAD_FATAL;
+    uint32_t moved = 0;
+    while (moved < LINE_SIDE_PROBE_MS) {
+        uint32_t block = LINE_SIDE_PROBE_MS - moved;
+        if (block > LINE_BLOCK_MS) block = LINE_BLOCK_MS;
+        uint32_t actual;
+        // Reserve the whole drive back, including this block.
+        payload_result_t result = translate_block(true, block, side_heading, moved,
+            translation_cost(moved + block + BLOCK_RESERVE_MS), false, &actual);
+        moved += actual;
+        if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (mat_steering_ready()) {
+            *mat = true;
+            report_printf("SIDE PROBE: colour sensor sees the mat at %lu ms on heading %d; colour steering takes over\n",
+                          (unsigned long)moved, (int)side_heading);
+            return PAYLOAD_NOT_CLOSE;
+        }
+    }
+    if (!motion_turn_to_heading(origin)) return PAYLOAD_FATAL;
+    wifi_sampler_set_position(origin, 0, true);
+    payload_result_t result = measure_pair(reading);
+    if (result != PAYLOAD_NOT_CLOSE) return result;
+    report_printf("SIDE_PROBE,side_heading=%d,moved_ms=%lu,facing=%d,dbm1=%d,dbm2=%d\n",
+                  (int)side_heading, (unsigned long)moved, (int)origin,
+                  rssi_decode(reading->first.code), rssi_decode(reading->second.code));
+    if (!save_checkpoint()) return PAYLOAD_FATAL;
+    if (!motion_turn_to_heading(side_heading)) return PAYLOAD_FATAL;
+    return return_along_line(moved, 0, side_heading);
+}
+
+static payload_result_t side_probe(float origin, float *first_side, probe_outcome_t *outcome)
+{
+    static const float sides[2] = {-90.0f, 90.0f};
+    line_pair_t readings[2];
+    *first_side = -90.0f;
+    *outcome = PROBE_UNDECIDED;
+    report_printf("SIDE PROBE: from the best point on heading %d, drive %u ms to each side and measure facing %d\n",
+                  (int)origin, LINE_SIDE_PROBE_MS, (int)origin);
+    for (unsigned i = 0; i < 2; ++i) {
+        bool mat;
+        payload_result_t result = probe_one_side(origin, line_normalise_heading(origin + sides[i]),
+                                                 &readings[i], &mat);
+        if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (mat) {
+            *outcome = PROBE_MAT;
+            return PAYLOAD_NOT_CLOSE;
+        }
+    }
+    if (!motion_turn_to_heading(origin)) return PAYLOAD_FATAL;
+    // Same noise margin as every other gain decision (at least 3 dB).
+    int verdict = line_compare(readings[0], readings[1]);
+    if (verdict != 0) {
+        *first_side = verdict > 0 ? sides[1] : sides[0];
+        *outcome = PROBE_DECIDED;
+    }
+    report_printf("SIDE PROBE: %+d side %d/%d dBm, %+d side %d/%d dBm; %s\n",
+                  (int)sides[0], rssi_decode(readings[0].first.code), rssi_decode(readings[0].second.code),
+                  (int)sides[1], rssi_decode(readings[1].first.code), rssi_decode(readings[1].second.code),
+                  *outcome == PROBE_DECIDED ? (*first_side > 0 ? "try +90 first" : "try -90 first")
+                                            : "no clear side, keep the usual order");
+    return PAYLOAD_NOT_CLOSE;
+}
+
 static bool approach_beacon(void)
 {
     run_started_ms = now_ms();
@@ -707,7 +798,7 @@ static bool approach_beacon(void)
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL || !motion_learn_direction()) return false;
     follow_result_t followed = {.end = FOLLOW_MAT};
-    report_printf("APPROACH: follow current heading; after a confirmed decline return to best, then try both perpendiculars and straight back; on the mat, steer by colour\n");
+    report_printf("APPROACH: follow current heading; after a confirmed decline return to best, probe both sides, try the stronger side first, then the other and straight back; on the mat, steer by colour\n");
     // Started on the mat: colour steering first, without any Wi-Fi line.
     if (!mat_steering_ready()) {
         result = follow_direction(motion_heading(), 0, &followed);
@@ -735,7 +826,18 @@ static bool approach_beacon(void)
             report_printf("RETURN: RSSI inconsistent with best point; searching from here\n");
         float origin = followed.heading;
         bool found = false;
-        result = check_directions(origin, &followed, &found);
+        float first_side = -90.0f;
+        if (side_probe_enabled) {
+            probe_outcome_t outcome;
+            result = side_probe(origin, &first_side, &outcome);
+            if (result == PAYLOAD_COMPLETE) return true;
+            if (result == PAYLOAD_FATAL) return false;
+            if (outcome == PROBE_MAT) {
+                followed.end = FOLLOW_MAT;
+                continue;
+            }
+        }
+        result = check_directions_from(origin, first_side, &followed, &found);
         if (result == PAYLOAD_COMPLETE) return true;
         if (result == PAYLOAD_FATAL) return false;
         if (!found) {
@@ -826,7 +928,7 @@ int main(void)
     bool ready = motion_init();
     cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat ble-minus58 cues | " TARGET_NAME " only\n");
+    report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues | " TARGET_NAME " only\n");
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
     report_printf("Colour mats: pink, blue and purple all recognised\n");

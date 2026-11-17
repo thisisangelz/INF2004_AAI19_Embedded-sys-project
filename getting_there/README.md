@@ -8,12 +8,41 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 
 | Board | File | What it is |
 |---|---|---|
-| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
+| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
 | Robot, going to AP2 (blue mat) | `build/getting_there_ap2.uf2` | The same firmware aimed at AP2 (`I AM PICO W 2`, beacon ID 2, blue mat); banner ends `AP2 only` |
 | Robot, going to AP3 (purple mat) | `build/getting_there_ap3.uf2` | The same firmware aimed at AP3 (`I AM PICO W 3`, beacon ID 3, purple mat); banner ends `AP3 only` |
 | Robot (test) | `build/getting_there_colour_scan.uf2` | Colour scan test only: turns on the spot, no Wi-Fi, BLE or driving |
 | Robot (tool) | `../tcs34725_calib/build/tcs34725_calib.uf2`, `tcs34725_calib6.uf2` | Colour sensor calibration tool: pink 5-ring mat, blue and purple 6-ring mats |
 | AP1-AP3 | `../picow_access_point*_powerbank/build/picow_access_point*_powerbank.uf2` | Current beacon firmware with buzzer sounds |
+
+## Side probe before the direction search (branch feature/side-probe-direction-search)
+
+When a line's signal declines, the robot returns to the strongest point on
+that line, so AP1 is roughly to one side of it. Until now the next direction
+was fixed: −90 first, then +90, then straight back. On 17 November (start
+three tiles away, mat on the robot's left) that −90 turn went away from the
+mat, and the run ended with AP1 out of range.
+
+The robot's heading cannot pick the side. Its own body changes the reading by
+up to 17 dB: at one spot it read −61 dBm facing 0 and −78 dBm facing 270, the
+side AP1 was on. So the robot now **probes**:
+
+1. Turn to −90, drive 2000 ms (about 40-50 cm), **turn back to the line's
+   heading**, take two Wi-Fi batches, then drive back to the best point.
+2. The same on the +90 side.
+3. Compare the two readings, both taken facing the same way, with the usual
+   noise margin (at least 3 dB). The stronger side becomes the first trial;
+   the other side and straight back follow as before. A tie keeps the old
+   order.
+
+If a probe reaches the mat, colour steering takes over from there; if it
+reaches arrival, the transfer happens there. The log shows `SIDE PROBE:` and
+`SIDE_PROBE,side_heading=...,facing=...,dbm1=...,dbm2=...` lines, then
+`DIRECTION SEARCH: perpendicular +90 first, ...`. A probe pair costs about
+40-50 s. In the host model (which adds ±10 dB by heading), AP1 1.2 m to the
+left or right of the first line is now tried on the correct side first;
+without the probe the left-hand case tried −90 first. Not yet tested on the
+robot.
 
 ## One colour mat per beacon (branch feature/colour-ring-sensing)
 

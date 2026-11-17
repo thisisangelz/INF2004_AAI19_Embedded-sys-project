@@ -24,6 +24,9 @@
 #define LINE_DIP_PROBE_MS 250u
 #define LINE_DIP_MAX_PROBES 2u
 #define LINE_DIRECTION_TEST_MS 2400u
+// Side probe: powered travel to each side of the best point before measuring
+// (about 40-50 cm at the drive speed of the 7 November three-chair run).
+#define LINE_SIDE_PROBE_MS 2000u
 #define LINE_SWEEP_MS 6000u
 #define LINE_TRANSLATION_MS 60000u
 #define LINE_PROFILE_CAPACITY 32u
