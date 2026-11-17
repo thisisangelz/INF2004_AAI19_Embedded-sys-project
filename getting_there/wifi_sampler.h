@@ -20,6 +20,8 @@ typedef struct {
 } wifi_sample_t;
 
 void wifi_sampler_init(bool (*can_continue)(void));
+// Call after target_select: forgets the previous beacon's BSSID.
+void wifi_sampler_retarget(void);
 void wifi_sampler_set_position(float heading, uint32_t powered_ms, bool forwards);
 void wifi_sampler_set_reference(wifi_sample_t reference);
 bool wifi_sampler_sample(wifi_sample_t *sample);

@@ -30,6 +30,16 @@ static double dead_from, dead_to;
 // Closest the colour sensor came to the mat centre while driving (model).
 static double model_min_sensor_d;
 static double model_sensor_d(void);
+// Route model: AP1 (pink) at beacon_x/y and AP2 on a blue mat at ap2_x/y,
+// each with its own SSID. The mat under the sensor is the nearer one.
+static bool model_route;
+static double ap2_x, ap2_y;
+// Deepest AP1 ring the sensor reached while AP2 was the target (route model).
+static int leg2_ap1_depth;
+// Where the robot was when its first AP2 move began (just off AP1's mat).
+static bool leg2_started;
+static double leg2_start_x, leg2_start_y;
+static int model_ap1_raw_depth(void);
 // 7 November run conditions: inner rings read one ring lighter, so arrival
 // never shows; and the beacon box is solid, so the robot cannot drive the
 // sensor closer than MODEL_BOX_BLOCK to the centre (it pushes in place).
@@ -179,6 +189,11 @@ bool motion_drive_update(void)
             if (mock_elapsed + delta >= mock_duration) ++model_blocked_blocks;
         }
         if (model_sensor_d() < model_min_sensor_d) model_min_sensor_d = model_sensor_d();
+        if (model_route && target_id() == 2 && !leg2_started) {
+            leg2_started = true; leg2_start_x = old_x; leg2_start_y = old_y;
+        }
+        if (model_route && target_id() == 2 && model_ap1_raw_depth() > leg2_ap1_depth)
+            leg2_ap1_depth = model_ap1_raw_depth();
     }
     if (mock_elapsed >= mock_duration) motors_on = false;
     return true;
@@ -211,7 +226,9 @@ static unsigned mat_from_check, colour_reads;
 static int model_last_depth;
 bool colour_sensor_init(void) { ++colour_inits; return true; }
 bool colour_sensor_available(void) { return colour_present; }
-void colour_arrival_reset(void) { ++colour_resets; model_lighter_seen = false; model_last_depth = -1; }
+// The latest model arrival check saw a ring of the avoided mat.
+static bool model_avoided;
+void colour_arrival_reset(void) { ++colour_resets; model_lighter_seen = model_avoided = false; model_last_depth = -1; }
 // Model mat: pink (white edge plus five rings) by default, or blue (white edge
 // plus six rings), radius 0.35 m around the beacon, so blue rings are narrower.
 // The sensor is 0.08 m ahead of the wheel axis; readings are calibrated means.
@@ -219,31 +236,52 @@ static bool model_blue;
 #define MODEL_MAT_RADIUS 0.35
 #define MODEL_SENSOR_AHEAD 0.08
 #define MODEL_BOX_RADIUS 0.03     // the beacon box: the sensor must stay outside
-static int model_bands(void) { return model_blue ? 7 : 6; }     // white edge + rings
-static int model_arrival_depth(void) { return model_blue ? 6 : 5; } // blue ring 5, pink ring 4
-static double model_sensor_d(void)
+// Route model: whether the latest model_depth was on AP2's blue mat.
+static bool model_mat_blue_now;
+static bool model_mat_blue(void) { return model_route ? model_mat_blue_now : model_blue; }
+static int model_bands(void) { return model_mat_blue() ? 7 : 6; }     // white edge + rings
+static int model_arrival_depth(void) { return model_mat_blue() ? 6 : 5; } // blue ring 5, pink ring 4
+static double model_sensor_d_to(double x, double y)
 {
     double radians = current_heading * 3.141592653589793 / 180.0;
-    return hypot(robot_x + MODEL_SENSOR_AHEAD * cos(radians) - beacon_x,
-                 robot_y + MODEL_SENSOR_AHEAD * sin(radians) - beacon_y);
+    return hypot(robot_x + MODEL_SENSOR_AHEAD * cos(radians) - x,
+                 robot_y + MODEL_SENSOR_AHEAD * sin(radians) - y);
 }
+static double model_sensor_d(void) { return model_sensor_d_to(beacon_x, beacon_y); }
+static int model_depth_at(double d, int bands)
+{
+    if (d > MODEL_MAT_RADIUS) return 0;
+    int depth = bands - (int)(d / (MODEL_MAT_RADIUS / bands));
+    return depth < 1 ? 1 : depth > bands ? bands : depth;
+}
+// Depth on AP1's pink mat, ignoring the target filter.
+static int model_ap1_raw_depth(void) { return model_depth_at(model_sensor_d(), 6); }
 static int model_depth(void)
 {
     double d = model_sensor_d();
+    if (model_route) {
+        double d2 = model_sensor_d_to(ap2_x, ap2_y);
+        model_mat_blue_now = d2 < d;
+        if (d2 < d) d = d2;
+    }
     if (d > MODEL_MAT_RADIUS) return 0;
     // Another beacon's mat reads as floor once the robot's own mat is set.
-    colour_mat_t model_mat = model_blue ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK;
+    colour_mat_t model_mat = model_mat_blue() ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK;
     if (colour_target_mat() != COLOUR_MAT_NONE && colour_target_mat() != model_mat) return 0;
-    int bands = model_bands();
-    int depth = bands - (int)(d / (MODEL_MAT_RADIUS / bands));
-    depth = depth < 1 ? 1 : depth > bands ? bands : depth;
+    int depth = model_depth_at(d, model_bands());
     if (model_dim_inner && depth >= model_arrival_depth()) depth = model_arrival_depth() - 1;
     return depth;
 }
 void colour_note_lighter_mats(unsigned mask)
 {
-    if (mask & (1u << (model_blue ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK))) model_lighter_seen = true;
+    if (mask & (1u << (model_mat_blue() ? COLOUR_MAT_BLUE : COLOUR_MAT_PINK))) model_lighter_seen = true;
 }
+// AP1's rings (depth 2 and in) when the avoided mat is pink, as on the robot.
+static bool model_on_avoided(void)
+{
+    return model && colour_avoid_mat() == COLOUR_MAT_PINK && model_ap1_raw_depth() >= 2;
+}
+bool colour_on_avoided_mat(void) { return model && colour_present && model_avoided; }
 bool colour_sensor_read(colour_reading_t *reading)
 {
     static const colour_reading_t pink[6] = {
@@ -261,7 +299,7 @@ bool colour_sensor_read(colour_reading_t *reading)
     assert(!motors_on);
     ++colour_reads;
     int depth = model ? model_depth() : 0;
-    *reading = depth == 0 ? floor_reading : model_blue ? blue[depth - 1] : pink[depth - 1];
+    *reading = depth == 0 ? floor_reading : model_mat_blue() ? blue[depth - 1] : pink[depth - 1];
     return colour_present;
 }
 // Scripted arrival by check number (0 = never), or the model's mat rule: the
@@ -272,6 +310,7 @@ bool colour_arrival_check(void)
     ++colour_checks;
     if (!model) return colour_arrive_at_check && colour_checks >= colour_arrive_at_check;
     if (!colour_present) return false;
+    model_avoided = model_on_avoided();
     int depth = model_depth();
     bool seen_before = model_lighter_seen;
     if (depth >= 1 && depth < model_arrival_depth()) model_lighter_seen = true;
@@ -307,7 +346,9 @@ static payload_result_t scripted_attempt(void)
     if (fail_at_ble_call == ble_calls) return PAYLOAD_FATAL;
     if (complete_first || complete_at_ble_call == ble_calls ||
         (complete_after_step > 0 && forwards_count >= complete_after_step) ||
-        (model && hypot(robot_x - beacon_x, robot_y - beacon_y) < 0.25)) return PAYLOAD_COMPLETE;
+        (model && model_route && target_id() == 2 && hypot(robot_x - ap2_x, robot_y - ap2_y) < 0.25) ||
+        (model && !(model_route && target_id() == 2) && hypot(robot_x - beacon_x, robot_y - beacon_y) < 0.25))
+        return PAYLOAD_COMPLETE;
     if (retry_mode == 1) return PAYLOAD_RETRY;
     if (retry_mode == 2) return ble_calls == 1 ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE;
     if (retry_mode == 3) return ble_calls == 1 ? PAYLOAD_RETRY : PAYLOAD_COMPLETE;
@@ -338,14 +379,20 @@ static void deliver_scan(void)
 {
     scan_active = false;
     if (wifi_missing || scan_rssi == -127) return;
-    int rssi = scan_rssi;
+    int rssi = scan_rssi, rssi2 = scan_rssi;
     if (model) {
-        double distance = fmax(0.10, hypot(robot_x - beacon_x, robot_y - beacon_y));
         double bias = 10 * sin(current_heading * 3.141592653589793 / 180.0);
+        double distance = fmax(0.10, hypot(robot_x - beacon_x, robot_y - beacon_y));
         rssi = (int)lround(-50 - 20 * log10(distance) + bias);
         if (robot_x >= dead_from && robot_x < dead_to) rssi -= 12;
+        distance = fmax(0.10, hypot(robot_x - ap2_x, robot_y - ap2_y));
+        rssi2 = model_route ? (int)lround(-50 - 20 * log10(distance) + bias) : -127;
     }
-    cyw43_ev_scan_result_t result = {.rssi = (int16_t)rssi, .ssid_len = 11, .bssid = {1,2,3,4,5,6}};
+    // AP2 has its own SSID and BSSID; an AP1 robot must ignore it.
+    cyw43_ev_scan_result_t result = {.rssi = (int16_t)rssi2, .ssid_len = 13, .bssid = {7,7,7,7,7,7}};
+    memcpy(result.ssid, "I AM PICO W 2", 13);
+    if (rssi2 > -127) scan_callback(scan_context, &result);
+    result = (cyw43_ev_scan_result_t){.rssi = (int16_t)rssi, .ssid_len = 11, .bssid = {1,2,3,4,5,6}};
     memcpy(result.ssid, "I AM PICO W", 11);
     // A stronger network with the same SSID must not replace a locked target.
     scan_callback(scan_context, &result);
@@ -412,6 +459,10 @@ static void reset(void)
     model_dim_inner = model_box_solid = false; model_blocked_blocks = 0;
     // Any mat, unless a test sets one (firmware_main sets AP1's pink mat).
     colour_set_target_mat(COLOUR_MAT_NONE);
+    // Single beacon (AP1) unless a test builds the route model.
+    model_route = model_mat_blue_now = model_avoided = leg2_started = false; ap2_x = ap2_y = 0; leg2_ap1_depth = 0;
+    target_select(TARGET_BEACON_ID); colour_set_avoid_mat(COLOUR_MAT_NONE);
+    route_next = 0; route_start_on_mat = transfer_paused = avoided_mat_hit = false;
     for (int f = 0; f < FAULT_COUNT; ++f) fault_clear((fault_t)f);
     wifi_sampler_init(run_can_continue);
 }
@@ -1313,12 +1364,96 @@ static void check_side_probe(void)
     assert(first_search_side()==-90);
 }
 
+// Prints the route lines and the end of the robot's path for a failed case.
+static void print_route_failure(const char *name)
+{
+    fprintf(stderr,"Route '%s': robot (%.2f, %.2f), AP2 (%.2f, %.2f), target AP%u, AP1 depth in leg 2 %d\n",
+            name,robot_x,robot_y,ap2_x,ap2_y,target_id(),leg2_ap1_depth);
+    for (char *row=strtok(log_text,"\n");row;row=strtok(NULL,"\n"))
+        if (!strncmp(row,"ROUTE",5) || !strncmp(row,"FAILED",6) || !strncmp(row,"SIDE",4) ||
+            !strncmp(row,"DIRECTION",9) || !strncmp(row,"MAT:",4) || !strncmp(row,"FOLLOW:",7))
+            fprintf(stderr,"%s\n",row);
+}
+
+// One flash, two beacons (17 November plan): AP1 on the pink mat, AP2 on the
+// blue mat two tiles (1.2 m) from it. After AP1's transfer the robot backs
+// straight off the pink mat, switches to AP2's SSID, mat and BLE ID, probes
+// straight back and both sides, and follows the strongest. AP1's rings are
+// floor to it now, so it must also keep off them by itself.
+static void check_route(void)
+{
+    // AP1 at (2, 0); the robot starts at the origin facing it. AP2 1.2 m from
+    // AP1, never on the robot's way to AP1 (it would drive over AP2's mat).
+    static const struct { double x, y; const char *name; } ap2[] = {
+        {2.0, 1.2, "left of AP1"}, {2.0, -1.2, "right of AP1"},
+        {1.15, 0.85, "back and to the left"}, {1.0, -0.65, "back and to the right"},
+    };
+    for (unsigned i=0;i<sizeof(ap2)/sizeof(*ap2);++i) {
+        reset(); shipped_steps(); model=true; colour_present=true; model_route=true;
+        colour_set_target_mat(target_mat());
+        beacon_x=2; ap2_x=ap2[i].x; ap2_y=ap2[i].y; route_next=2;
+        bool done=run_route();
+        bool ok=done && target_id()==2 && hypot(robot_x-ap2_x,robot_y-ap2_y)<0.25 && loose_attempts==2 &&
+                !strict_attempts && tone_starts==1 && leg2_ap1_depth<2 && model_depth()>=6;
+        if (!ok) { print_route_failure(ap2[i].name); assert(false); }
+        // Off the pink mat before the target changed, then AP2's own SSID and mat.
+        const char *off=strstr(log_text,"ROUTE: off the mat after"), *leg2=strstr(log_text,"ROUTE: leg 2/2: AP2");
+        assert(off && leg2 && off<leg2 && strstr(leg2,"\"I AM PICO W 2\", BLUE mat); keeping off the PINK mat"));
+        assert(strstr(log_text,"ROUTE: looking for AP2: probe +180, +90 and -90") && strstr(log_text,"AP2 Wi-Fi sample"));
+        // Each beacon had its own travel budget.
+        assert(translation_ms<=LINE_TRANSLATION_MS && colour_avoid_mat()==COLOUR_MAT_PINK);
+        // The probes chose a way within 90 degrees of AP2, unless a probe
+        // already reached AP2's mat.
+        const char *pick=strstr(log_text,"; follow ");
+        if (!strstr(log_text,"ROUTE: reached the BLUE mat while probing")) {
+            const char *at=pick?strstr(pick,", heading "):NULL;
+            assert(at && leg2_started);
+            double chosen=atof(at+strlen(", heading "));
+            double bearing=atan2(ap2_y-leg2_start_y,ap2_x-leg2_start_x)*180.0/3.141592653589793;
+            double diff=fabs(fmod(chosen-bearing+540.0,360.0)-180.0);
+            if (diff>90) { fprintf(stderr,"chose %.0f, AP2 bearing %.0f\n",chosen,bearing); print_route_failure(ap2[i].name); assert(false); }
+        }
+    }
+
+    // Second leg only (robot_leg2): start on AP1's ring 4 facing AP1. No AP1
+    // transfer: the only BLE attempt is AP2's, on its arrival ring.
+    reset(); shipped_steps(); model=true; colour_present=true; model_route=true;
+    colour_set_target_mat(target_mat()); beacon_x=2; ap2_x=2; ap2_y=1.2;
+    route_next=2; route_start_on_mat=true; robot_x=2-MODEL_SENSOR_AHEAD-0.09;
+    assert(model_depth()==5);
+    if (!run_route() || loose_attempts!=1 || ble_calls!=1 || target_id()!=2) {
+        print_route_failure("leg 2 only"); assert(false);
+    }
+    assert(strstr(log_text,"ROUTE: test start on the PINK mat's arrival ring") && !tone_starts);
+
+    // Keeping off AP1: with AP2 beyond AP1, a line toward AP2 runs into the
+    // pink mat. The robot reverses that block and ends the line there, never
+    // reaching AP1's arrival ring or box.
+    reset(); shipped_steps(); model=true; colour_present=true; model_route=true;
+    beacon_x=2; ap2_x=3.6; robot_x=1.45;
+    select_target(2, COLOUR_MAT_PINK);
+    follow_result_t followed;
+    assert(follow_direction(0, 0, &followed)==PAYLOAD_NOT_CLOSE && followed.end==FOLLOW_DECLINE);
+    assert(strstr(log_text,"ROUTE: PINK mat ahead") && strstr(log_text,"the visited beacon's mat blocks this line"));
+    assert(leg2_ap1_depth>=2 && leg2_ap1_depth<5 && model_min_sensor_d>MODEL_BOX_RADIUS);
+
+    // The firmware as flashed (robot_route): both transfers, beeps after each,
+    // and the route result line. Scripted BLE, no colour sensor.
+    reset(); ui_test=true; ui_stage=1; complete_first=true; route_next=2;
+    if (!setjmp(ui_exit)) firmware_main();
+    assert(ui_finished && !motors_on && ble_calls==2 && tone_starts==2);
+    assert(strstr(log_text,"cues route | AP1 -> AP2") && strstr(log_text,"Colour mat: PINK (AP1)"));
+    assert(strstr(log_text,"leaving the PINK mat without a colour sensor"));
+    assert(strstr(log_text,"RESULT: ROUTE COMPLETE, AP1 and AP2 payloads confirmed"));
+    assert(colour_target_mat()==COLOUR_MAT_BLUE && target_id()==2);
+}
+
 int main(void)
 {
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
     check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
-    check_v18_steps(); check_mat_steering(); check_near_centre_steps(); check_side_probe();
+    check_v18_steps(); check_mat_steering(); check_near_centre_steps(); check_side_probe(); check_route();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
     tone_stops=0;
     uint64_t before=sim_time; completion_sound();
@@ -1359,6 +1494,6 @@ int main(void)
         else assert(cue_counts[CUE_START] == 1 && cue_counts[CUE_CALIBRATING] == 1 && tone_starts == 1 &&
                     cue_counts[CUE_IN_RANGE] == 1 && !cue_counts[CUE_FAULT]);
     }
-    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, side probe choosing the first perpendicular facing the line heading, v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
+    puts("Navigation: three-position median, frozen decline reference, stationary recheck, bounded probes, recorded v14 dip and synthetic continuations, inclusive return tolerance, recorded v5/v7/v9 regressions, three-direction search with straight back, side probe choosing the first perpendicular facing the line heading, AP1 to AP2 route (backing off the pink mat, retargeting, three-direction probe, keeping off the visited mat, leg-2 test start, firmware result), v18 500/250 ms steps, weak patch, colour gate on the transfer, mat steering from side-on, outward and edge starts, 100 ms steps stopping on the arrival ring of the pink and blue model mats, all four model targets at both step sizes and with colour steering, travel/run limits, radio fallback, BSSID, STOP, startup, arrival, colour-arrival BLE gate and sound cue checks passed");
     return 0;
 }

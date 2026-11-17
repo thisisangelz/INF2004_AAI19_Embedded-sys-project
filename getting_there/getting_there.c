@@ -32,7 +32,7 @@ static bool run_can_continue(void)
     if ((uint32_t)(now_ms() - run_started_ms) >= MAX_RUN_MS) {
         motion_stop();
         fault_raise(FAULT_RUN_LIMIT);
-        report_printf("FAILED: 15 minute run limit reached\n");
+        report_printf("FAILED: 15 minute run limit reached (%s)\n", target_name());
         return false;
     }
     return true;
@@ -62,6 +62,10 @@ static bool colour_arrived;
 // reached the arrival ring (see mat_centre_reached). Counts as colour arrival.
 static bool mat_centre_override;
 
+// Set while the robot backs off a beacon it has finished with: stops still
+// read the colour sensor, but never start a transfer.
+static bool transfer_paused;
+
 static payload_result_t check_payload(void)
 {
     bool was_close = false;
@@ -69,6 +73,10 @@ static payload_result_t check_payload(void)
     for (int attempt = 0; attempt < MAX_PAYLOAD_ATTEMPTS; ++attempt) {
         if (!run_can_continue()) return PAYLOAD_FATAL;
         if (!save_checkpoint()) return PAYLOAD_FATAL;
+        if (transfer_paused) {
+            (void)colour_arrival_check();
+            return PAYLOAD_NOT_CLOSE;
+        }
         if (!was_close) {
             // Motors are stopped here. On the mat, the colour sensor decides
             // arrival and BLE only has to show AP1 is in range.
@@ -87,8 +95,8 @@ static payload_result_t check_payload(void)
             }
             payload_client_set_close_threshold(on_mat ? COLOUR_ARRIVAL_BLE_DBM : AP1_CLOSE_RSSI_DBM);
             if (on_mat)
-                report_printf("ARRIVAL: colour sensor confirms %s or darker; BLE only needs " TARGET_NAME " >= %d dBm\n",
-                              COLOUR_ARRIVAL_TEXT, COLOUR_ARRIVAL_BLE_DBM);
+                report_printf("ARRIVAL: colour sensor confirms %s or darker; BLE only needs %s >= %d dBm\n",
+                              COLOUR_ARRIVAL_TEXT, target_name(), COLOUR_ARRIVAL_BLE_DBM);
         }
         payload_result_t result = was_close ? payload_client_retry() : payload_client_attempt();
         if (in_range_cue_on) {
@@ -102,7 +110,7 @@ static payload_result_t check_payload(void)
         if (result == PAYLOAD_NOT_CLOSE && !was_close) return result;
         was_close = true;
         if (attempt + 1 < MAX_PAYLOAD_ATTEMPTS) {
-            report_printf(TARGET_NAME " transfer not confirmed; stationary connection attempt %d/%d, proximity retained\n",
+            report_printf("%s transfer not confirmed; stationary connection attempt %d/%d, proximity retained\n", target_name(),
                           attempt + 2, MAX_PAYLOAD_ATTEMPTS);
             if (!motion_pause_ms(200)) return PAYLOAD_FATAL;
         }
@@ -117,12 +125,12 @@ static payload_result_t wait_for_wifi(wifi_sample_t *sample)
     for (int attempt = 0; attempt < MAX_MISSING_SAMPLES; ++attempt) {
         if (!wifi_sampler_sample(sample) || !save_checkpoint()) return PAYLOAD_FATAL;
         if (sample->code != RSSI_MISSING_CODE) return PAYLOAD_NOT_CLOSE;
-        report_printf(TARGET_NAME " Wi-Fi missing; checking BLE while remaining stopped\n");
+        report_printf("%s Wi-Fi missing; checking BLE while remaining stopped\n", target_name());
         payload_result_t result = check_payload();
         if (result == PAYLOAD_COMPLETE || result == PAYLOAD_FATAL) return result;
         if (!motion_pause_ms(500)) return PAYLOAD_FATAL;
     }
-    report_printf("FAILED: " TARGET_NAME " missing from three fresh Wi-Fi samples; no blind movement\n");
+    report_printf("FAILED: %s missing from three fresh Wi-Fi samples; no blind movement\n", target_name());
     return PAYLOAD_FATAL;
 }
 
@@ -150,11 +158,40 @@ static bool reserve_translation(uint32_t required)
     return false;
 }
 
+// Set by translate_block when a forward block ended with a ring of the
+// avoided mat (the beacon already visited) under the sensor. The block has
+// then been driven back, so *actual is 0; the caller must not drive that way
+// again.
+static bool avoided_mat_hit;
+
+static payload_result_t drive_block(bool forwards, uint32_t duration, float heading,
+                                    uint32_t position, uint32_t reserved_return,
+                                    bool acquire_moving, uint32_t *actual);
+
 // One powered block, then settle, drain Wi-Fi, persist and check BLE. A fatal
 // scan failure keeps wifi_quiescent false until main shuts the radio down.
 static payload_result_t translate_block(bool forwards, uint32_t duration, float heading,
                                         uint32_t position, uint32_t reserved_return,
                                         bool acquire_moving, uint32_t *actual)
+{
+    avoided_mat_hit = false;
+    payload_result_t result = drive_block(forwards, duration, heading, position,
+                                          reserved_return, acquire_moving, actual);
+    if (result != PAYLOAD_NOT_CLOSE || !forwards || !*actual || !colour_on_avoided_mat()) return result;
+    // Never drive onto the beacon already visited: its box is still there,
+    // and to the colour sensor its rings are floor. Reverse the same block.
+    uint32_t forward = *actual, back;
+    report_printf("ROUTE: %s mat ahead after %lu ms on heading %d; reversing that block, this way is blocked\n",
+                  colour_mat_name(colour_avoid_mat()), (unsigned long)forward, (int)heading);
+    result = drive_block(false, forward, heading, position + forward, 0, false, &back);
+    avoided_mat_hit = true;
+    *actual = back < forward ? forward - back : 0;
+    return result;
+}
+
+static payload_result_t drive_block(bool forwards, uint32_t duration, float heading,
+                                    uint32_t position, uint32_t reserved_return,
+                                    bool acquire_moving, uint32_t *actual)
 {
     *actual = 0;
     if (!reserve_translation(translation_cost(duration) + reserved_return) || !save_checkpoint())
@@ -364,15 +401,15 @@ static bool mat_steering_ready(void)
 static payload_result_t mat_wait_on_arrival(void)
 {
     for (unsigned retry = 1; retry <= MAT_ARRIVED_RETRIES; ++retry) {
-        report_printf("MAT: on %s or darker but " TARGET_NAME " BLE not in range; stationary retry %u/%u\n",
-                      COLOUR_ARRIVAL_TEXT, retry, MAT_ARRIVED_RETRIES);
+        report_printf("MAT: on %s or darker but %s BLE not in range; stationary retry %u/%u\n",
+                      COLOUR_ARRIVAL_TEXT, target_name(), retry, MAT_ARRIVED_RETRIES);
         if (!motion_pause_ms(1000)) return PAYLOAD_FATAL;
         payload_result_t result = check_payload();
         if (result != PAYLOAD_NOT_CLOSE) return result;
         if (!colour_arrived) return PAYLOAD_NOT_CLOSE; // reading changed: keep steering
     }
     fault_raise(FAULT_PAYLOAD);
-    report_printf("FAILED: on the mat centre but " TARGET_NAME " BLE never came in range; no further movement\n");
+    report_printf("FAILED: on the mat centre but %s BLE never came in range; no further movement\n", target_name());
     return PAYLOAD_FATAL;
 }
 
@@ -490,6 +527,10 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
             false, &actual);
         *position += actual;
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (avoided_mat_hit) {
+            report_printf("DIP: probe blocked by the visited beacon's mat; returning to retained best point\n");
+            return PAYLOAD_NOT_CLOSE;
+        }
         wifi_sampler_set_position(heading, *position, true);
         result = measure_pair(current);
         if (result != PAYLOAD_NOT_CLOSE) return result;
@@ -498,6 +539,23 @@ static payload_result_t recheck_and_probe_dip(float heading, uint32_t best_posit
         if (*recovered) return PAYLOAD_NOT_CLOSE;
     }
     report_printf("DIP: no recovery after %u probes; returning to retained best point\n", LINE_DIP_MAX_PROBES);
+    return PAYLOAD_NOT_CLOSE;
+}
+
+// Ends a line as declined: drive back to its best point and check the signal
+// there. The caller has logged why.
+static payload_result_t end_line_at_best(follow_result_t *followed, float heading, uint32_t position,
+                                         uint32_t best_position, line_pair_t best)
+{
+    followed->end = FOLLOW_DECLINE;
+    payload_result_t result = return_along_line(position, best_position, heading);
+    if (result != PAYLOAD_NOT_CLOSE) return result;
+    line_pair_t returned;
+    result = measure_pair(&returned);
+    if (result != PAYLOAD_NOT_CLOSE) return result;
+    followed->consistent = line_return_consistent(best, returned);
+    report_printf("RETURN: RSSI %s; timed position remains approximate\n",
+                  followed->consistent ? "consistent with best point" : "inconsistent with best point, stopping");
     return PAYLOAD_NOT_CLOSE;
 }
 
@@ -543,6 +601,17 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
         position += actual;
         followed->position = position;
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (avoided_mat_hit) {
+            if (trial_ms && !followed->progress) {
+                followed->end = FOLLOW_NO_GAIN;
+                report_printf("FOLLOW: trial ended at the visited beacon's mat, %lu powered ms\n",
+                              (unsigned long)position);
+                return PAYLOAD_NOT_CLOSE;
+            }
+            report_printf("FOLLOW: the visited beacon's mat blocks this line; return %lu powered ms to best point %lu\n",
+                          (unsigned long)(position - best_position), (unsigned long)best_position);
+            return end_line_at_best(followed, heading, position, best_position, best);
+        }
         if (mat_steering_ready()) {
             followed->end = FOLLOW_MAT;
             report_printf("FOLLOW: colour sensor sees the mat at %lu powered ms; colour steering takes over\n",
@@ -580,18 +649,9 @@ static payload_result_t follow_direction(float heading, uint32_t trial_ms, follo
                 followed->position = position;
                 if (result != PAYLOAD_NOT_CLOSE) return result;
                 if (!recovered) {
-                    followed->end = FOLLOW_DECLINE;
                     report_printf("FOLLOW: decline persisted after recheck and probes; return only %lu powered ms to best point %lu\n",
                                   (unsigned long)(position - best_position), (unsigned long)best_position);
-                    result = return_along_line(position, best_position, heading);
-                    if (result != PAYLOAD_NOT_CLOSE) return result;
-                    line_pair_t returned;
-                    result = measure_pair(&returned);
-                    if (result != PAYLOAD_NOT_CLOSE) return result;
-                    followed->consistent = line_return_consistent(best, returned);
-                    report_printf("RETURN: RSSI %s; timed position remains approximate\n",
-                                  followed->consistent ? "consistent with best point" : "inconsistent with best point, stopping");
-                    return PAYLOAD_NOT_CLOSE;
+                    return end_line_at_best(followed, heading, position, best_position, best);
                 }
                 report_printf("DIP: recovery confirmed; continuing the same heading\n");
                 dip_active = false;
@@ -728,6 +788,8 @@ static payload_result_t probe_one_side(float origin, float side_heading, line_pa
             translation_cost(moved + block + BLOCK_RESERVE_MS), false, &actual);
         moved += actual;
         if (result != PAYLOAD_NOT_CLOSE) return result;
+        // Measure where the visited beacon's mat stopped the probe.
+        if (avoided_mat_hit) break;
         if (mat_steering_ready()) {
             *mat = true;
             report_printf("SIDE PROBE: colour sensor sees the mat at %lu ms on heading %d; colour steering takes over\n",
@@ -780,16 +842,26 @@ static payload_result_t side_probe(float origin, float *first_side, probe_outcom
     return PAYLOAD_NOT_CLOSE;
 }
 
-static bool approach_beacon(void)
+// Each beacon of a route starts afresh: its own 15-minute limit and travel
+// budget, and no colour memory or mat scans from the previous beacon.
+static void begin_leg(void)
 {
     run_started_ms = now_ms();
-    translation_ms = profile_id = 0;
-    wifi_quiescent = true;
-    wifi_sampler_init(run_can_continue);
+    translation_ms = 0;
     colour_arrival_reset();
     step_on_mat = false;
     mat_scans_used = 0;
     mat_centre_override = false;
+}
+
+static bool approach_loop(follow_result_t followed);
+
+static bool approach_beacon(void)
+{
+    profile_id = 0;
+    wifi_quiescent = true;
+    wifi_sampler_init(run_can_continue);
+    begin_leg();
     payload_result_t result = check_payload();
     if (result == PAYLOAD_COMPLETE) return true;
     if (result == PAYLOAD_FATAL) return false;
@@ -805,6 +877,14 @@ static bool approach_beacon(void)
         if (result == PAYLOAD_COMPLETE) return true;
         if (result == PAYLOAD_FATAL) return false;
     }
+    return approach_loop(followed);
+}
+
+// From the end of a line (or a hand-over to colour steering) until the
+// transfer completes or the run stops.
+static bool approach_loop(follow_result_t followed)
+{
+    payload_result_t result;
     while (run_can_continue()) {
         if (followed.end == FOLLOW_MAT) {
             result = mat_approach();
@@ -812,7 +892,9 @@ static bool approach_beacon(void)
             if (result == PAYLOAD_FATAL) return false;
             report_printf("APPROACH: resuming the Wi-Fi line search at heading %d\n",
                           (int)line_normalise_heading(motion_heading()));
-            result = follow_direction(motion_heading(), 0, &followed);
+            // Normalised: after several scans the gyro total can exceed 360,
+            // which logged lines like "FOLLOW: heading 519".
+            result = follow_direction(line_normalise_heading(motion_heading()), 0, &followed);
             if (result == PAYLOAD_COMPLETE) return true;
             if (result == PAYLOAD_FATAL) return false;
             continue;
@@ -864,6 +946,183 @@ static void completion_sound(void)
         if (!motion_pause_ms(10)) { cue_stop(); break; }
     }
     report_printf("Completion beeps %s; motors stopped\n", motion_stop_requested() ? "stopped by GP21" : "finished");
+}
+
+// ---- Route: the first beacon, then the next one, from one flash ----
+// ROUTE_NEXT_BEACON (CMake, robot_route and robot_leg2): after a verified
+// transfer at TARGET_BEACON_ID the robot goes on to this beacon; 0 ends the
+// run at the first beacon, as before. ROUTE_START_ON_MAT (robot_leg2) is a
+// test build: the robot starts on the first beacon's arrival ring, facing the
+// beacon as if it had just arrived, and skips that transfer.
+#ifndef ROUTE_NEXT_BEACON
+#define ROUTE_NEXT_BEACON 0
+#endif
+#ifndef ROUTE_START_ON_MAT
+#define ROUTE_START_ON_MAT 0
+#endif
+// Variables so the host tests can run either build.
+static uint8_t route_next = ROUTE_NEXT_BEACON;
+static bool route_start_on_mat = ROUTE_START_ON_MAT;
+
+// Backing off the visited mat: small blocks until two stops in a row read
+// floor, then a little more so the whole robot is clear before it turns.
+// Pink ring 4 to the edge took about 0.5 s of driving on 17 November.
+#define LEAVE_MAT_BLOCK_MS 250u
+#define LEAVE_MAT_FLOOR_CHECKS 2u
+#define LEAVE_MAT_MAX_MS 3000u
+#define LEAVE_MAT_CLEARANCE_MS 500u
+#define LEAVE_MAT_BLIND_MS 1500u   // without a colour sensor
+// Directions tried from just off the visited mat, relative to facing it:
+// straight back first, then each side. Never forward, through the beacon.
+#define LEG_DIRECTIONS 3u
+
+static void announce_target(const char *what)
+{
+    report_printf("ROUTE: %s %s (Wi-Fi \"%s\", %s mat)%s%s%s\n", what, target_name(), target_ssid(),
+                  colour_mat_name(target_mat()),
+                  colour_avoid_mat() != COLOUR_MAT_NONE ? "; keeping off the " : "",
+                  colour_avoid_mat() != COLOUR_MAT_NONE ? colour_mat_name(colour_avoid_mat()) : "",
+                  colour_avoid_mat() != COLOUR_MAT_NONE ? " mat" : "");
+}
+
+static void select_target(uint8_t id, colour_mat_t avoid)
+{
+    target_select(id);
+    colour_set_target_mat(target_mat());
+    colour_set_avoid_mat(avoid);
+    colour_arrival_reset();
+    wifi_sampler_retarget();
+}
+
+// Reverses straight out along the heading the robot arrived on. Mat steering
+// drove in along it from lighter rings to darker, so reversing retraces that
+// path, and the robot never turns next to the beacon box. Stops only read
+// the colour: the transfer here is already done.
+static payload_result_t leave_mat(float heading)
+{
+    const bool sensor = colour_sensor_available();
+    const uint32_t limit = sensor ? LEAVE_MAT_MAX_MS : LEAVE_MAT_BLIND_MS;
+    if (sensor)
+        report_printf("ROUTE: leaving the %s mat: reverse on heading %d until %u stops read floor (at most %u ms), then %u ms more\n",
+                      colour_mat_name(target_mat()), (int)heading, LEAVE_MAT_FLOOR_CHECKS,
+                      (unsigned)limit, LEAVE_MAT_CLEARANCE_MS);
+    else
+        report_printf("ROUTE: leaving the %s mat without a colour sensor: reverse %u ms on heading %d\n",
+                      colour_mat_name(target_mat()), (unsigned)limit, (int)heading);
+    transfer_paused = true;
+    payload_result_t result = PAYLOAD_NOT_CLOSE;
+    uint32_t moved = 0;
+    unsigned floor_checks = 0;
+    while (moved < limit && (!sensor || floor_checks < LEAVE_MAT_FLOOR_CHECKS)) {
+        uint32_t actual, block = limit - moved < LEAVE_MAT_BLOCK_MS ? limit - moved : LEAVE_MAT_BLOCK_MS;
+        result = translate_block(false, block, heading, 0, 0, false, &actual);
+        if (result != PAYLOAD_NOT_CLOSE) break;
+        moved += actual ? actual : block;
+        floor_checks = colour_on_mat() ? 0u : floor_checks + 1u;
+    }
+    if (result == PAYLOAD_NOT_CLOSE && sensor) {
+        if (floor_checks < LEAVE_MAT_FLOOR_CHECKS)
+            report_printf("ROUTE: the colour sensor still sees the mat after %lu ms; continuing anyway\n",
+                          (unsigned long)moved);
+        uint32_t actual;
+        result = translate_block(false, LEAVE_MAT_CLEARANCE_MS, heading, 0, 0, false, &actual);
+        moved += actual;
+    }
+    transfer_paused = false;
+    if (result == PAYLOAD_NOT_CLOSE)
+        report_printf("ROUTE: off the mat after %lu ms reversing\n", (unsigned long)moved);
+    return result;
+}
+
+static int pair_sum(line_pair_t pair)
+{
+    return rssi_decode(pair.first.code) + rssi_decode(pair.second.code);
+}
+
+// From just off the visited mat, facing it. The next beacon may be anywhere
+// except beyond the visited one, so probe straight back and both sides, the
+// same way as the side probe: drive out, turn to face the same heading every
+// time (the robot body changes the reading by up to 17 dB with heading),
+// measure, and drive back. Then follow the strongest.
+static payload_result_t start_next_leg(float facing, follow_result_t *followed)
+{
+    static const float offsets[LEG_DIRECTIONS] = {180.0f, 90.0f, -90.0f};
+    line_pair_t readings[LEG_DIRECTIONS];
+    unsigned best = 0;
+    report_printf("ROUTE: looking for %s: probe %+d, %+d and %+d from heading %d, %u ms each, measuring facing %d\n",
+                  target_name(), (int)offsets[0], (int)offsets[1], (int)offsets[2], (int)facing,
+                  LINE_SIDE_PROBE_MS, (int)facing);
+    for (unsigned i = 0; i < LEG_DIRECTIONS; ++i) {
+        float heading = line_normalise_heading(facing + offsets[i]);
+        bool mat;
+        payload_result_t result = probe_one_side(facing, heading, &readings[i], &mat);
+        if (result != PAYLOAD_NOT_CLOSE) return result;
+        if (mat) {
+            followed->end = FOLLOW_MAT;
+            report_printf("ROUTE: reached the %s mat while probing heading %d\n",
+                          colour_mat_name(target_mat()), (int)heading);
+            return PAYLOAD_NOT_CLOSE;
+        }
+        if (pair_sum(readings[i]) > pair_sum(readings[best])) best = i;
+    }
+    // Clear when the strongest beats both others by the usual 3 dB margin.
+    bool clear = true;
+    for (unsigned i = 0; i < LEG_DIRECTIONS; ++i)
+        if (i != best && line_compare(readings[i], readings[best]) <= 0) clear = false;
+    float heading = line_normalise_heading(facing + offsets[best]);
+    report_printf("ROUTE: %s %+d: %d/%d dBm, %+d: %d/%d dBm, %+d: %d/%d dBm; follow %+d, heading %d (%s)\n",
+                  target_name(),
+                  (int)offsets[0], rssi_decode(readings[0].first.code), rssi_decode(readings[0].second.code),
+                  (int)offsets[1], rssi_decode(readings[1].first.code), rssi_decode(readings[1].second.code),
+                  (int)offsets[2], rssi_decode(readings[2].first.code), rssi_decode(readings[2].second.code),
+                  (int)offsets[best], (int)heading, clear ? "clearly strongest" : "strongest, not by 3 dB");
+    return follow_direction(heading, 0, followed);
+}
+
+// The robot is off the visited mat, facing it, with the next target selected.
+static bool approach_next_beacon(float facing)
+{
+    report_printf("APPROACH: probe three directions away from the visited beacon, follow the strongest; then as before\n");
+    wifi_sample_t initial;
+    payload_result_t result = wait_for_wifi(&initial);
+    if (result == PAYLOAD_COMPLETE) return true;
+    if (result == PAYLOAD_FATAL) return false;
+    follow_result_t followed = {.end = FOLLOW_MAT};
+    result = start_next_leg(facing, &followed);
+    if (result == PAYLOAD_COMPLETE) return true;
+    if (result == PAYLOAD_FATAL) return false;
+    return approach_loop(followed);
+}
+
+static void completion_sound(void);
+
+// The whole run: the first beacon, then (route builds) the next one.
+static bool run_route(void)
+{
+    const uint8_t first = target_id();
+    if (!route_next) return approach_beacon();
+    if (route_start_on_mat) {
+        // Test build: set up what approach_beacon would have, without its transfer.
+        profile_id = 0;
+        wifi_quiescent = true;
+        wifi_sampler_init(run_can_continue);
+        begin_leg();
+        report_printf("ROUTE: test start on the %s mat's arrival ring, facing %s; its transfer is skipped\n",
+                      colour_mat_name(target_mat()), target_name());
+        if (!motion_learn_direction()) return false;
+    } else {
+        announce_target("leg 1/2:");
+        if (!approach_beacon()) return false;
+        // Three rising beeps for the first beacon; the run goes on.
+        completion_sound();
+        if (motion_stop_requested()) return false;
+    }
+    const float facing = line_normalise_heading(motion_heading());
+    begin_leg(); // the move off the mat counts toward the next beacon's budget
+    if (leave_mat(facing) != PAYLOAD_NOT_CLOSE) return false;
+    select_target(route_next, target_mat_of(first));
+    announce_target("leg 2/2:");
+    return approach_next_beacon(facing);
 }
 
 static void report_faults(void)
@@ -928,15 +1187,25 @@ int main(void)
     bool ready = motion_init();
     cues_init();
     sleep_ms(2000);
-    report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues | " TARGET_NAME " only\n");
+    if (route_next)
+        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues route | %s -> %s%s\n",
+                      target_name(), target_name_of(route_next),
+                      route_start_on_mat ? " (test: start on the first mat)" : "");
+    else
+        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat ble-minus58 cues | %s only\n",
+                      target_name());
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");
     report_printf("Colour mats: pink, blue and purple all recognised\n");
 #else
     // Each beacon has its own mat; the other two read as floor.
-    colour_set_target_mat(TARGET_MAT);
-    report_printf("Colour mat: %s (" TARGET_NAME "); other mats read as floor\n",
-                  colour_mat_name(TARGET_MAT));
+    colour_set_target_mat(target_mat());
+    report_printf("Colour mat: %s (%s); other mats read as floor\n",
+                  colour_mat_name(target_mat()), target_name());
+    if (route_next)
+        report_printf("Route: %s mat at %s, then %s mat at %s; each beacon has its own 15 minute limit and travel budget\n",
+                      colour_mat_name(target_mat()), target_name(),
+                      colour_mat_name(target_mat_of(route_next)), target_name_of(route_next));
 #endif
     report_printf("Flash layout: 2 MiB physical; 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB saved log\n");
     report_printf("Before GP20: GP21 replays previous run. After GP20: GP21 STOP, latched until reset.\n");
@@ -990,7 +1259,7 @@ int main(void)
     bool radio_initialised = false;
 #if COLOUR_SCAN_TEST
     // Test build: no radio and no approach; scan the colour on the spot.
-    (void)approach_beacon; (void)on_in_range;
+    (void)run_route; (void)on_in_range;
     if (ready && !motion_stop_requested()) {
         bool scanned = colour_scan_run();
         motion_stop();
@@ -1033,16 +1302,26 @@ int main(void)
                 report_printf("FAILED: Bluetooth startup %s\n", motion_stop_requested() ? "stopped by GP21" :
                               payload_client_start_failed() ? "controller power-on failed" : "timed out after 10 seconds");
             }
-            else report_printf("Bluetooth ready; beginning " TARGET_NAME " approach.\n");
+            else report_printf("Bluetooth ready; beginning %s approach.\n", target_name());
         }
     }
-    // approach_beacon initialises the sampler before its first checkpoint.
+    // approach_beacon (or the route test start) initialises the sampler
+    // before its first checkpoint.
     if (ready && !motion_stop_requested()) {
-        bool completed = approach_beacon();
+        bool completed = run_route();
         motion_stop();
         if (completed) completion_sound();
         else cue_play(CUE_FAULT);
-        report_printf("RESULT: %s\n", completed ? "PAYLOAD CONFIRMED" : "STOPPED WITHOUT PAYLOAD");
+        if (!route_next)
+            report_printf("RESULT: %s\n", completed ? "PAYLOAD CONFIRMED" : "STOPPED WITHOUT PAYLOAD");
+        else if (completed && route_start_on_mat)
+            report_printf("RESULT: ROUTE COMPLETE, %s payload confirmed (test start on the %s mat)\n",
+                          target_name(), target_name_of(TARGET_BEACON_ID));
+        else if (completed)
+            report_printf("RESULT: ROUTE COMPLETE, %s and %s payloads confirmed\n",
+                          target_name_of(TARGET_BEACON_ID), target_name());
+        else
+            report_printf("RESULT: ROUTE STOPPED before the %s payload\n", target_name());
     } else {
         cue_play(CUE_FAULT);
         report_printf("RESULT: STARTUP FAILED OR STOPPED\n");

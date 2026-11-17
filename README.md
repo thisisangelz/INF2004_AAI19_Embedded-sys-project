@@ -30,6 +30,13 @@ sampling settings and the hardware test procedure.
 | AP1 | Pink (red) | `getting_there/build/getting_there.uf2` |
 | AP2 | Blue | `getting_there/build/getting_there_ap2.uf2` |
 | AP3 | Purple | `getting_there/build/getting_there_ap3.uf2` |
+| AP1, then AP2 | Pink, then blue | `getting_there/build/getting_there_route.uf2` |
+
+The route build visits AP1, backs straight off its mat, switches to AP2's Wi-Fi
+name, beacon ID and mat, probes three directions away from AP1 and follows the
+strongest, while keeping off AP1's mat. `getting_there_leg2.uf2` tests the
+second leg alone from AP1's ring 4. See
+[the robot instructions](getting_there/README.md#ap1-then-ap2-from-one-flash-branch-featureap1-to-ap2-route).
 
 Each robot build ignores the other two mats (they read as floor). Confirm the
 banner `line-search v18 steps500-mat250 back-search side-probe mat-steer colour-gate own-mat`

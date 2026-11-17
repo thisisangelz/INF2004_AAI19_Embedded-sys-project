@@ -45,6 +45,12 @@ typedef struct {
 void colour_set_target_mat(colour_mat_t mat);
 colour_mat_t colour_target_mat(void);
 colour_zone_t colour_classify_mat(const colour_reading_t *reading, colour_mat_t *mat);
+// A mat to keep off (on a route, the beacon just visited; COLOUR_MAT_NONE,
+// the default, avoids nothing). A reading is on it when it shows one of that
+// mat's rings; white edges never count, since they look the same on every mat.
+void colour_set_avoid_mat(colour_mat_t mat);
+colour_mat_t colour_avoid_mat(void);
+bool colour_reading_on_avoided_mat(const colour_reading_t *reading);
 colour_zone_t colour_classify(const colour_reading_t *reading);
 const char *colour_zone_name(colour_zone_t zone);
 const char *colour_mat_name(colour_mat_t mat);
@@ -68,6 +74,8 @@ bool colour_arrival_check(void);
 // at least one reading. False before the first check, after a failed read,
 // or without a sensor. Navigation uses it to take smaller steps on the mat.
 bool colour_on_mat(void);
+// True when a reading of the latest arrival check was on the avoided mat.
+bool colour_on_avoided_mat(void);
 // Mat depth (see colour_zone_depth) of the latest check's last reading;
 // -1 before a check, after a failed read or without a sensor.
 int colour_last_depth(void);

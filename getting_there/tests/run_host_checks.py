@@ -28,11 +28,13 @@ for name in ['navigation', 'payload_client', 'report', 'motion', 'flash', 'colou
                     '-DPICO_FLASH_BANK_STORAGE_OFFSET=1564672']
     if name == 'navigation':
         command += ['-DLINE_SEARCH_MOVING_SAMPLES=1', str(tests.parent / 'line_search.c'),
-                    str(tests.parent / 'wifi_sampler.c'), str(tests.parent / 'colour_mat.c')]
+                    str(tests.parent / 'wifi_sampler.c'), str(tests.parent / 'colour_mat.c'),
+                    str(tests.parent / 'target_beacon.c')]
     if name == 'colour':
         command += [str(tests.parent / 'colour_sensor.c'), str(tests.parent / 'colour_mat.c')]
     if name == 'payload_client':
         command += ['-DENABLE_BLE', '-I', str(btstack), '-I', str(repo / 'ble_transfer'),
+                    str(tests.parent / 'target_beacon.c'),
                     str(btstack / 'ad_parser.c'), str(btstack / 'btstack_util.c')]
         if extended_events:
             command += ['-DTEST_EXTENDED_GATT_EVENTS=1']
@@ -52,6 +54,7 @@ for beacon in (1, 2, 3):
     executable = output / f'test_target_{beacon}.exe'
     subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-I', str(tests.parent),
                     f'-DTARGET_BEACON_ID={beacon}', f'-DEXPECTED_ID={beacon_id}',
-                    f'-DEXPECTED_SSID="{ssid}"', str(tests / 'test_target.c'), '-o', str(executable)],
+                    f'-DEXPECTED_SSID="{ssid}"', str(tests / 'test_target.c'),
+                    str(tests.parent / 'target_beacon.c'), '-o', str(executable)],
                    check=True)
     subprocess.run([str(executable)], check=True)
