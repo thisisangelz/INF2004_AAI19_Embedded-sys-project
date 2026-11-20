@@ -273,6 +273,9 @@ typedef struct {
     follow_end_t end;
     uint32_t position;
     line_pair_t baseline;
+    // at_best: the reading back at the best point after a declined or early
+    // line, facing the line's heading (as the side probes measure).
+    line_pair_t at_best;
 } follow_result_t;
 
 static bool log_dip_reading(const char *stage, unsigned probe, uint32_t position,
@@ -555,6 +558,7 @@ static payload_result_t end_line_at_best(follow_result_t *followed, float headin
     line_pair_t returned;
     result = measure_pair(&returned);
     if (result != PAYLOAD_NOT_CLOSE) return result;
+    followed->at_best = returned;
     followed->consistent = line_return_consistent(best, returned);
     report_printf("RETURN: RSSI %s; timed position remains approximate\n",
                   followed->consistent ? "consistent with best point" : "inconsistent with best point, stopping");
@@ -869,7 +873,9 @@ static payload_result_t probe_one_side(float origin, float side_heading, line_pa
     return return_along_line(moved, 0, side_heading);
 }
 
-static payload_result_t side_probe(float origin, float *first_side, probe_outcome_t *outcome)
+// first_reading: the reading of the side tried first, when one is decided.
+static payload_result_t side_probe(float origin, float *first_side, line_pair_t *first_reading,
+                                   probe_outcome_t *outcome)
 {
     static const float sides[2] = {-90.0f, 90.0f};
     line_pair_t readings[2];
@@ -894,6 +900,7 @@ static payload_result_t side_probe(float origin, float *first_side, probe_outcom
     int verdict = side_compare(readings[0], readings[1], &by_average);
     if (verdict != 0) {
         *first_side = verdict > 0 ? sides[1] : sides[0];
+        *first_reading = verdict > 0 ? readings[1] : readings[0];
         *outcome = PROBE_DECIDED;
     }
     report_printf("SIDE PROBE: %+d side %d/%d dBm, %+d side %d/%d dBm; %s%s\n",
@@ -975,17 +982,36 @@ static bool approach_loop(follow_result_t followed)
         float first_side = -90.0f;
         if (side_probe_enabled) {
             probe_outcome_t outcome;
-            result = side_probe(origin, &first_side, &outcome);
+            line_pair_t side_reading = followed.at_best; // set when a side is decided
+            result = side_probe(origin, &first_side, &side_reading, &outcome);
             if (result == PAYLOAD_COMPLETE) return true;
             if (result == PAYLOAD_FATAL) return false;
             if (outcome == PROBE_MAT) {
                 followed.end = FOLLOW_MAT;
                 continue;
             }
-            // The line had not declined: with no clear side, the beacon may
-            // still be ahead, so carry on along it as before.
-            if (outcome == PROBE_UNDECIDED && early) {
-                report_printf("APPROACH: no clear side after the early probe; continue heading %d from the best point\n",
+            // The line had not declined, so the beacon may still be ahead.
+            // Turn off it only for a side that reads clearly stronger than
+            // the best point itself (side_compare: 3 dB). On 17 November both
+            // sides read weaker than the best point three times, and each
+            // time AP2 was straight on: the side lines cost 2.5-3 minutes.
+            // When a side was stronger (-55/-56 against -59/-60), the mat
+            // was on that side.
+            bool beside = false;
+            if (outcome == PROBE_DECIDED && early) {
+                bool by_average;
+                beside = side_compare(followed.at_best, side_reading, &by_average) > 0;
+                report_printf("APPROACH: %+d side %d/%d dBm against %d/%d dBm at the best point; %s\n",
+                              (int)first_side, rssi_decode(side_reading.first.code),
+                              rssi_decode(side_reading.second.code),
+                              rssi_decode(followed.at_best.first.code),
+                              rssi_decode(followed.at_best.second.code),
+                              beside ? "stronger, try that side first" :
+                                       "not stronger than the best point, straight on first");
+            }
+            if (early && !beside) {
+                report_printf("APPROACH: %s after the early probe; continue heading %d from the best point\n",
+                              outcome == PROBE_DECIDED ? "no side stronger than the best point" : "no clear side",
                               (int)origin);
                 skip_early_probe = true;
                 result = follow_direction(origin, 0, &followed);
@@ -1265,11 +1291,11 @@ int main(void)
     cues_init();
     sleep_ms(2000);
     if (route_next)
-        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat ble-minus58 cues route | %s -> %s%s\n",
+        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe early-probe straight-first mat-steer colour-gate own-mat ble-minus58 cues route | %s -> %s%s\n",
                       target_name(), target_name_of(route_next),
                       route_start_on_mat ? " (test: start on the first mat)" : "");
     else
-        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat ble-minus58 cues | %s only\n",
+        report_printf("Getting there | line-search v18 steps500-mat250 back-search side-probe early-probe straight-first mat-steer colour-gate own-mat ble-minus58 cues | %s only\n",
                       target_name());
 #if COLOUR_SCAN_TEST
     report_printf("TEST BUILD: colour scan on the spot after calibration; no radio, no approach\n");

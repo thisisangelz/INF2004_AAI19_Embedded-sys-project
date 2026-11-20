@@ -8,7 +8,7 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 
 | Board | File | What it is |
 |---|---|---|
-| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
+| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search side-probe early-probe straight-first mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
 | Robot, going to AP2 (blue mat) | `build/getting_there_ap2.uf2` | The same firmware aimed at AP2 (`I AM PICO W 2`, beacon ID 2, blue mat); banner ends `AP2 only` |
 | Robot, going to AP3 (purple mat) | `build/getting_there_ap3.uf2` | The same firmware aimed at AP3 (`I AM PICO W 3`, beacon ID 3, purple mat); banner ends `AP3 only` |
 | Robot, AP1 then AP2 (one flash) | `build/getting_there_route.uf2` | AP1 on the pink mat, then backs off and goes to AP2 on the blue mat. Banner ends `cues route \| AP1 -> AP2` |
@@ -60,6 +60,35 @@ routes, all five completed with fault mask `0x000`. The full routes took 10.49,
 of the five runs the early probe fired on a flat stretch while AP2 was still
 ahead; the side lines failed and "straight on" then reached the mat, at a cost
 of about 2.5-3 minutes.
+
+## Straight on first after an early probe (branch feature/early-probe-straight-on-first)
+
+The fix for that open point. After an early probe, the stronger side now goes
+first only if it reads at least 3 dB stronger than the best point itself
+(measured back at the best point, facing the same way as the side probes; the
+same rule as the side choice, including the average). Otherwise the robot
+carries straight on from the best point first, as it already did with no clear
+side. If that line later declines, the usual side probe runs from its best
+point.
+
+The 17 November runs, side tried first against the best point:
+
+| Run | Best point | Side tried first | AP2 was | New rule |
+|---|---|---|---|---|
+| Leg-2 test 1 | −61/−61 | −63/−64 | straight on | straight on first |
+| Route run 2 | −60/−60 | −67/−67 | straight on | straight on first |
+| Route run 3 | −67/−66 | −67/−67 | straight on | straight on first |
+| Route run 1 | −59/−60 | −55/−56 | on that side | that side first, as before |
+| Leg-2 test 2 | − | the side probe reached the mat | on that side | unchanged |
+
+Waiting for 3 flat stops instead of 2 was considered and not used: close to
+AP2 the signal stayed flat (−61 to −64 dBm in leg-2 test 1) all the way to the
+mat, so more flat stops cannot tell "beside the beacon" from "still ahead".
+
+The log adds `APPROACH: +90 side .../... dBm against .../... dBm at the best
+point; not stronger than the best point, straight on first` (or `stronger, try
+that side first`). Banner: `... side-probe early-probe straight-first mat-steer ...`.
+Host tests only so far; not yet run on the robot.
 
 ## AP1 then AP2 from one flash (branch feature/ap1-to-ap2-route)
 
