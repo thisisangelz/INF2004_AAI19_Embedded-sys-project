@@ -1,0 +1,91 @@
+{
+  "source_commit": "6bd839beb3f3a420689f6dfc3ba6dbb575a69190",
+  "base_branch": "feature/early-probe-straight-on-first",
+  "base_commit": "159191b",
+  "review_branch": "codex/early-probe-quality-review",
+  "built_date": "2026-11-22",
+  "pico_sdk": "2.3.0",
+  "pico_sdk_commit": "98a542c1a62fb549ffb5d66a3e5892b06276b670",
+  "compiler": "arm-none-eabi-gcc (Arm GNU Toolchain 15.2.Rel1 (Build arm-15.86)) 15.2.1 20251203",
+  "cmake": "4.3.4",
+  "build_type": "Release",
+  "board": "pico_w",
+  "moving_samples": false,
+  "validation": {
+    "host_executables": 16,
+    "host_optimization": "-O2",
+    "host_undefined_behavior_sanitizer": "passed",
+    "local_address_sanitizer": "runtime did not initialize; no test result",
+    "saved_run_parser_logs": 27,
+    "firmware_targets": 11,
+    "hardware": "not flashed or tested"
+  },
+  "firmware": [
+    {
+      "path": "getting_there/build/getting_there.uf2",
+      "build_output": "build-review/getting_there/getting_there.uf2",
+      "bytes": 1058304,
+      "sha256": "90953c09a5c9fb4deefe9b642fdbe005d3bb3197890f76fa181c7e9f2d24c3c6"
+    },
+    {
+      "path": "getting_there/build/getting_there_ap2.uf2",
+      "build_output": "build-review/getting_there/getting_there_ap2.uf2",
+      "bytes": 1058304,
+      "sha256": "3da52262f6f2600d1e52ba741bb9e364ed8a695e83465c1d80e88417a38412de"
+    },
+    {
+      "path": "getting_there/build/getting_there_ap3.uf2",
+      "build_output": "build-review/getting_there/getting_there_ap3.uf2",
+      "bytes": 1058304,
+      "sha256": "fb2c2bddbdc5a9c02072b0cf37a90daa99878597f80ae321b4614860786576dd"
+    },
+    {
+      "path": "getting_there/build/getting_there_colour_scan.uf2",
+      "build_output": "build-review/getting_there/getting_there_colour_scan.uf2",
+      "bytes": 129536,
+      "sha256": "3b13c493ddb3bbb8f61ff1af146ea29527934fa1b31d73e19dda65d99666d7c9"
+    },
+    {
+      "path": "getting_there/build/getting_there_leg2.uf2",
+      "build_output": "build-review/getting_there/getting_there_leg2.uf2",
+      "bytes": 1061888,
+      "sha256": "9e02df3a0299e92bf72354802112a38e6fdadfbd534aa3635144aa2c862dba98"
+    },
+    {
+      "path": "getting_there/build/getting_there_route.uf2",
+      "build_output": "build-review/getting_there/getting_there_route.uf2",
+      "bytes": 1062400,
+      "sha256": "14514cfbb51650ab41a896a67ac66efdd9328a15534c2abfe75215f10182b310"
+    },
+    {
+      "path": "picow_access_point2_powerbank/build/picow_access_point2_powerbank.uf2",
+      "build_output": "build-review/picow_access_point2_powerbank/picow_access_point2_powerbank.uf2",
+      "bytes": 940032,
+      "sha256": "ce247857ecd96ceff75db9b1bd7db58b027bd4398b9a212db3ebbd81139e2b38"
+    },
+    {
+      "path": "picow_access_point3_powerbank/build/picow_access_point3_powerbank.uf2",
+      "build_output": "build-review/picow_access_point3_powerbank/picow_access_point3_powerbank.uf2",
+      "bytes": 940032,
+      "sha256": "2a3254503a5b830ce930a74f03498505e4a764afeae943523b166ce723a3d2ab"
+    },
+    {
+      "path": "picow_access_point_powerbank/build/picow_access_point_powerbank.uf2",
+      "build_output": "build-review/picow_access_point_powerbank/picow_access_point_powerbank.uf2",
+      "bytes": 940032,
+      "sha256": "9c6125d563c8ea1972704a63cfadb4402f9185ea7601bec1d1f2c6aec9889a5d"
+    },
+    {
+      "path": "tcs34725_calib/build/tcs34725_calib.uf2",
+      "build_output": "build-review/tcs34725_calib/tcs34725_calib.uf2",
+      "bytes": 72192,
+      "sha256": "5671f92d1dcbd64bd51565ec18d95d20a6881a6d2de03031851a3b34bbc7b901"
+    },
+    {
+      "path": "tcs34725_calib/build/tcs34725_calib6.uf2",
+      "build_output": "build-review/tcs34725_calib/tcs34725_calib6.uf2",
+      "bytes": 72704,
+      "sha256": "e755f86a8ed3ab450ede4f0441fa17e9bf2e2fcfd69598d15b1514e69071c875"
+    }
+  ]
+}
