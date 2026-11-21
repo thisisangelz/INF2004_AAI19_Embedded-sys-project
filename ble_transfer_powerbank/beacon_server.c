@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "btstack.h"
+#include "beacon_log.h"
 #include "buzzer.h"
 #include "file_transfer.h"
 #include "pico/cyw43_arch.h"
@@ -103,6 +104,7 @@ static uint8_t reply_file[64];
 static uint16_t reply_length;
 static uint16_t reply_offset;
 static uint8_t reply_sequence;
+static bool reply_finished;
 
 static void queue_notification(const uint8_t *data, uint16_t length)
 {
@@ -129,8 +131,18 @@ static void reset_transfer(void)
     received_file_length = 0;
     expected_file_crc = 0;
     expected_sequence = 0;
+    reply_length = 0;
     reply_offset = 0;
     reply_sequence = 0;
+    reply_finished = false;
+}
+
+static void protocol_error(uint8_t code)
+{
+    // Rejected metadata must never remain usable by a subsequent DATA packet.
+    reset_transfer();
+    beacon_status = BEACON_STATUS_ERROR;
+    send_simple(MSG_ERROR, code);
 }
 
 static void send_reply_piece(void)
@@ -142,7 +154,7 @@ static void send_reply_piece(void)
         transfer_write_u16(&packet[1], reply_length);
         transfer_write_u32(&packet[3], transfer_crc32(reply_file, reply_length));
         reply_sequence = 1;
-        printf("AP%d REPLY SEND: announcing %u-byte reply file, CRC-32 %08lx.\n",
+        beacon_log_printf("AP%d REPLY SEND: announcing %u-byte reply file, CRC-32 %08lx.\n",
                BEACON_ID, reply_length,
                (unsigned long)transfer_crc32(reply_file, reply_length));
         queue_notification(packet, 7);
@@ -160,7 +172,7 @@ static void send_reply_piece(void)
         memcpy(&packet[3], &reply_file[reply_offset], chunk);
         reply_offset += chunk;
         reply_sequence++;
-        printf("AP%d REPLY SEND: sending chunk %u, %u/%u bytes.\n",
+        beacon_log_printf("AP%d REPLY SEND: sending chunk %u, %u/%u bytes.\n",
                BEACON_ID, (unsigned)(reply_sequence - 1),
                reply_offset, reply_length);
         queue_notification(packet, (uint16_t)(3 + chunk));
@@ -169,7 +181,8 @@ static void send_reply_piece(void)
 
     packet[0] = MSG_REPLY_END;
     transfer_write_u32(&packet[1], transfer_crc32(reply_file, reply_length));
-    printf("AP%d REPLY SEND: all bytes sent; sending REPLY_END.\n", BEACON_ID);
+    reply_finished = true;
+    beacon_log_printf("AP%d REPLY SEND: all bytes sent; sending REPLY_END.\n", BEACON_ID);
     queue_notification(packet, 5);
 }
 
@@ -180,90 +193,107 @@ static int att_write_callback(hci_con_handle_t con_handle,
                               uint8_t *buffer,
                               uint16_t buffer_size)
 {
-    (void)transaction_mode;
-    (void)offset;
+    // This protocol uses single ATT writes. A prepare request must not execute
+    // a command which the client can subsequently cancel.
+    if (transaction_mode != ATT_TRANSACTION_MODE_NONE)
+        return ATT_ERROR_REQUEST_NOT_SUPPORTED;
+    if (offset != 0) return ATT_ERROR_INVALID_OFFSET;
 
     if (att_handle == ATT_CHARACTERISTIC_0xFF21_01_CLIENT_CONFIGURATION_HANDLE) {
+        if (buffer_size != 2) return ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH;
+        uint16_t configuration = transfer_read_u16(buffer);
+        if (configuration != 0 &&
+            configuration != GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION)
+            return ATT_ERROR_VALUE_NOT_ALLOWED;
         notifications_enabled =
-            buffer_size >= 2 &&
-            transfer_read_u16(buffer) ==
+            configuration ==
                 GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
         connection_handle = con_handle;
+        pending_notification_length = 0;
+        reset_transfer();
         beacon_status = notifications_enabled ? BEACON_STATUS_READY
                                               : BEACON_STATUS_CONNECTED;
-        printf("BLE notifications %s\n",
+        beacon_log_printf("BLE notifications %.8s\n",
                notifications_enabled ? "enabled" : "disabled");
         return 0;
     }
 
-    if (att_handle != ATT_CHARACTERISTIC_0xFF21_01_VALUE_HANDLE ||
-        buffer_size == 0) {
+    if (att_handle != ATT_CHARACTERISTIC_0xFF21_01_VALUE_HANDLE) {
         return 0;
     }
+    if (buffer_size == 0 || buffer_size > TRANSFER_PACKET_SIZE)
+        return ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH;
+    if (!notifications_enabled || con_handle != connection_handle)
+        return ATT_ERROR_WRITE_NOT_PERMITTED;
+    // Keep the outstanding reply intact until CAN_SEND_NOW has delivered it.
+    // Reject pipelined commands before they can advance offsets or replace it.
+    if (pending_notification_length) return ATT_ERROR_INSUFFICIENT_RESOURCES;
 
     switch (buffer[0]) {
     case MSG_HELLO:
-        if (buffer_size < 3 || buffer[1] != BEACON_PROTOCOL_VERSION ||
+        if (buffer_size != 3 || buffer[1] != BEACON_PROTOCOL_VERSION ||
             buffer[2] != BEACON_ID) {
-            beacon_status = BEACON_STATUS_ERROR;
-            send_simple(MSG_ERROR, 1);
+            protocol_error(1);
             break;
         }
         reset_transfer();
         beacon_status = BEACON_STATUS_HANDSHAKE;
-        printf("AP%d HANDSHAKE: valid HELLO received; sending HELLO_ACK.\n",
+        beacon_log_printf("AP%d HANDSHAKE: valid HELLO received; sending HELLO_ACK.\n",
                BEACON_ID);
         send_simple(MSG_HELLO_ACK, BEACON_ID);
         break;
 
-    case MSG_FILE_START:
-        if (buffer_size < 7) {
-            beacon_status = BEACON_STATUS_ERROR;
-            send_simple(MSG_ERROR, 2);
+    case MSG_FILE_START: {
+        if (buffer_size != 7 || beacon_status != BEACON_STATUS_HANDSHAKE) {
+            protocol_error(2);
             break;
         }
-        expected_file_length = transfer_read_u16(&buffer[1]);
+        uint16_t announced = transfer_read_u16(&buffer[1]);
+        if (!announced || announced > sizeof(received_file)) {
+            protocol_error(3);
+            break;
+        }
+        expected_file_length = announced;
         expected_file_crc = transfer_read_u32(&buffer[3]);
         received_file_length = 0;
         expected_sequence = 0;
-        if (expected_file_length > sizeof(received_file)) {
-            beacon_status = BEACON_STATUS_ERROR;
-            send_simple(MSG_ERROR, 3);
-            break;
-        }
         beacon_status = BEACON_STATUS_RECEIVING_FILE;
-        printf("AP%d FILE RECEIVE: robot announced %u bytes, CRC-32 %08lx; sending FILE_READY.\n",
+        beacon_log_printf("AP%d FILE RECEIVE: robot announced %u bytes, CRC-32 %08lx; sending FILE_READY.\n",
                BEACON_ID, expected_file_length,
                (unsigned long)expected_file_crc);
         send_simple(MSG_FILE_READY, BEACON_ID);
         break;
+    }
 
     case MSG_FILE_DATA: {
-        if (buffer_size < 3) {
-            beacon_status = BEACON_STATUS_ERROR;
-            send_simple(MSG_ERROR, 4);
+        if (buffer_size < 3 || beacon_status != BEACON_STATUS_RECEIVING_FILE) {
+            protocol_error(4);
             break;
         }
         uint8_t sequence = buffer[1];
         uint8_t chunk = buffer[2];
         if (sequence != expected_sequence ||
-            chunk > TRANSFER_DATA_BYTES ||
+            !chunk || chunk > TRANSFER_DATA_BYTES ||
             buffer_size != (uint16_t)(3 + chunk) ||
-            received_file_length + chunk > expected_file_length) {
-            beacon_status = BEACON_STATUS_ERROR;
-            send_simple(MSG_ERROR, 5);
+            received_file_length + chunk > expected_file_length ||
+            received_file_length + chunk > sizeof(received_file)) {
+            protocol_error(5);
             break;
         }
         memcpy(&received_file[received_file_length], &buffer[3], chunk);
         received_file_length += chunk;
         expected_sequence++;
-        printf("AP%d FILE RECEIVE: chunk %u accepted, %u/%u bytes.\n",
+        beacon_log_printf("AP%d FILE RECEIVE: chunk %u accepted, %u/%u bytes.\n",
                BEACON_ID, (unsigned)expected_sequence,
                received_file_length, expected_file_length);
         break;
     }
 
     case MSG_FILE_END: {
+        if (buffer_size != 1 || beacon_status != BEACON_STATUS_RECEIVING_FILE) {
+            protocol_error(7);
+            break;
+        }
         uint32_t actual_crc =
             transfer_crc32(received_file, received_file_length);
         uint8_t response[6] = {MSG_FILE_RECEIVED, 0};
@@ -273,43 +303,52 @@ static int att_write_callback(hci_con_handle_t con_handle,
                               : BEACON_STATUS_ERROR;
         response[1] = valid ? 0 : 1;
         transfer_write_u32(&response[2], actual_crc);
-        printf("AP%d FILE RECEIVE: expected CRC %08lx, calculated CRC %08lx - %s.\n",
+        beacon_log_printf("AP%d FILE RECEIVE: expected CRC %08lx, calculated CRC %08lx - %.8s.\n",
                BEACON_ID, (unsigned long)expected_file_crc,
                (unsigned long)actual_crc, valid ? "VERIFIED" : "FAILED");
-        printf("AP%d FILE CONTENT: %.*s\n", BEACON_ID,
+        beacon_log_printf("AP%d FILE CONTENT: %.*s\n", BEACON_ID,
                valid ? received_file_length : 0, received_file);
         queue_notification(response, sizeof(response));
         break;
     }
 
     case MSG_REPLY_REQUEST:
+        if (buffer_size != 1 || beacon_status != BEACON_STATUS_FILE_VERIFIED) {
+            protocol_error(7);
+            break;
+        }
         reply_length = (uint16_t)snprintf(
             (char *)reply_file, sizeof(reply_file),
             "Reply file from beacon AP%d", BEACON_ID);
         reply_offset = 0;
         reply_sequence = 0;
+        reply_finished = false;
         beacon_status = BEACON_STATUS_SENDING_REPLY;
-        printf("AP%d REPLY SEND: robot requested the beacon reply file.\n",
+        beacon_log_printf("AP%d REPLY SEND: robot requested the beacon reply file.\n",
                BEACON_ID);
         send_reply_piece();
         break;
 
     case MSG_REPLY_NEXT:
+        if (buffer_size != 1 || beacon_status != BEACON_STATUS_SENDING_REPLY || reply_finished) {
+            protocol_error(7);
+            break;
+        }
         send_reply_piece();
         break;
 
     case MSG_COMPLETE:
-        beacon_status = BEACON_STATUS_COMPLETE;
-        printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
+        if (buffer_size != 1 || beacon_status != BEACON_STATUS_SENDING_REPLY || !reply_finished) {
+            protocol_error(7);
+            break;
+        }
+        beacon_log_printf("AP%d FILE TRANSFER COMPLETE: robot sent final COMPLETE; sending COMPLETE_ACK.\n",
                BEACON_ID);
-        connected_cue_on = false;
-        buzzer_play(CUE(cue_complete), false);
         send_simple(MSG_COMPLETE_ACK, BEACON_ID);
         break;
 
     default:
-        beacon_status = BEACON_STATUS_ERROR;
-        send_simple(MSG_ERROR, 6);
+        protocol_error(6);
         break;
     }
 
@@ -335,7 +374,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             gap_advertisements_set_data(sizeof(adv_data), adv_data);
             gap_advertisements_enable(1);
             beacon_status = BEACON_STATUS_ADVERTISING;
-            printf("BLE beacon AP%d advertising\n", BEACON_ID);
+            beacon_log_printf("BLE beacon AP%d advertising\n", BEACON_ID);
             buzzer_play(CUE(cue_alive), false);
         }
         break;
@@ -346,7 +385,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             connection_handle =
                 hci_subevent_le_connection_complete_get_connection_handle(packet);
             beacon_status = BEACON_STATUS_CONNECTED;
-            printf("BLE robot connected\n");
+            beacon_log_printf("BLE robot connected\n");
             connected_cue_on = true;
             buzzer_play(CUE(cue_connected), true);
         }
@@ -364,17 +403,30 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
             connected_cue_on = false;
             buzzer_stop();
         }
-        printf("BLE robot disconnected; ready for another transfer\n");
+        beacon_log_printf("BLE robot disconnected; ready for another transfer\n");
         break;
 
     case ATT_EVENT_CAN_SEND_NOW:
         if (pending_notification_length != 0) {
-            att_server_notify(
+            uint8_t error = att_server_notify(
                 connection_handle,
                 ATT_CHARACTERISTIC_0xFF21_01_VALUE_HANDLE,
                 pending_notification,
                 pending_notification_length);
-            pending_notification_length = 0;
+            if (error == ERROR_CODE_SUCCESS) {
+                if (pending_notification[0] == MSG_COMPLETE_ACK) {
+                    beacon_status = BEACON_STATUS_COMPLETE;
+                    connected_cue_on = false;
+                    buzzer_play(CUE(cue_complete), false);
+                }
+                pending_notification_length = 0;
+            } else if (error == BTSTACK_ACL_BUFFERS_FULL) {
+                att_server_request_can_send_now_event(connection_handle);
+            } else {
+                pending_notification_length = 0;
+                reset_transfer();
+                beacon_status = BEACON_STATUS_ERROR;
+            }
         }
         break;
 
@@ -386,6 +438,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel,
 int main(void)
 {
     stdio_init_all();
+    beacon_log_init();
     buzzer_init(BEACON_BUZZER_PIN);
     // Start the additional load before the startup delay and before BTstack
     // can write flash. Core 0 continues to handle all Wi-Fi and BLE work.
@@ -437,6 +490,7 @@ int main(void)
 
     uint32_t next_status_ms = 0;
     while (true) {
+        beacon_log_flush();
         uint32_t now_ms = (uint32_t)(time_us_64() / 1000);
         if ((int32_t)(now_ms - next_status_ms) >= 0) {
             bool connected = connection_handle != HCI_CON_HANDLE_INVALID;

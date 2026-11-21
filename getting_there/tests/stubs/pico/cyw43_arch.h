@@ -8,3 +8,12 @@ void cyw43_arch_enable_sta_mode(void);
 int cyw43_wifi_scan(int *state, cyw43_wifi_scan_options_t *options, void *context,
                    int (*callback)(void *, const cyw43_ev_scan_result_t *));
 bool cyw43_wifi_scan_active(int *state);
+// Beacon-only setup calls. Host tests discard the firmware main function.
+#define CYW43_WL_GPIO_LED_PIN 0
+#define CYW43_AUTH_WPA2_AES_PSK 0
+#define CYW43_NO_POWERSAVE_MODE 0
+void cyw43_arch_gpio_put(unsigned pin, bool value);
+void cyw43_arch_enable_ap_mode(const char *ssid, const char *password, unsigned auth);
+int cyw43_wifi_pm(int *state, uint32_t value);
+uint32_t cyw43_pm_value(unsigned mode, unsigned sleep, unsigned listen,
+                      unsigned dtim, unsigned assoc);

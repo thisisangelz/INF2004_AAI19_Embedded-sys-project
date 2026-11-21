@@ -27,6 +27,17 @@ Wi-Fi and BLE behaviour are unchanged. Set the buzzer mute switch to sound.
 | Transfer complete on the beacon's side | Three beeps, each higher |
 ## Changes
 
+The quality-review branch validates packet phase, sizes and storage bounds before
+changing transfer state. Rejected metadata cannot be reused by later data packets;
+an unsent notification cannot be overwritten by a pipelined command. The completion
+cue begins when the final acknowledgement is accepted by the transport.
+
+Radio callback messages now go through `beacon_log.c`: a fixed queue of eight
+320-byte slots, flushed at most two lines per main-loop call. Full queues drop new
+messages and report dropped/truncated counts when USB returns. Callbacks never
+write USB; the queue is core-0-only. Startup and periodic main-loop status output
+remain direct. See [review and tests](../docs/code-review.md).
+
 - Version 2 keeps the second processor core (core 1) busy with continuous
   arithmetic, starting before the two-second startup delay. The load remains
   active during idle periods, BLE connections and transfers.

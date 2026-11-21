@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -11,6 +12,8 @@ static bool gyro_model, gyro_stalled, change_range_on_reset;
 static unsigned read_failures_remaining, write_failures_remaining, controller_resets;
 static bool short_gyro_read;
 static uint32_t recovery_log_delay_us;
+static uint32_t correction_log_delay_us;
+static float physical_heading;
 static char motion_log[8192];
 static size_t motion_log_length;
 static int gyro_sensor_sign;
@@ -28,6 +31,10 @@ static void capture_log(const char *format, va_list args)
     int n=vsnprintf(motion_log+motion_log_length,sizeof(motion_log)-motion_log_length,format,args);
     if (n>0 && (size_t)n<sizeof(motion_log)-motion_log_length) motion_log_length+=(size_t)n;
     if (!strncmp(format,"IMU RECOVERED:",14)) clock_us+=recovery_log_delay_us;
+    if (!strncmp(format,"TURN: settled",13)) {
+        clock_us += correction_log_delay_us;
+        correction_log_delay_us = 0; // only the first correction log blocks
+    }
 }
 void report_printf(const char *format, ...)
 { va_list args; va_start(args,format); capture_log(format,args); va_end(args); }
@@ -36,6 +43,11 @@ void report_defer_printf(const char *format, ...)
 uint64_t time_us_64(void) { return clock_us; }
 void sleep_ms(uint32_t ms)
 {
+    if (gyro_model && !gyro_stalled) {
+        int left = ((int)levels[M1_A] - (int)levels[M1_B]) / 100;
+        int right = ((int)levels[M2_B] - (int)levels[M2_A]) / 100;
+        physical_heading += (right-left) * 4.0f * (float)ms / 1000.0f;
+    }
     clock_us += ms * 1000;
     if (press_at_us && clock_us >= press_at_us) gp21 = true;
 }
@@ -101,6 +113,8 @@ static void reset(void)
     gp21 = write_failure = read_failure = change_range_on_reset = short_gyro_read = false;
     read_failures_remaining=write_failures_remaining=controller_resets=0;
     recovery_log_delay_us=0;
+    correction_log_delay_us=0;
+    physical_heading=0;
     motion_log_length=0; motion_log[0]=0;
     gyro_model = gyro_stalled = false; gyro_sensor_sign = 1;
     clock_us = press_at_us = 0;
@@ -135,6 +149,22 @@ int main(void)
     assert(!turn_close_enough(5.1f) && !turn_close_enough(-8.0f));
     motion_state.turn_sign = 0; // not learnt
     assert(!turn_close_enough(0.0f));
+    // A stopped correction log must not become rotation at the next powered
+    // sample. Track wheel-model travel independently of gyro integration.
+    // Previously a 100 ms log made a 90-degree turn report 91.4 at just 75.4.
+    for (int sign=-1; sign<=1; sign+=2) {
+        for (int direction=-1; direction<=1; direction+=2) {
+            for (unsigned delay=0; delay<=100000; delay+=100000) {
+                reset(); motion_arm_stop(); set_turn_sign((float)sign);
+                gyro_model=true; gyro_sensor_sign=sign; correction_log_delay_us=delay;
+                float target = (float)direction * 90.0f;
+                assert(motion_turn_to_heading(target) && !powered());
+                assert(strstr(motion_log,"correcting") && correction_log_delay_us==0);
+                assert(fabsf(physical_heading-target) <= TURN_ACCEPT_DEGREES);
+                assert(fabsf(motion_heading()-physical_heading) < 0.1f);
+            }
+        }
+    }
     reset();
     gp21 = true;
     assert(motion_replay_pressed() && !motion_stop_requested());

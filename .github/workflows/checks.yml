@@ -1,0 +1,50 @@
+name: Firmware checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Get the tested SDK headers
+        run: |
+          git clone --depth 1 --branch 2.3.0 https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
+          git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1 lib/btstack
+      - name: Host regression tests with memory and undefined-behaviour checks
+        run: python3 getting_there/tests/run_host_checks.py --cc gcc --sdk "$RUNNER_TEMP/pico-sdk" --sanitize
+      - name: Saved run parser regressions
+        run: node docs/tools/test_logparser.js
+
+  firmware:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install the ARM build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+      - name: Get Pico SDK 2.3.0
+        run: git clone --depth 1 --branch 2.3.0 --recurse-submodules --shallow-submodules https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
+      - name: Build all robot, beacon and calibration variants
+        run: |
+          cmake -G Ninja -S . -B build-review -DPICO_SDK_PATH="$RUNNER_TEMP/pico-sdk" -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-review --parallel 2
+      - name: Save compile-tested firmware (hardware qualification still required)
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: firmware-${{ github.sha }}
+          path: build-review/**/*.uf2
+          if-no-files-found: error

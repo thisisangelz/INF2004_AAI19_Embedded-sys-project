@@ -416,6 +416,9 @@ static bool turn_degrees(float degrees)
         int sign_samples = 0;
         int duty = direction * error <= TURN_SLOW_ZONE_DEGREES
                        ? TURN_SLOW_DUTY_PERCENT : TURN_DUTY_PERCENT;
+        // Settling has already accounted for coast. A correction log can
+        // block while stopped; never integrate that gap at the next powered rate.
+        previous_us = time_us_64();
         motors_set(-direction * duty, direction * duty);
 
         while (true) {

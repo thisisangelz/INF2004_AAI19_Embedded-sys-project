@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdarg.h>
+#define HOST_TEST_IRQ_HOOKS
 #include "../payload_client.c"
 
 static uint64_t sim_time;
@@ -25,6 +26,12 @@ static char log_text[32768];
 static size_t log_length;
 static bool defer_context_callback;
 static btstack_context_callback_registration_t *queued_context_callback;
+static uint32_t irq_mask;
+static void (*clock_irq)(void), (*pending_irq)(void);
+static bool inject_connection_irq;
+static uint32_t disconnect_delay_ms;
+static hci_con_handle_t pending_disconnect = HCI_CON_HANDLE_INVALID;
+static uint64_t disconnect_due;
 const hci_cmd_t hci_le_set_scan_enable = {0x200c, "11"};
 static void advance_peer(void);
 
@@ -34,7 +41,43 @@ static void scan_ack(void)
     scan_ack_pending = false;
     hci_handler(HCI_EVENT_PACKET, 0, packet, sizeof(packet));
 }
-uint64_t time_us_64(void) { return sim_time; }
+uint32_t host_test_save_and_disable_interrupts(void)
+{
+    uint32_t previous = irq_mask;
+    irq_mask = 1;
+    return previous;
+}
+void host_test_restore_interrupts(uint32_t state)
+{
+    irq_mask = state;
+    if (!irq_mask && pending_irq) {
+        void (*callback)(void) = pending_irq;
+        pending_irq = NULL;
+        callback();
+    }
+}
+uint64_t time_us_64(void)
+{
+    uint64_t value = sim_time;
+    if (clock_irq) {
+        void (*callback)(void) = clock_irq;
+        clock_irq = NULL;
+        if (irq_mask) pending_irq = callback;
+        else callback();
+    }
+    return value;
+}
+static void connection_irq(void)
+{
+    sim_time += 1000;
+    connection_complete(0, 42);
+}
+static void disconnected(hci_con_handle_t handle)
+{
+    uint8_t packet[] = {HCI_EVENT_DISCONNECTION_COMPLETE, 4, 0, (uint8_t)handle,
+                        (uint8_t)(handle >> 8), 0x13};
+    hci_handler(HCI_EVENT_PACKET, 0, packet, sizeof(packet));
+}
 static bool feed_close;
 static unsigned close_callbacks;
 static void advertisement(int rssi, uint8_t id);
@@ -42,6 +85,11 @@ static void on_close(void) { ++close_callbacks; }
 void sleep_ms(uint32_t ms)
 {
     sim_time += (uint64_t)ms * 1000;
+    if (pending_disconnect != HCI_CON_HANDLE_INVALID && sim_time >= disconnect_due) {
+        hci_con_handle_t handle = pending_disconnect;
+        pending_disconnect = HCI_CON_HANDLE_INVALID;
+        disconnected(handle);
+    }
     if (auto_scan_ack && scan_ack_pending) scan_ack();
     // AP1 close by: strong advertisements, then a failed connection.
     if (feed_close && current_state() == BLE_SCANNING) advertisement(-40, 1);
@@ -57,7 +105,13 @@ void report_defer_printf(const char *format, ...)
     va_end(args);
     if (count>0 && (size_t)count<sizeof(log_text)-log_length) log_length+=(size_t)count;
 }
-void report_flush_usb(void) { }
+void report_flush_usb(void)
+{
+    if (inject_connection_irq && current_state() == BLE_CONNECTING) {
+        inject_connection_irq = false;
+        clock_irq = connection_irq;
+    }
+}
 void hci_dump_log(int level, const char *format, ...) { (void)level; (void)format; }
 bool motion_stop_requested(void) { return stopped; }
 void motion_stop(void) { }
@@ -93,9 +147,10 @@ uint8_t gap_connect_cancel(void)
 uint8_t gap_disconnect(hci_con_handle_t handle)
 {
     ++disconnect_calls;
-    uint8_t packet[] = {HCI_EVENT_DISCONNECTION_COMPLETE, 4, 0, (uint8_t)handle,
-                        (uint8_t)(handle >> 8), 0x13};
-    hci_handler(HCI_EVENT_PACKET, 0, packet, sizeof(packet));
+    if (disconnect_delay_ms) {
+        pending_disconnect = handle;
+        disconnect_due = sim_time + (uint64_t)disconnect_delay_ms * 1000;
+    } else disconnected(handle);
     return 0;
 }
 uint8_t gatt_client_write_value_of_characteristic(btstack_packet_handler_t callback,
@@ -136,6 +191,8 @@ static void reset(void)
     start_scan_calls=0; mtu_auto_enabled=-1;
     auto_connect=connect_pending=auto_setup=reached_hello=false; discovery_delay_ms=0;
     log_length=0; log_text[0]=0;
+    irq_mask = 0; clock_irq = pending_irq = NULL; inject_connection_irq = false;
+    disconnect_delay_ms = 0; pending_disconnect = HCI_CON_HANDLE_INVALID;
     flag_assign(F_RECONNECT_REQUESTED,false);
     result_put(ST_RESULT_SHIFT,PAYLOAD_NOT_CLOSE);
     for (int f=0;f<FAULT_COUNT;++f) fault_clear((fault_t)f);
@@ -303,6 +360,23 @@ static void successful_exchange(bool early_notifications, uint8_t id)
 
 int main(void)
 {
+    // A connection IRQ between reading the clock and phase_started_ms used to
+    // underflow elapsed and abort a brand-new service discovery immediately.
+    reset(); flag_assign(F_CLOSE_CONFIRMED, true);
+    result_put(ST_RESULT_SHIFT, PAYLOAD_RETRY); inject_connection_irq = true;
+    disconnect_delay_ms = 100;
+    assert(payload_client_retry() == PAYLOAD_RETRY);
+    assert(sim_time >= 15100000 && disconnect_calls == 1 && !flag(F_ATTEMPT_RUNNING));
+    assert(strstr(log_text, "phase=service discovery"));
+
+    // Cleanup remains bounded when a successful disconnect request never
+    // delivers its completion event within the allowed three seconds.
+    reset(); flag_assign(F_CLOSE_CONFIRMED, true);
+    result_put(ST_RESULT_SHIFT, PAYLOAD_RETRY); auto_connect = true;
+    disconnect_delay_ms = 10000;
+    assert(payload_client_retry() == PAYLOAD_FATAL && fault_test(FAULT_BLE_RADIO));
+    assert(flag(F_ATTEMPT_RUNNING) && current_state() == BLE_CLOSING);
+
     reset(); defer_context_callback=true; payload_client_init();
     assert(!payload_client_ready() && !payload_client_start_failed() && power_calls==0 && queued_context_callback);
     queued_context_callback->callback(queued_context_callback->context);

@@ -738,6 +738,15 @@ assume ideal wheel movement and do not establish hardware navigation reliability
 python getting_there/tests/run_host_checks.py --cc gcc --sdk 'C:/pico-sdk/2.3.0'
 ```
 
+The entry point now owns startup/shutdown only. `robot_run.c` owns the run and
+route, `colour_scan.c` performs a stopped scan through explicit continue/checkpoint
+hooks, and the pure direction comparisons are in `line_search.c`. See
+[architecture, fixes and traceability](../docs/code-review.md).
+
+For extra host checking, add `--sanitize` (AddressSanitizer and UBSan), or
+`--sanitize undefined` if the host's ASan runtime cannot start. These are simulations
+and fault-injection tests; radio range, wheel slip and STOP latency need hardware.
+
 ## Minimum-bit data representation
 
 Existing BLE and protocol state retains its packed representation and compile-time

@@ -413,6 +413,27 @@ static void check_scan_direction(void)
     colour_reading_t mixed[3] = {{400, 900, 800, 700}, {2700, 1000, 475, 800}, {5150, 1000, 785, 800}};
     colour_scan_result_t est = colour_scan_estimate(angles, mixed, 3);
     assert(est.valid && est.darkest_angle == 90 && est.depth_range == 2);
+
+    // Equal opposite depths have no direction, even with a nonzero range.
+    // Use the full twelve-angle scan and rotate it to exercise trig roundoff.
+    const colour_reading_t floor = {2900, 1000, 922, 760};
+    const colour_reading_t ring2 = {5150, 1000, 785, 800};
+    const colour_reading_t ring3 = {3770, 1000, 628, 800};
+    for (int offset=0; offset<180; offset+=30) {
+        int scan_angles[12];
+        colour_reading_t readings[12];
+        for (unsigned i=0; i<12; ++i) {
+            scan_angles[i] = ((int)i * 30 + offset) % 360;
+            readings[i] = i==0 || i==6 ? ring2 : floor;
+        }
+        est = colour_scan_estimate(scan_angles, readings, 12);
+        assert(!est.valid && est.depth_range==3 && est.max_depth==3);
+        // A real depth advantage still supplies a direction; no policy or
+        // ring thresholds change when rejecting numerical cancellation.
+        readings[0] = ring3;
+        est = colour_scan_estimate(scan_angles, readings, 12);
+        assert(est.valid && angle_error(est.vector_angle, offset)<=1);
+    }
 }
 
 int main(void)

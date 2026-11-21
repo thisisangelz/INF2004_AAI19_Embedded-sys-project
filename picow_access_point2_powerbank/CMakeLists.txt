@@ -17,9 +17,12 @@ endif()
 
 add_executable(picow_access_point2_powerbank
     ../ble_transfer_powerbank/beacon_server.c
+    ../ble_transfer_powerbank/beacon_log.c
     ../ble_transfer_powerbank/powerbank_load.c
     ../common/buzzer.c
 )
+
+target_compile_options(picow_access_point2_powerbank PRIVATE -Wall -Wextra)
 
 target_include_directories(picow_access_point2_powerbank PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}

@@ -28,7 +28,7 @@
 // (about 40-50 cm at the drive speed of the 7 November three-chair run).
 #define LINE_SIDE_PROBE_MS 2000u
 // Choosing a side when the two batches disagree: the average must be this
-// much stronger (see side_compare in getting_there.c).
+// much stronger (see line_side_compare in line_search.c).
 #define LINE_SIDE_AVERAGE_DB 3
 // Early side probe: once a line has risen this much above its start and then
 // found no new best for this many stops, the beacon is beside the line.
@@ -48,4 +48,9 @@ line_pair_t line_median_reference(const line_pair_t samples[LINE_REFERENCE_POSIT
 bool line_reference_declined(line_pair_t reference, line_pair_t current);
 bool line_return_consistent(line_pair_t best, line_pair_t returned);
 wifi_sample_t line_reference(line_pair_t pair);
+// Direction-choice comparison; +1 means current is stronger, -1 previous.
+// by_average reports use of the fallback average rule. Missing pairs tie.
+int line_side_compare(line_pair_t previous, line_pair_t current, bool *by_average);
+// Sum of the two decoded dBm readings (twice their average).
+int line_pair_sum(line_pair_t pair);
 #endif

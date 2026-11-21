@@ -97,3 +97,30 @@ bool line_return_consistent(line_pair_t best, line_pair_t returned)
     return (int)returned.first.code - (int)reference.code <= return_margin(reference, returned.first) &&
            (int)returned.second.code - (int)reference.code <= return_margin(reference, returned.second);
 }
+
+int line_pair_sum(line_pair_t pair)
+{
+    return rssi_decode(pair.first.code) + rssi_decode(pair.second.code);
+}
+
+// Which of two places is stronger, for choosing a direction: +1 when b is,
+// -1 when a is, 0 when unclear. First the usual rule (line_compare: both
+// batches at least 3 dB better). When the batches disagree, the average
+// decides if it is at least LINE_SIDE_AVERAGE_DB better and neither batch
+// points the other way. On 17 November the 271 side read -63 then -56
+// against -65/-67: one batch 2 dB, the other 11 dB, "no clear side"; on
+// average it was 6 dB stronger, the side the mat was on.
+int line_side_compare(line_pair_t a, line_pair_t b, bool *by_average)
+{
+    *by_average = false;
+    int verdict = line_compare(a, b);
+    if (verdict || a.first.code == RSSI_MISSING_CODE || a.second.code == RSSI_MISSING_CODE ||
+        b.first.code == RSSI_MISSING_CODE || b.second.code == RSSI_MISSING_CODE) return verdict;
+    int first = rssi_decode(b.first.code) - rssi_decode(a.first.code);
+    int second = rssi_decode(b.second.code) - rssi_decode(a.second.code);
+    int sum = first + second; // twice the average difference
+    if (sum >= 2 * LINE_SIDE_AVERAGE_DB && first >= 0 && second >= 0) verdict = 1;
+    else if (sum <= -2 * LINE_SIDE_AVERAGE_DB && first <= 0 && second <= 0) verdict = -1;
+    *by_average = verdict != 0;
+    return verdict;
+}

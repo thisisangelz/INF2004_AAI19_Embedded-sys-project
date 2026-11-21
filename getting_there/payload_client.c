@@ -716,23 +716,36 @@ static payload_result_t run_attempt(bool reconnect)
             if (close_callback) close_callback();
         }
         report_flush_usb();
-        uint32_t elapsed = now_ms() - phase_started_ms;
-        bool cleanup = current_state() == BLE_CLOSING || current_state() == BLE_STOPPING_SCAN;
-        if (cleanup && elapsed >= CLEANUP_TIMEOUT_MS) {
+        bool stop = motion_stop_requested();
+        bool request_abort = false, cleanup_failed = false;
+        // The callback changes both the phase and its start time. Snapshot the
+        // clock with them, and commit an abort before callbacks can run again.
+        // Otherwise an IRQ between these reads can manufacture an unsigned
+        // timeout or apply the previous phase's elapsed time to fresh cleanup.
+        uint32_t irq = save_and_disable_interrupts();
+        uint32_t now = now_ms();
+        ble_state_t state = current_state();
+        uint32_t elapsed = now - phase_started_ms;
+        bool cleanup = state == BLE_CLOSING || state == BLE_STOPPING_SCAN;
+        if (flag(F_ATTEMPT_RUNNING) && cleanup && elapsed >= CLEANUP_TIMEOUT_MS) {
+            cleanup_failed = true;
+        } else if (flag(F_ATTEMPT_RUNNING) && !cleanup && !flag(F_ABORT_REQUESTED) &&
+                   (stop || elapsed >= phase_timeout(state) ||
+                    (uint32_t)(now - start) >= ATTEMPT_TIMEOUT_MS)) {
             flag_assign(F_ABORT_REQUESTED, true);
-            fault_raise(FAULT_BLE_RADIO);
-            report_defer_printf("FAILED: BLE cleanup did not finish; no further movement\n");
-            return PAYLOAD_FATAL;
+            abort_started = now;
+            request_abort = true;
         }
-        uint32_t timeout = phase_timeout(current_state());
-        if (!flag(F_ABORT_REQUESTED) && (motion_stop_requested() || elapsed >= timeout ||
-                                  (uint32_t)(now_ms() - start) >= ATTEMPT_TIMEOUT_MS)) {
-            flag_assign(F_ABORT_REQUESTED, true);
-            abort_started = now_ms();
+        if (flag(F_ATTEMPT_RUNNING) && flag(F_ABORT_REQUESTED) &&
+            (uint32_t)(now - abort_started) >= CLEANUP_TIMEOUT_MS)
+            cleanup_failed = true;
+        if (cleanup_failed) flag_assign(F_ABORT_REQUESTED, true);
+        restore_interrupts(irq);
+        if (request_abort) {
             abort_registration.callback = abort_attempt_callback;
             btstack_run_loop_execute_on_main_thread(&abort_registration);
         }
-        if (flag(F_ABORT_REQUESTED) && (uint32_t)(now_ms() - abort_started) >= CLEANUP_TIMEOUT_MS) {
+        if (cleanup_failed) {
             fault_raise(FAULT_BLE_RADIO);
             report_defer_printf("FAILED: BLE cleanup did not finish; no further movement\n");
             return PAYLOAD_FATAL;

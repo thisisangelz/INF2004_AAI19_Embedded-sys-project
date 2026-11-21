@@ -59,6 +59,24 @@ The [v16 hardware run](docs/runs/2026-11-03-v16-backtrack.md) records successful
 backtracking, a perpendicular approach and verified payload completion with no
 reported faults. Its full saved log and firmware checksum are retained there.
 
+## Review and maintenance
+
+[Architecture and review](docs/code-review.md) maps the code to the course's
+module/interface and testing guidance, records the fixes on this branch, and
+lists the checks that still require the assembled robot.
+
+Run the host checks before flashing (Pico SDK 2.3.0 with BTstack is required):
+
+```bash
+python3 getting_there/tests/run_host_checks.py --sdk "$PICO_SDK_PATH"
+node docs/tools/test_logparser.js
+```
+
+The GitHub workflow runs host sanitizers and builds all eleven firmware variants.
+Its firmware artifacts correspond to the source commit; they are compile-tested,
+not automatically qualified on hardware. The checked-in UF2 files are refreshed
+for this review; see [build provenance](docs/firmware-build.json).
+
 ## Project structure
 
 ```text
@@ -69,7 +87,20 @@ ble_transfer/
 ble_transfer_powerbank/
   beacon_server.c              shared AP1/AP2/AP3 server
   powerbank_load.c             core 1 arithmetic load
-getting_there/                 current robot programme
+getting_there/
+  getting_there.c              startup, buttons, radio setup and shutdown
+  robot_run.c / .h             navigation, route and per-leg run ownership
+  line_search.c / .h           RSSI comparisons and navigation tuning
+  colour_scan.c / .h           stopped scan with explicit safety hooks
+  motion.c / .h               motor and heading control
+  colour_sensor.c / .h        sensor access and arrival history
+  colour_mat.c                 pure surface classification and direction maths
+  wifi_sampler.c              Wi-Fi sampling and filtering
+  payload_client.c            BLE transfer state machine
+  run_report.c                bounded report buffering
+  report_store.c              persistent journal format
+  report_flash.c              physical flash adapter
+  tests/                      host tests and hardware stubs
 picow_access_point_powerbank/  AP1 build target
 picow_access_point2_powerbank/ AP2 build target
 picow_access_point3_powerbank/ AP3 build target
@@ -85,8 +116,8 @@ Wi-Fi SSID.
 
 ## Build and flash
 
-The default root build produces four firmware files: `getting_there` and the
-three powerbank beacons. Use Pico SDK 2.3.0 for this build: the robot's persistent
+The default root build produces eleven firmware files: six robot variants,
+three powerbank beacons and two colour-calibration tools. Use Pico SDK 2.3.0 for this build: the robot's persistent
 log layout requires linker support unavailable in SDK 1.5.1. The beacons can also
 be built separately with SDK 1.5.1.
 

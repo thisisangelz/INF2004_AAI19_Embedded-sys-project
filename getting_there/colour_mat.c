@@ -2,6 +2,7 @@
 // and the turn-on-the-spot direction estimate. Shared by the robot firmware,
 // the colour tests and the navigation tests.
 #include "colour_sensor.h"
+#include <float.h>
 #include <math.h>
 
 // Far below every calibrated surface (lowest: 1729): sensor lifted or covered.
@@ -241,14 +242,18 @@ colour_scan_result_t colour_scan_estimate(const int *angles, const colour_readin
     result.depth_range = max_depth - min_depth;
     if (result.depth_range < 1) return result;
     // Weight each direction by how much deeper it is than the shallowest.
-    float x = 0.0f, y = 0.0f;
+    float x = 0.0f, y = 0.0f, total_weight = 0.0f;
     for (unsigned i = 0; i < count; ++i) {
         int depth = colour_zone_depth(colour_classify(&readings[i]));
         if (depth <= min_depth) continue;
         float radians = (float)angles[i] * 3.14159265f / 180.0f;
         x += (float)(depth - min_depth) * cosf(radians);
         y += (float)(depth - min_depth) * sinf(radians);
+        total_weight += (float)(depth - min_depth);
     }
+    // Opposing depths can cancel despite a nonzero depth range. Ignore
+    // floating-point roundoff rather than turning it into an arbitrary heading.
+    if (hypotf(x, y) <= 8.0f * FLT_EPSILON * total_weight) return result;
     int angle = (int)lroundf(atan2f(y, x) * 180.0f / 3.14159265f);
     result.vector_angle = (angle % 360 + 360) % 360;
     result.valid = true;

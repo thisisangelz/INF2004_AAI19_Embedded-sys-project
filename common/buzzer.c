@@ -50,9 +50,9 @@ static int64_t next_note(alarm_id_t id, void *user_data)
         pattern_index = pattern_loop_from;
     }
     set_tone(pattern[pattern_index].freq_hz);
-    // A positive return reschedules relative to this alarm's due time, so
+    // A negative return reschedules relative to this alarm's due time, so
     // pattern timing does not drift.
-    return (int64_t)pattern[pattern_index].ms * 1000;
+    return -(int64_t)pattern[pattern_index].ms * 1000;
 }
 
 void buzzer_init(unsigned pin)

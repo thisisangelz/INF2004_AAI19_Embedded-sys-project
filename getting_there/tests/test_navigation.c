@@ -4,10 +4,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#include "../robot_run.c"
 #define main firmware_main
 #include "../getting_there.c"
 #undef main
 #include "fixtures/v14_wifi_dip.h"
+
+#if COLOUR_SCAN_TEST
+static unsigned diagnostic_turns, diagnostic_read_failure;
+static unsigned diagnostic_checkpoint_failure, diagnostic_turn_failure;
+#define NAVIGATION_ONLY() assert(!"diagnostic must not access radio or translate")
+#else
+#define NAVIGATION_ONLY() ((void)0)
+#endif
 
 static uint64_t sim_time, scan_finish_us;
 static bool stopped, motors_on, wifi_missing, fail_drive, fail_turn, stop_during_pause;
@@ -93,7 +102,15 @@ bool report_begin(void)
     if (ui_test) { assert(ui_armed && !ui_radio && ui_replays == 1); ++ui_begins; ui_stage = 3; }
     return !ui_log_failure;
 }
-bool report_checkpoint(void) { assert(!motors_on && !scan_active); ++checkpoint_calls; return !storage_failed; }
+bool report_checkpoint(void)
+{
+    assert(!motors_on && !scan_active);
+    ++checkpoint_calls;
+#if COLOUR_SCAN_TEST
+    if (checkpoint_calls == diagnostic_checkpoint_failure) return false;
+#endif
+    return !storage_failed;
+}
 bool report_finish(void)
 {
     if (ui_test) { assert(!motors_on && !ui_radio); ui_finished = true; }
@@ -120,7 +137,7 @@ void cue_play(robot_cue_t cue)
 void cue_stop(void) { ++tone_stops; cue_end = sim_time; }
 bool cue_busy(void) { return sim_time < cue_end; }
 static void (*close_callback)(void);
-void payload_client_set_close_callback(void (*callback)(void)) { close_callback = callback; }
+void payload_client_set_close_callback(void (*callback)(void)) { NAVIGATION_ONLY(); close_callback = callback; }
 bool motion_init(void)
 {
     if (ui_test && ++ui_init_calls <= ui_fail_init_count) { fault_raise(FAULT_IMU); return false; }
@@ -137,7 +154,14 @@ bool motion_calibrate(void)
 }
 bool motion_learn_direction(void) { ++sign_checks; return !stopped; }
 bool motion_turn_to_heading(float heading)
-{ assert(!motors_on && !scan_active); current_heading = heading; return !stopped && !fail_turn; }
+{
+#if COLOUR_SCAN_TEST
+    if (++diagnostic_turns == diagnostic_turn_failure) return false;
+#endif
+    assert(!motors_on && !scan_active);
+    current_heading = heading;
+    return !stopped && !fail_turn;
+}
 float motion_heading(void) { return current_heading; }
 bool motion_pause_ms(uint32_t ms)
 {
@@ -152,10 +176,11 @@ void motion_arm_stop(void)
     ui_armed = true;
     if (ui_stop_on_arm) { stopped = true; fault_raise(FAULT_STOP_LATCHED); }
 }
-void cyw43_arch_deinit(void) { ui_radio = scan_active = false; }
+void cyw43_arch_deinit(void) { NAVIGATION_ONLY(); ui_radio = scan_active = false; }
 void motion_stop(void) { motors_on = false; }
 bool motion_drive_start(bool forwards, uint32_t ms, float heading)
 {
+    NAVIGATION_ONLY();
     assert(!motors_on && !stopped && ms <= LINE_BLOCK_MS && move_count < 512);
     moves[move_count].forwards = forwards;
     moves[move_count].heading = heading;
@@ -222,7 +247,7 @@ static bool complete_on_loose;
 // Off by default: the v16 regressions use the BLE-only gate, as before.
 static bool colour_present;
 static bool mat_stub, model_lighter_seen;
-static unsigned mat_from_check, colour_reads;
+static unsigned mat_from_check, avoided_at_check, colour_reads;
 static int model_last_depth;
 bool colour_sensor_init(void) { ++colour_inits; return true; }
 bool colour_sensor_available(void) { return colour_present; }
@@ -281,7 +306,11 @@ static bool model_on_avoided(void)
 {
     return model && colour_avoid_mat() == COLOUR_MAT_PINK && model_ap1_raw_depth() >= 2;
 }
-bool colour_on_avoided_mat(void) { return model && colour_present && model_avoided; }
+bool colour_on_avoided_mat(void)
+{
+    return colour_present && (model ? model_avoided :
+        avoided_at_check && colour_checks == avoided_at_check);
+}
 bool colour_sensor_read(colour_reading_t *reading)
 {
     static const colour_reading_t pink[6] = {
@@ -298,6 +327,9 @@ bool colour_sensor_read(colour_reading_t *reading)
     static const colour_reading_t floor_reading = {2900, 1000, 922, 760};
     assert(!motors_on);
     ++colour_reads;
+#if COLOUR_SCAN_TEST
+    if (colour_reads == diagnostic_read_failure) return false;
+#endif
     int depth = model ? model_depth() : 0;
     *reading = depth == 0 ? floor_reading : model_mat_blue() ? blue[depth - 1] : pink[depth - 1];
     return colour_present;
@@ -331,7 +363,7 @@ bool colour_on_mat(void)
 }
 void payload_client_set_close_threshold(int dbm) { assert(!motors_on); close_threshold = dbm; }
 int payload_client_close_threshold(void) { return close_threshold; }
-void payload_client_init(void) { }bool payload_client_ready(void) { return !ui_bt_failure && !ui_bt_timeout; }
+void payload_client_init(void) { NAVIGATION_ONLY(); }bool payload_client_ready(void) { return !ui_bt_failure && !ui_bt_timeout; }
 bool payload_client_start_failed(void) { return ui_bt_failure; }
 const uint8_t *payload_client_data(uint16_t *length) { *length = 0; return NULL; }
 static bool ble_never; // AP1 never passes any BLE gate
@@ -370,11 +402,12 @@ payload_result_t payload_client_retry(void)
 }
 int cyw43_arch_init(void)
 {
+    NAVIGATION_ONLY();
     if (ui_test) assert(ui_armed && ui_begins == 1 && ui_calibrations == 1);
     if (ui_radio_error) return ui_radio_error;
     ui_radio = true; return 0;
 }
-void cyw43_arch_enable_sta_mode(void) { }
+void cyw43_arch_enable_sta_mode(void) { NAVIGATION_ONLY(); }
 static void deliver_scan(void)
 {
     scan_active = false;
@@ -403,6 +436,7 @@ static void deliver_scan(void)
 int cyw43_wifi_scan(int *state, cyw43_wifi_scan_options_t *options, void *context,
                    int (*callback)(void *, const cyw43_ev_scan_result_t *))
 {
+    NAVIGATION_ONLY();
     (void)state; (void)options;
     assert(!scan_active);
     unsigned reading = (unsigned)wifi_calls++;
@@ -418,6 +452,7 @@ int cyw43_wifi_scan(int *state, cyw43_wifi_scan_options_t *options, void *contex
 }
 bool cyw43_wifi_scan_active(int *state)
 {
+    NAVIGATION_ONLY();
     (void)state;
     if (scan_active && sim_time >= scan_finish_us) deliver_scan();
     return scan_active;
@@ -451,7 +486,7 @@ static void reset(void)
     run_started_ms = now_ms(); translation_ms = profile_id = 0; wifi_quiescent = true;
     // Recorded-run and v16 regression checks keep their 250/100 ms steps;
     // shipped_steps() selects the robot's v18 sizes.
-    floor_block_ms = 250; dip_probe_ms = 100; step_on_mat = mat_stub = false; mat_from_check = 0;
+    floor_block_ms = 250; dip_probe_ms = 100; step_on_mat = mat_stub = false; mat_from_check = avoided_at_check = 0;
     side_probe_enabled = false; // recorded runs predate it; shipped_steps() turns it on
     colour_present = model_lighter_seen = colour_arrived = false; colour_reads = mat_scans_used = 0;
     model_last_depth = -1; ble_never = false;
@@ -832,6 +867,55 @@ static void check_dip_recovery(void)
     assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE && followed.consistent);
     assert(forwards_count==9 && strstr(log_text,"inconclusive, reference still frozen"));
     assert(strstr(log_text,"3/3 at 1750") && strstr(log_text,"reference_dbm1=-60,reference_dbm2=-60"));
+}
+
+static void check_dip_mat_handover(void)
+{
+    static const int readings[] = {
+        -70,-70, -60,-60, -60,-60, -65,-65, -66,-66, -67,-67,
+        -68,-68, -69,-69, -70,-70,
+    };
+    // A straight-first continuation suppresses another early probe. Five
+    // forward stops establish a decline; check 6 is its stationary recheck.
+    // Discover the target mat there, on probe 1, or on probe 2.
+    for (unsigned probes=0; probes<=LINE_DIP_MAX_PROBES; ++probes) {
+        reset(); shipped_steps(); skip_early_probe=true; colour_present=true;
+        script=readings; script_length=sizeof(readings)/sizeof(*readings);
+        mat_from_check=6+probes;
+        follow_result_t followed;
+        assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE);
+        assert(followed.end==FOLLOW_MAT && !followed.early);
+        assert(followed.position==5*LINE_FORWARD_BLOCK_MS+probes*LINE_DIP_PROBE_MS);
+        assert(forwards_count==5+(int)probes && !backwards_count && !motors_on);
+        assert(move_count==5+probes && colour_checks==6+probes);
+        // No Wi-Fi batches or translation after the detecting colour check.
+        assert((unsigned)wifi_calls==(12+2*probes)*SCANS_PER_SAMPLE);
+        assert(!strstr(log_text,"RETURN:") && !strstr(log_text,"DIRECTION SEARCH"));
+    }
+
+    // A visited mat still cancels either probe and reverses it. Even if the
+    // reverse stop sees the target edge, the blocked direction must return
+    // to its retained best point instead of being handed to mat steering.
+    for (unsigned probe=1; probe<=LINE_DIP_MAX_PROBES; ++probe) {
+        reset(); shipped_steps(); skip_early_probe=true; colour_present=true;
+        colour_set_target_mat(COLOUR_MAT_BLUE); colour_set_avoid_mat(COLOUR_MAT_PINK);
+        script=readings; script_length=sizeof(readings)/sizeof(*readings);
+        avoided_at_check=6+probe;
+        mat_from_check=avoided_at_check+1;
+        follow_result_t followed;
+        assert(follow_direction(0,0,&followed)==PAYLOAD_NOT_CLOSE);
+        assert(followed.end==FOLLOW_DECLINE && !followed.early);
+        assert(forwards_count==5+(int)probe && backwards_count==4 && !motors_on);
+        assert(moves[4+probe].forwards && moves[4+probe].ms==LINE_DIP_PROBE_MS);
+        assert(!moves[5+probe].forwards && moves[5+probe].ms==LINE_DIP_PROBE_MS);
+        uint32_t returned=0;
+        for (unsigned i=6+probe; i<move_count; ++i) {
+            assert(!moves[i].forwards);
+            returned+=moves[i].ms;
+        }
+        assert(returned==4*LINE_FORWARD_BLOCK_MS+(probe-1)*LINE_DIP_PROBE_MS);
+        assert(strstr(log_text,"DIP: probe blocked by the visited beacon's mat"));
+    }
 }
 
 static void check_v14_dip(void)
@@ -1379,14 +1463,14 @@ static void check_side_choice_and_early_probe(void)
     // On average it is 6.5 dB stronger.
     bool by_average;
     assert(line_compare(pair(-65,-67), pair(-63,-56)) == 0);
-    assert(side_compare(pair(-65,-67), pair(-63,-56), &by_average) == 1 && by_average);
-    assert(side_compare(pair(-63,-56), pair(-65,-67), &by_average) == -1 && by_average);
+    assert(line_side_compare(pair(-65,-67), pair(-63,-56), &by_average) == 1 && by_average);
+    assert(line_side_compare(pair(-63,-56), pair(-65,-67), &by_average) == -1 && by_average);
     // Both batches clearly better: the usual rule, not the average.
-    assert(side_compare(pair(-70,-70), pair(-64,-64), &by_average) == 1 && !by_average);
+    assert(line_side_compare(pair(-70,-70), pair(-64,-64), &by_average) == 1 && !by_average);
     // A batch pointing the other way, or less than 3 dB on average: unclear.
-    assert(side_compare(pair(-60,-60), pair(-52,-63), &by_average) == 0 && !by_average);
-    assert(side_compare(pair(-66,-66), pair(-65,-62), &by_average) == 0);
-    assert(side_compare(pair(-66,-66), pair(-127,-50), &by_average) == 0);
+    assert(line_side_compare(pair(-60,-60), pair(-52,-63), &by_average) == 0 && !by_average);
+    assert(line_side_compare(pair(-66,-66), pair(-65,-62), &by_average) == 0);
+    assert(line_side_compare(pair(-66,-66), pair(-127,-50), &by_average) == 0);
 
     // Early probe, clear side. The line rises 10 dB, then reads the same for
     // two stops: it returns to its best point and probes the sides without
@@ -1413,10 +1497,10 @@ static void check_side_choice_and_early_probe(void)
     // Straight on first (20 November). After an early probe, a side goes
     // first only if it reads at least 3 dB stronger than the best point.
     // The 17 November runs, side tried first against the best point:
-    assert(side_compare(pair(-61,-61), pair(-63,-64), &by_average) < 1);  // leg 2 test 1: AP2 straight on
-    assert(side_compare(pair(-60,-60), pair(-67,-67), &by_average) < 1);  // route 2: straight on
-    assert(side_compare(pair(-67,-66), pair(-67,-67), &by_average) < 1);  // route 3: straight on
-    assert(side_compare(pair(-59,-60), pair(-55,-56), &by_average) == 1); // route 1: that side
+    assert(line_side_compare(pair(-61,-61), pair(-63,-64), &by_average) < 1);  // leg 2 test 1: AP2 straight on
+    assert(line_side_compare(pair(-60,-60), pair(-67,-67), &by_average) < 1);  // route 2: straight on
+    assert(line_side_compare(pair(-67,-66), pair(-67,-67), &by_average) < 1);  // route 3: straight on
+    assert(line_side_compare(pair(-59,-60), pair(-55,-56), &by_average) == 1); // route 1: that side
 
     // A clear side, but weaker than the best point: carry straight on, as
     // with no clear side, and no perpendicular trials.
@@ -1542,10 +1626,79 @@ static void check_route(void)
     assert(colour_target_mat()==COLOUR_MAT_BLUE && target_id()==2);
 }
 
+#if COLOUR_SCAN_TEST
+// Build this same harness with -DCOLOUR_SCAN_TEST=1. Exercise the real
+// diagnostic startup/run/result path; all radio access and translation fail
+// immediately, including merely querying Wi-Fi state before radio init.
+static void diagnostic_reset(void)
+{
+    reset();
+    diagnostic_turns = diagnostic_read_failure = 0;
+    diagnostic_checkpoint_failure = diagnostic_turn_failure = 0;
+    colour_present = model = true;
+    robot_y = 0.20; // Sensor sweeps across several rings, yielding a direction.
+}
+
+static void check_diagnostic_isolation(void)
+{
+    assert(!wifi_calls && !ble_calls && !forwards_count && !backwards_count && !move_count);
+    assert(!ui_radio && !motors_on);
+}
+
+static int check_diagnostic_build(void)
+{
+    diagnostic_reset(); run_startup_test();
+    assert(strstr(log_text, "RESULT: COLOUR SCAN COMPLETE"));
+    assert(colour_reads == 72 && checkpoint_calls == 24 && diagnostic_turns == 26);
+    assert(current_heading == 0 && sign_checks == 1 && ui_calibrations == 1);
+    assert(cue_counts[CUE_PASS] == 2 && cue_counts[CUE_COLLECTED] == 1 && !cue_counts[CUE_FAULT]);
+    assert(colour_target_mat() == COLOUR_MAT_NONE);
+    check_diagnostic_isolation();
+
+    diagnostic_reset(); colour_present = false; run_startup_test();
+    assert(strstr(log_text, "colour sensor not available") && strstr(log_text, "RESULT: COLOUR SCAN FAILED"));
+    assert(!colour_reads && !checkpoint_calls && !diagnostic_turns && !sign_checks);
+    assert(cue_counts[CUE_FAULT] == 1 && !cue_counts[CUE_COLLECTED]);
+    check_diagnostic_isolation();
+
+    diagnostic_reset(); stop_during_pause = true; run_startup_test();
+    assert(strstr(log_text, "RESULT: COLOUR SCAN FAILED"));
+    assert(diagnostic_turns == 1 && !colour_reads && !checkpoint_calls && stopped);
+    check_diagnostic_isolation();
+
+    diagnostic_reset(); diagnostic_read_failure = 5; run_startup_test();
+    assert(strstr(log_text, "COLOUR SCAN FAILED: sensor read error"));
+    assert(colour_reads == 5 && checkpoint_calls == 1 && diagnostic_turns == 2);
+    check_diagnostic_isolation();
+
+    diagnostic_reset(); diagnostic_checkpoint_failure = 1; run_startup_test();
+    assert(strstr(log_text, "RESULT: COLOUR SCAN FAILED") && fault_test(FAULT_REPORT));
+    assert(colour_reads == 3 && checkpoint_calls == 1 && diagnostic_turns == 1);
+    check_diagnostic_isolation();
+
+    diagnostic_reset(); diagnostic_turn_failure = 13; run_startup_test();
+    assert(strstr(log_text, "RESULT: COLOUR SCAN FAILED"));
+    assert(colour_reads == 36 && checkpoint_calls == 12 && diagnostic_turns == 13);
+    assert(cue_counts[CUE_PASS] == 1); // Failed return to origin prevents round 2.
+    check_diagnostic_isolation();
+
+    diagnostic_reset(); model = false; run_startup_test();
+    assert(strstr(log_text, "RESULT: COLOUR SCAN FAILED"));
+    assert(colour_reads == 72 && checkpoint_calls == 24 && diagnostic_turns == 26);
+    assert(current_heading == 0 && !cue_counts[CUE_COLLECTED]);
+    check_diagnostic_isolation();
+    puts("Diagnostic: full startup, two scans/return-to-origin, no radio/translation, missing sensor, pause STOP, read/checkpoint/return-turn failures and flat scan passed");
+    return 0;
+}
+#endif
+
 int main(void)
 {
+#if COLOUR_SCAN_TEST
+    return check_diagnostic_build();
+#endif
     check_decisions(); check_return_tolerance(); check_profiles(); check_follow_first(); check_direction_policy(); check_recorded_run(); check_decline_positions();
-    check_dip_reference(); check_dip_recovery(); check_v14_dip(); check_dip_safety();
+    check_dip_reference(); check_dip_recovery(); check_dip_mat_handover(); check_v14_dip(); check_dip_safety();
     check_forward_continuation(); check_radio_and_limits(); check_startup(); check_colour_arrival(); check_cues();
     check_v18_steps(); check_mat_steering(); check_near_centre_steps(); check_side_probe(); check_side_choice_and_early_probe(); check_route();
     reset(); complete_first=true; assert(approach_beacon() && !wifi_calls && !forwards_count && !sign_checks);
