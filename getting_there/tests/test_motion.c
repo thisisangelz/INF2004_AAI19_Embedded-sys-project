@@ -127,6 +127,14 @@ int main(void)
     reset(); motion_arm_stop(); gyro_model=gyro_stalled=true;
     assert(!motion_learn_direction() && fault_test(FAULT_TURN) && !powered());
     assert(clock_us<=1010000);
+    // 17 November: a turn 2.3 degrees short after its corrections stopped the
+    // run. Up to 5 degrees now counts; further off is still a fault. Before
+    // the motor direction is learnt nothing counts.
+    reset(); set_turn_sign(1.0f);
+    assert(turn_close_enough(-2.3f) && turn_close_enough(4.9f) && turn_close_enough(-5.0f));
+    assert(!turn_close_enough(5.1f) && !turn_close_enough(-8.0f));
+    motion_state.turn_sign = 0; // not learnt
+    assert(!turn_close_enough(0.0f));
     reset();
     gp21 = true;
     assert(motion_replay_pressed() && !motion_stop_requested());
@@ -233,5 +241,5 @@ int main(void)
     reset(); motion_arm_stop(); set_turn_sign(1);
     gyro_heading_degrees = 30;
     assert(!motion_drive(true,750,0) && !powered() && fault_test(FAULT_HEADING));
-    puts("Motion: stopped I2C recovery, preflight, bounded yaw uncertainty, powered-time accounting, range verification, STOP and persistent failures passed");
+    puts("Motion: stopped I2C recovery, preflight, bounded yaw uncertainty, powered-time accounting, range verification, STOP, small leftover turn errors accepted and persistent failures passed");
 }

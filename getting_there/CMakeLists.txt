@@ -21,7 +21,7 @@ endif()
 # Every robot firmware target shares the sources, flash layout and settings.
 function(getting_there_firmware target)
     add_executable(${target}
-        getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c colour_mat.c robot_cues.c
+        getting_there.c motion.c line_search.c wifi_sampler.c payload_client.c run_report.c report_store.c report_flash.c faults.c colour_sensor.c colour_mat.c robot_cues.c target_beacon.c
         ../common/buzzer.c
         imu_mpu9250.c
     )
@@ -58,6 +58,14 @@ getting_there_firmware(robot_ap2)
 target_compile_definitions(robot_ap2 PRIVATE TARGET_BEACON_ID=2)
 getting_there_firmware(robot_ap3)
 target_compile_definitions(robot_ap3 PRIVATE TARGET_BEACON_ID=3)
+# One flash for both beacons: AP1 (pink mat), then back off its mat and go
+# on to AP2 (blue mat).
+getting_there_firmware(robot_route)
+target_compile_definitions(robot_route PRIVATE TARGET_BEACON_ID=1 ROUTE_NEXT_BEACON=2)
+# Test build for the second leg only: start on AP1's arrival ring, facing
+# AP1, skip that transfer, back off and go to AP2.
+getting_there_firmware(robot_leg2)
+target_compile_definitions(robot_leg2 PRIVATE TARGET_BEACON_ID=1 ROUTE_NEXT_BEACON=2 ROUTE_START_ON_MAT=1)
 # Test build: after gyro calibration, turns on the spot and logs the colour
 # under the sensor at 30-degree steps instead of approaching AP1.
 # Short target name: longer ones push SDK object paths past Windows' 260-character limit.

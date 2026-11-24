@@ -110,7 +110,10 @@ static gatt_client_notification_t listener;
 // 12 readings x 7 bits, packed back to back.
 static uint8_t rssi_samples[BITARRAY_BYTES(RSSI_SAMPLE_COUNT, RSSI_BITS)];
 static uint8_t tx_packet[TRANSFER_PACKET_SIZE];
-static const uint8_t robot_file[] = "Robot test file delivered to beacon " TARGET_NAME;
+// Names the current target, so it is rebuilt at the start of every attempt.
+#define ROBOT_FILE_PREFIX "Robot test file delivered to beacon "
+static uint8_t robot_file[sizeof(ROBOT_FILE_PREFIX) + 3];
+static uint16_t robot_file_length;
 static uint8_t robot_sequence;
 static uint32_t robot_crc;
 static uint8_t reply_file[TRANSFER_MAX_FILE_SIZE];
@@ -191,8 +194,8 @@ static void close_attempt(payload_result_t result)
     if (current_state() == BLE_SCANNING || current_state() == BLE_STOPPING_FOR_CONNECT) {
         bool already_stopping = current_state() == BLE_STOPPING_FOR_CONNECT;
         if (!already_stopping)
-            report_defer_printf("BLE CHECK ENDED: %u/12 valid " TARGET_NAME " readings, close averages %u/3; %s\n",
-                          (unsigned)counters.sample_count, (unsigned)counters.close_count,
+            report_defer_printf("BLE CHECK ENDED: %u/12 valid %s readings, close averages %u/3; %s\n",
+                          (unsigned)counters.sample_count, target_name(), (unsigned)counters.close_count,
                           counters.sample_count == 0 ? "no matching advertisements received" :
                           counters.sample_count < RSSI_SAMPLE_COUNT ? "too few readings" :
                           "proximity threshold not confirmed");
@@ -219,7 +222,7 @@ static void close_attempt(payload_result_t result)
 
 static void transfer_failed(const char *reason)
 {
-    report_defer_printf(TARGET_NAME " PAYLOAD FAILED: %s\n", reason);
+    report_defer_printf("%s PAYLOAD FAILED: %s\n", target_name(), reason);
     fault_raise(FAULT_PAYLOAD);
     flag_assign(F_PAYLOAD_VERIFIED, false);
     close_attempt(flag(F_CLOSE_CONFIRMED) ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE);
@@ -228,13 +231,13 @@ static void transfer_failed(const char *reason)
 static void begin_connection(void)
 {
     set_state(BLE_CONNECTING);
-    report_defer_printf(TARGET_NAME " BLE: connecting to qualified address %02x:%02x:%02x:%02x:%02x:%02x\n",
+    report_defer_printf("%s BLE: connecting to qualified address %02x:%02x:%02x:%02x:%02x:%02x\n", target_name(),
                         beacon_address[0], beacon_address[1], beacon_address[2],
                         beacon_address[3], beacon_address[4], beacon_address[5]);
     uint8_t error = gap_connect(beacon_address, beacon_address_type);
     if (error != ERROR_CODE_SUCCESS) {
         set_state(BLE_IDLE);
-        report_defer_printf(TARGET_NAME " BLE connection start error 0x%02x\n", error);
+        report_defer_printf("%s BLE connection start error 0x%02x\n", target_name(), error);
         transfer_failed("BLE connection could not start");
     }
 }
@@ -267,7 +270,7 @@ static void write_simple(uint8_t type, ble_state_t state)
 
 static void write_next_robot_chunk(void)
 {
-    const uint16_t length = sizeof(robot_file) - 1;
+    const uint16_t length = robot_file_length;
     if (counters.robot_offset == length) {
         write_simple(MSG_FILE_END, BLE_WRITE_FILE_END);
         return;
@@ -298,21 +301,24 @@ static void handle_notification(const uint8_t *value, uint16_t length)
     switch (value[0]) {
     case MSG_HELLO_ACK:
         if (current_state() != BLE_WAIT_HELLO_ACK) return;
-        if (length != 2 || value[1] != TARGET_BEACON_ID) {
+        if (length != 2 || value[1] != target_id()) {
             transfer_failed("wrong beacon identity"); return;
         }
         counters.robot_offset = 0;
         robot_sequence = 0;
-        robot_crc = transfer_crc32(robot_file, sizeof(robot_file) - 1);
+        // "AP1".."AP3" fill the buffer exactly, so the text is never cut short.
+        robot_file_length = (uint16_t)snprintf((char *)robot_file, sizeof(robot_file),
+                                               ROBOT_FILE_PREFIX "%s", target_name());
+        robot_crc = transfer_crc32(robot_file, robot_file_length);
         tx_packet[0] = MSG_FILE_START;
-        transfer_write_u16(tx_packet + 1, sizeof(robot_file) - 1);
+        transfer_write_u16(tx_packet + 1, robot_file_length);
         transfer_write_u32(tx_packet + 3, robot_crc);
-        report_defer_printf(TARGET_NAME " handshake confirmed; sending robot test file\n");
+        report_defer_printf("%s handshake confirmed; sending robot test file\n", target_name());
         (void)write_packet(7, BLE_WRITE_FILE_START);
         break;
     case MSG_FILE_READY:
         if (current_state() != BLE_WAIT_FILE_READY) return;
-        if (length != 2 || value[1] != TARGET_BEACON_ID) {
+        if (length != 2 || value[1] != target_id()) {
             transfer_failed("invalid FILE_READY"); return;
         }
         write_next_robot_chunk();
@@ -336,7 +342,7 @@ static void handle_notification(const uint8_t *value, uint16_t length)
         reply_crc = transfer_read_u32(value + 3);
         counters.reply_offset = 0;
         reply_sequence = 0;
-        report_defer_printf(TARGET_NAME " reply announced: %u bytes, CRC %08lx\n",
+        report_defer_printf("%s reply announced: %u bytes, CRC %08lx\n", target_name(),
                       counters.reply_length, (unsigned long)reply_crc);
         write_simple(MSG_REPLY_NEXT, BLE_WRITE_REPLY_NEXT);
         break;
@@ -361,18 +367,18 @@ static void handle_notification(const uint8_t *value, uint16_t length)
             transfer_read_u32(value + 1) != reply_crc) {
             transfer_failed("reply payload CRC or length failed"); return;
         }
-        report_defer_printf(TARGET_NAME " reply payload length and CRC verified\n");
+        report_defer_printf("%s reply payload length and CRC verified\n", target_name());
         write_simple(MSG_COMPLETE, BLE_WRITE_COMPLETE);
         break;
     case MSG_COMPLETE_ACK:
         if (current_state() != BLE_WAIT_COMPLETE_ACK) return;
-        if (length != 2 || value[1] != TARGET_BEACON_ID) {
+        if (length != 2 || value[1] != target_id()) {
             transfer_failed("invalid final acknowledgement"); return;
         }
         flag_assign(F_PAYLOAD_VERIFIED, true);
         fault_clear(FAULT_PAYLOAD);
-        report_defer_printf(TARGET_NAME " PAYLOAD COMPLETE: verified reply and final acknowledgement\n");
-        report_defer_printf(TARGET_NAME " payload: %.*s\n", counters.reply_length, (const char *)reply_file);
+        report_defer_printf("%s PAYLOAD COMPLETE: verified reply and final acknowledgement\n", target_name());
+        report_defer_printf("%s payload: %.*s\n", target_name(), counters.reply_length, (const char *)reply_file);
         close_attempt(PAYLOAD_COMPLETE);
         break;
     default:
@@ -383,7 +389,7 @@ static void handle_notification(const uint8_t *value, uint16_t length)
 static bool query_ok(uint8_t *packet)
 {
     uint8_t error = gatt_event_query_complete_get_att_status(packet);
-    report_defer_printf(TARGET_NAME " GATT: %s completed, status 0x%02x\n", state_name(current_state()), error);
+    report_defer_printf("%s GATT: %s completed, status 0x%02x\n", target_name(), state_name(current_state()), error);
     if (error == ATT_ERROR_SUCCESS) return true;
     transfer_failed("GATT operation rejected");
     return false;
@@ -406,14 +412,14 @@ static void gatt_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16
     if (event == GATT_EVENT_SERVICE_QUERY_RESULT && current_state() == BLE_DISCOVER_SERVICE) {
         if (gatt_event_service_query_result_get_handle(packet) != connection_handle) return;
         gatt_event_service_query_result_get_service(packet, &service);
-        report_defer_printf(TARGET_NAME " GATT: payload service found, handles 0x%04x..0x%04x\n",
+        report_defer_printf("%s GATT: payload service found, handles 0x%04x..0x%04x\n", target_name(),
                             service.start_group_handle, service.end_group_handle);
         flag_assign(F_SERVICE_FOUND, true); return;
     }
     if (event == GATT_EVENT_CHARACTERISTIC_QUERY_RESULT && current_state() == BLE_DISCOVER_CHARACTERISTIC) {
         if (gatt_event_characteristic_query_result_get_handle(packet) != connection_handle) return;
         gatt_event_characteristic_query_result_get_characteristic(packet, &characteristic);
-        report_defer_printf(TARGET_NAME " GATT: payload characteristic found, value handle 0x%04x\n", characteristic.value_handle);
+        report_defer_printf("%s GATT: payload characteristic found, value handle 0x%04x\n", target_name(), characteristic.value_handle);
         flag_assign(F_CHARACTERISTIC_FOUND, true); return;
     }
     if (event != GATT_EVENT_QUERY_COMPLETE ||
@@ -440,7 +446,7 @@ static void gatt_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16
     case BLE_ENABLE_NOTIFICATIONS:
         tx_packet[0] = MSG_HELLO;
         tx_packet[1] = BEACON_PROTOCOL_VERSION;
-        tx_packet[2] = TARGET_BEACON_ID;
+        tx_packet[2] = target_id();
         (void)write_packet(3, BLE_WRITE_HELLO);
         break;
     case BLE_WRITE_HELLO: set_state(BLE_WAIT_HELLO_ACK); break;
@@ -473,7 +479,7 @@ static bool target_advertisement(uint8_t *packet)
         const uint8_t *field = ad_iterator_get_data(&context);
         if (ad_iterator_get_data_len(&context) >= 4 &&
             transfer_read_u16(field) == BEACON_SERVICE_UUID &&
-            field[2] == BEACON_PROTOCOL_VERSION && field[3] == TARGET_BEACON_ID) return true;
+            field[2] == BEACON_PROTOCOL_VERSION && field[3] == target_id()) return true;
     }
     return false;
 }
@@ -506,7 +512,7 @@ static void advertisement_received(uint8_t *packet)
     if (counters.sample_count < RSSI_SAMPLE_COUNT) return;
     int average = filtered_rssi();
     counters.close_count = average >= close_rssi_dbm ? counters.close_count + 1 : 0;
-    report_defer_printf(TARGET_NAME " BLE: filtered %d dBm, need >= %d, close %d/%d\n",
+    report_defer_printf("%s BLE: filtered %d dBm, need >= %d, close %d/%d\n", target_name(),
                   average, close_rssi_dbm, counters.close_count, REQUIRED_CLOSE_AVERAGES);
     if (counters.close_count < REQUIRED_CLOSE_AVERAGES) return;
     flag_assign(F_CLOSE_CONFIRMED, true);
@@ -514,7 +520,7 @@ static void advertisement_received(uint8_t *packet)
     beacon_address_type = gap_event_advertising_report_get_address_type(packet);
     set_state(BLE_STOPPING_FOR_CONNECT);
     gap_stop_scan();
-    report_defer_printf(TARGET_NAME " close-range check passed; motors stopped for payload transfer\n");
+    report_defer_printf("%s close-range check passed; motors stopped for payload transfer\n", target_name());
 }
 
 static void connection_complete(uint8_t status, hci_con_handle_t handle)
@@ -538,7 +544,7 @@ static void connection_complete(uint8_t status, hci_con_handle_t handle)
     }
     flag_assign(F_SERVICE_FOUND, false);
     set_state(BLE_DISCOVER_SERVICE);
-    report_defer_printf(TARGET_NAME " BLE connected; discovering payload service\n");
+    report_defer_printf("%s BLE connected; discovering payload service\n", target_name());
     if (gatt_client_discover_primary_services_by_uuid16(gatt_handler, handle,
                                                        BEACON_SERVICE_UUID) != ERROR_CODE_SUCCESS) {
         transfer_failed("service discovery could not start");
@@ -593,7 +599,7 @@ static void hci_handler(uint8_t type, uint16_t channel, uint8_t *packet, uint16_
             fault_raise(FAULT_PAYLOAD);
             flag_assign(F_PAYLOAD_VERIFIED, false);
             result_put(ST_CLOSING_SHIFT, flag(F_CLOSE_CONFIRMED) ? PAYLOAD_RETRY : PAYLOAD_NOT_CLOSE);
-            report_defer_printf(TARGET_NAME " disconnected before payload confirmation\n");
+            report_defer_printf("%s disconnected before payload confirmation\n", target_name());
         }
         finish_attempt();
         break;
@@ -614,21 +620,21 @@ static void start_attempt_callback(void *context)
     counters.sample_count = counters.sample_index = counters.close_count = 0;
     memset(rssi_samples, 0, sizeof(rssi_samples));
     if (reconnect) {
-        report_defer_printf(TARGET_NAME " BLE retry: proximity already confirmed; reconnecting without moving or rescanning\n");
+        report_defer_printf("%s BLE retry: proximity already confirmed; reconnecting without moving or rescanning\n", target_name());
         begin_connection();
         return;
     }
     set_state(BLE_SCANNING);
     gap_set_scan_parameters(0, 0x0030, 0x0030);
     gap_start_scan();
-    report_defer_printf("BLE-only check: " TARGET_NAME ", 12 readings, 3 averages >= %d dBm; Wi-Fi paused\n", close_rssi_dbm);
+    report_defer_printf("BLE-only check: %s, 12 readings, 3 averages >= %d dBm; Wi-Fi paused\n", target_name(), close_rssi_dbm);
 }
 
 static void abort_attempt_callback(void *context)
 {
     (void)context;
     if (!flag(F_ATTEMPT_RUNNING) || current_state() == BLE_STOPPING_SCAN || current_state() == BLE_CLOSING) return;
-    report_defer_printf(TARGET_NAME " BLE %s: phase=%s, elapsed_ms=%lu, phase_limit_ms=%lu; closing radio operation\n",
+    report_defer_printf("%s BLE %s: phase=%s, elapsed_ms=%lu, phase_limit_ms=%lu; closing radio operation\n", target_name(),
                         motion_stop_requested() ? "STOP" : "TIMEOUT",
                         state_name(current_state()), (unsigned long)(now_ms() - phase_started_ms),
                         (unsigned long)phase_timeout(current_state()));

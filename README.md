@@ -16,7 +16,8 @@ including when AP1 RSSI changes are inconclusive. A median reference from
 three positions reduces the effect of an isolated strong point. After three weak
 positions, it rechecks while stopped, then allows up to two 250 ms forward probes.
 Recovery resumes the same heading. Persistent decline returns only to the retained
-best point, then tries both perpendicular directions and then straight back.
+best point, probes about 40-50 cm to each side (measuring facing the same way
+both times), tries the stronger side first, then the other side and straight back.
 An inconsistent return no longer stops the run; three unsuccessful trials do.
 Once the colour sensor sees the beacon's mat, colour scans steer the robot to
 its arrival ring (pink ring 4, blue or purple ring 5), and with a working sensor
@@ -29,9 +30,19 @@ sampling settings and the hardware test procedure.
 | AP1 | Pink (red) | `getting_there/build/getting_there.uf2` |
 | AP2 | Blue | `getting_there/build/getting_there_ap2.uf2` |
 | AP3 | Purple | `getting_there/build/getting_there_ap3.uf2` |
+| AP1, then AP2 | Pink, then blue | `getting_there/build/getting_there_route.uf2` |
+
+The route build visits AP1, backs straight off its mat, switches to AP2's Wi-Fi
+name, beacon ID and mat, probes three directions away from AP1 and follows the
+strongest, while keeping off AP1's mat. `getting_there_leg2.uf2` tests the
+second leg alone from AP1's ring 4. See
+[the robot instructions](getting_there/README.md#ap1-then-ap2-from-one-flash-branch-featureap1-to-ap2-route).
+On 17 November it completed the full route three times (7.23-10.49 minutes,
+both payloads verified, no faults); see
+[route run 1](docs/runs/2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.md).
 
 Each robot build ignores the other two mats (they read as floor). Confirm the
-banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat`
+banner `line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat`
 and the line `Colour mat: PINK (AP1)` (or BLUE (AP2), PURPLE (AP3)).
 Flat readings no longer end the initial forward trial or an improving line.
 The 60-second combined powered travel budget, reserved return travel, 15-minute

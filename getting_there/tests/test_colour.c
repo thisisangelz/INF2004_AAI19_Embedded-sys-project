@@ -318,6 +318,30 @@ static void check_blue_purple(void)
     queue3(blue5, blue5, blue5); assert(!colour_arrival_check());
     queue3(purple3, purple3, purple3); assert(!colour_arrival_check() && colour_on_mat());
     queue3(purple5, purple5, purple5); assert(colour_arrival_check());
+
+    // Route, second leg: AP2's blue mat is the target and AP1's pink mat is
+    // avoided. Pink rings flag it although they classify as floor; the pink
+    // white edge does not (it counts as the target's edge), nor do blue rings
+    // or the floor.
+    colour_set_target_mat(COLOUR_MAT_BLUE);
+    colour_set_avoid_mat(COLOUR_MAT_PINK);
+    assert(colour_avoid_mat() == COLOUR_MAT_PINK);
+    assert(colour_reading_on_avoided_mat(&pink2) && !colour_reading_on_avoided_mat(&pink_white));
+    assert(!colour_reading_on_avoided_mat(&blue5) && !colour_reading_on_avoided_mat(&floor));
+    colour_arrival_reset();
+    assert(!colour_on_avoided_mat());
+    log_length = 0; log_text[0] = 0;
+    queue3(floor, floor, pink2);
+    assert(!colour_arrival_check() && colour_on_avoided_mat() && !colour_on_mat());
+    assert(strstr(log_text, "a ring of the PINK mat (the beacon already visited) is under the sensor"));
+    queue3(floor, floor, floor); assert(!colour_arrival_check() && !colour_on_avoided_mat());
+    queue3(pink_white, pink_white, pink_white);
+    assert(!colour_arrival_check() && !colour_on_avoided_mat() && colour_on_mat());
+    // Nothing is avoided by default.
+    colour_set_avoid_mat(COLOUR_MAT_NONE);
+    queue3(pink2, pink2, pink2); assert(!colour_arrival_check() && !colour_on_avoided_mat());
+    assert(!colour_reading_on_avoided_mat(&pink2));
+
     colour_set_target_mat(COLOUR_MAT_NONE);
     assert(colour_classify_mat(&blue5, &m) == COLOUR_RING5 && m == COLOUR_MAT_BLUE);
 }
@@ -397,6 +421,6 @@ int main(void)
     check_arrival_rules();
     check_blue_purple();
     check_scan_direction();
-    puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, blue and purple mats with per-mat arrival, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor and scan direction to the mat centre passed");
+    puts("Colour: all three calibration rounds classified, 7 November raw readings with the B/R floor check, blue and purple mats with per-mat arrival, shadows, lighter-ring-first arrival, three-sample agreement, on-mat flag, run reset, read-failure fallback, missing sensor, the avoided mat on a route and scan direction to the mat centre passed");
     return 0;
 }

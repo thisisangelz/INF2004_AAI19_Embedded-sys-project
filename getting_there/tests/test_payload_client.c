@@ -218,9 +218,12 @@ static void start_connected(ble_state_t state)
     connection_handle = 42; characteristic.value_handle = 7; set_state(state);
 }
 
-static void successful_exchange(bool early_notifications)
+// id: the target beacon. A route selects AP2 after AP1, so the HELLO, the
+// identity checks and the robot's file must all follow the current target.
+static void successful_exchange(bool early_notifications, uint8_t id)
 {
     static const uint8_t peer_reply[] = "Reply file from beacon AP1";
+    target_select(id);
     uint8_t received_robot[96] = {0};
     uint16_t received_length = 0, announced_length = 0, peer_offset = 0;
     uint32_t announced_crc = 0;
@@ -244,12 +247,12 @@ static void successful_exchange(bool early_notifications)
         uint8_t response[20] = {0}; uint16_t length = 0;
         switch (request[0]) {
         case MSG_HELLO:
-            assert(request[1] == 1 && request[2] == 1);
-            response[0] = MSG_HELLO_ACK; response[1] = 1; length = 2; break;
+            assert(request[1] == 1 && request[2] == id);
+            response[0] = MSG_HELLO_ACK; response[1] = id; length = 2; break;
         case MSG_FILE_START:
             announced_length = transfer_read_u16(request + 1);
             announced_crc = transfer_read_u32(request + 3);
-            response[0] = MSG_FILE_READY; response[1] = 1; length = 2; break;
+            response[0] = MSG_FILE_READY; response[1] = id; length = 2; break;
         case MSG_FILE_DATA:
             memcpy(received_robot + received_length, request + 3, request[2]);
             received_length += request[2]; break;
@@ -278,7 +281,7 @@ static void successful_exchange(bool early_notifications)
             break;
         case MSG_COMPLETE:
             assert(!flag(F_PAYLOAD_VERIFIED));
-            response[0] = MSG_COMPLETE_ACK; response[1] = 1; length = 2; break;
+            response[0] = MSG_COMPLETE_ACK; response[1] = id; length = 2; break;
         default: assert(false);
         }
         if (early_notifications && length) {
@@ -292,6 +295,10 @@ static void successful_exchange(bool early_notifications)
     uint16_t length;
     const uint8_t *data = payload_client_data(&length);
     assert(length == sizeof(peer_reply) - 1 && memcmp(data, peer_reply, length) == 0);
+    char expected[48];
+    int expected_length = snprintf(expected, sizeof(expected), "Robot test file delivered to beacon AP%u", id);
+    assert(received_length == expected_length && memcmp(received_robot, expected, received_length) == 0);
+    target_select(1);
 }
 
 int main(void)
@@ -397,7 +404,19 @@ int main(void)
     assert(flag(F_ATTEMPT_RUNNING)); scan_ack();
     assert(!flag(F_ATTEMPT_RUNNING) && result_get(ST_RESULT_SHIFT) == PAYLOAD_NOT_CLOSE);
 
-    successful_exchange(false); successful_exchange(true);
+    // Route, second leg: with AP2 selected, AP1's advertisements are ignored
+    // and AP2's count.
+    target_select(2);
+    reset(); flag_assign(F_ATTEMPT_RUNNING, true); start_attempt_callback(NULL); scan_ack();
+    for (int i = 0; i < 20; ++i) advertisement(-40, 1);
+    assert(!counters.sample_count);
+    for (int i = 0; i < 4; ++i) advertisement(-40, 2);
+    assert(counters.sample_count == 4);
+    close_attempt(PAYLOAD_NOT_CLOSE); scan_ack();
+    assert(!flag(F_ATTEMPT_RUNNING));
+    target_select(1);
+
+    successful_exchange(false, 1); successful_exchange(true, 1); successful_exchange(false, 2);
 
     start_connected(BLE_WAIT_HELLO_ACK);
     const uint8_t wrong_identity[] = {MSG_HELLO_ACK, 2};
@@ -484,6 +503,6 @@ int main(void)
     fault_clear(FAULT_IMU); assert(fault_mask() == (1u << FAULT_TRANSLATION_LIMIT));
     fault_clear(FAULT_TRANSLATION_LIMIT); assert(!fault_mask());
 
-    printf("BLE %d dBm gate, rejected v11 early-arrival readings, 12-reading filter, three consecutive confirmations, colour-arrival loose gate, in-range callback, signed RSSI, payload CRC, early notifications, cleanup and faults: passed\n", AP1_CLOSE_RSSI_DBM);
+    printf("BLE %d dBm gate, rejected v11 early-arrival readings, 12-reading filter, three consecutive confirmations, colour-arrival loose gate, in-range callback, AP2 target on a route, signed RSSI, payload CRC, early notifications, cleanup and faults: passed\n", AP1_CLOSE_RSSI_DBM);
     return 0;
 }

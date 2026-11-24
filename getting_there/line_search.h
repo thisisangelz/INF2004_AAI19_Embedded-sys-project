@@ -24,6 +24,16 @@
 #define LINE_DIP_PROBE_MS 250u
 #define LINE_DIP_MAX_PROBES 2u
 #define LINE_DIRECTION_TEST_MS 2400u
+// Side probe: powered travel to each side of the best point before measuring
+// (about 40-50 cm at the drive speed of the 7 November three-chair run).
+#define LINE_SIDE_PROBE_MS 2000u
+// Choosing a side when the two batches disagree: the average must be this
+// much stronger (see side_compare in getting_there.c).
+#define LINE_SIDE_AVERAGE_DB 3
+// Early side probe: once a line has risen this much above its start and then
+// found no new best for this many stops, the beacon is beside the line.
+#define LINE_EARLY_PROBE_GAIN_DB 6
+#define LINE_EARLY_PROBE_FLAT_POINTS 2u
 #define LINE_SWEEP_MS 6000u
 #define LINE_TRANSLATION_MS 60000u
 #define LINE_PROFILE_CAPACITY 32u

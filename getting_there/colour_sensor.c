@@ -37,6 +37,8 @@ static bool available;
 // Bit (1u << colour_mat_t) per mat whose lighter surface has been seen.
 static unsigned lighter_mats;
 static bool on_mat;
+// The latest check saw a ring of the avoided mat (colour_set_avoid_mat).
+static bool on_avoided;
 static int last_depth = -1;
 // Fewest rings between any reading of the latest check and its mat's arrival
 // ring (0 or less: on it or inside). NOT_ON_MAT when no reading was on a mat.
@@ -91,13 +93,14 @@ bool colour_sensor_available(void) { return available; }
 void colour_arrival_reset(void)
 {
     lighter_mats = 0;
-    on_mat = false;
+    on_mat = on_avoided = false;
     last_depth = -1;
     last_rings_to_arrival = NOT_ON_MAT;
     failed_checks = 0;
 }
 
 bool colour_on_mat(void) { return available && on_mat; }
+bool colour_on_avoided_mat(void) { return available && on_avoided; }
 int colour_last_depth(void) { return available ? last_depth : -1; }
 bool colour_near_arrival(unsigned rings)
 {
@@ -122,7 +125,7 @@ static bool read_fresh(colour_reading_t *reading)
 bool colour_arrival_check(void)
 {
     if (!available) return false;
-    on_mat = false;
+    on_mat = on_avoided = false;
     last_depth = -1;
     last_rings_to_arrival = NOT_ON_MAT;
     colour_zone_t zones[COLOUR_ARRIVAL_SAMPLES];
@@ -137,6 +140,7 @@ bool colour_arrival_check(void)
             break;
         }
         zones[i] = colour_classify_mat(&last, &mats[i]);
+        if (colour_reading_on_avoided_mat(&last)) on_avoided = true;
         // Every reading on the same mat, each at its arrival ring or darker.
         if (!colour_zone_arrived(mats[i], zones[i]) || mats[i] != mats[0]) all_dark = false;
     }
@@ -170,6 +174,9 @@ bool colour_arrival_check(void)
                   colour_mat_name(mats[0]), colour_mat_name(mats[1]), colour_mat_name(mats[2]),
                   last.c, last.r, last.g, last.b, colour_gr_x1000(&last), colour_br_x1000(&last),
                   seen_before, arrived);
+    if (on_avoided)
+        report_printf("COLOUR: a ring of the %s mat (the beacon already visited) is under the sensor\n",
+                      colour_mat_name(colour_avoid_mat()));
     return arrived;
 }
 

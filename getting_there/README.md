@@ -8,12 +8,137 @@ It approaches AP1, receives and verifies AP1's reply payload over BLE, then play
 
 | Board | File | What it is |
 |---|---|---|
-| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
+| Robot, going to AP1 (pink mat) | `build/getting_there.uf2` | Current robot firmware: v18 navigation with mat steering, colour-gated transfer, buzzer sounds. Banner `line-search v18 steps500-mat250 back-search side-probe early-probe mat-steer colour-gate own-mat ble-minus58 cues \| AP1 only`, then `Colour mat: PINK (AP1)` |
 | Robot, going to AP2 (blue mat) | `build/getting_there_ap2.uf2` | The same firmware aimed at AP2 (`I AM PICO W 2`, beacon ID 2, blue mat); banner ends `AP2 only` |
 | Robot, going to AP3 (purple mat) | `build/getting_there_ap3.uf2` | The same firmware aimed at AP3 (`I AM PICO W 3`, beacon ID 3, purple mat); banner ends `AP3 only` |
+| Robot, AP1 then AP2 (one flash) | `build/getting_there_route.uf2` | AP1 on the pink mat, then backs off and goes to AP2 on the blue mat. Banner ends `cues route \| AP1 -> AP2` |
+| Robot (test), AP2 leg only | `build/getting_there_leg2.uf2` | Start it on AP1's ring 4, facing AP1: skips AP1's transfer, backs off and goes to AP2. Banner ends `AP1 -> AP2 (test: start on the first mat)` |
 | Robot (test) | `build/getting_there_colour_scan.uf2` | Colour scan test only: turns on the spot, no Wi-Fi, BLE or driving |
 | Robot (tool) | `../tcs34725_calib/build/tcs34725_calib.uf2`, `tcs34725_calib6.uf2` | Colour sensor calibration tool: pink 5-ring mat, blue and purple 6-ring mats |
 | AP1-AP3 | `../picow_access_point*_powerbank/build/picow_access_point*_powerbank.uf2` | Current beacon firmware with buzzer sounds |
+
+## Three fixes from the 17 November leg-2 runs (branch feature/ap1-to-ap2-route)
+
+Two leg-2 test runs: one reached AP2, one stopped beside it. See
+[the run notes](../docs/runs/2026-11-17-04-leg2-fail-turn-fault.md).
+
+1. **A small leftover turn error no longer stops the run.** The failed run
+   ended with a turn 2.3 degrees short: three correction nudges were too weak
+   to move the robot, so the 2-degree limit raised `FAULT: TURN`. After its
+   corrections a turn now counts if it is within 5 degrees
+   (`TURN OK: ... accepted within 5 degrees`); driving holds the heading with
+   the gyro anyway. Further off is still a fault.
+2. **Side choice on the average.** Each probe position is measured twice.
+   A side used to win only if both measurements were at least 3 dB stronger.
+   In the failed run one side read −63 then −56 against −65 and −67: one
+   measurement only 2 dB better, so "no clear side". Now, when the two
+   measurements disagree, the average decides if it is at least 3 dB
+   stronger and neither measurement points the other way (here about −60
+   against −66). The log adds `(batches disagree; decided on the average)`.
+   The three-direction probe at the start of leg 2 uses the same rule.
+3. **Early side probe.** Every time a line passed beside a mat, the signal
+   rose, went flat for two to five stops, then fell, and the robot drove on
+   until the fall was confirmed (three weak stops, a recheck, two small
+   probes, the drive back): about 1-1.5 minutes per line. Now, once a line
+   has risen at least 6 dB and then finds no new best for 2 stops, it goes
+   back to its best point and probes the sides straight away
+   (`FOLLOW: no new best for 2 stops after rising ... probe the sides now`).
+   A clear side is tried first, then the other side, then **straight on**
+   (the line never declined, so not straight back). With no clear side the
+   robot carries on along the same line as before.
+
+Banner: `... side-probe early-probe mat-steer ...`.
+
+**Hardware results (17 November, at 09527ae):** two leg-2 tests and three full
+routes, all five completed with fault mask `0x000`. The full routes took 10.49,
+7.23 and 7.23 minutes, with AP2 at 10, 4 and 6 o'clock from the start. See
+[route run 1](../docs/runs/2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.md),
+[route run 2](../docs/runs/2026-11-17-08-route-complete-ap1-12oclock-ap2-4oclock.md),
+[route run 3](../docs/runs/2026-11-17-09-route-complete-ap1-12oclock-ap2-6oclock.md) and the leg-2 tests
+([1](../docs/runs/2026-11-17-05-leg2-early-probe-ap2-straight-on.md),
+[2](../docs/runs/2026-11-17-06-leg2-early-probe-ap2-side.md)). Open point: in three
+of the five runs the early probe fired on a flat stretch while AP2 was still
+ahead; the side lines failed and "straight on" then reached the mat, at a cost
+of about 2.5-3 minutes.
+
+## AP1 then AP2 from one flash (branch feature/ap1-to-ap2-route)
+
+`getting_there_route.uf2` visits both beacons in one run. AP1 is on the pink
+mat, AP2 on the blue mat. The firmware no longer fixes the beacon when it is
+built: the Wi-Fi name, beacon ID, colour mat and log names follow the current
+target, and the route switches the target after AP1.
+
+1. **AP1**, exactly as `getting_there.uf2`: line search, side probe, colour
+   steering to ring 4, BLE transfer. Three rising beeps, and the run goes on.
+2. **Back off AP1's mat.** The robot reverses along the heading it arrived
+   on (mat steering drove in along it, from lighter rings to darker), in
+   250 ms blocks, until two stops in a row read floor, then 500 ms more. It
+   never turns next to the beacon box. These stops only read the colour; no
+   second AP1 transfer. Limit 3000 ms; without a colour sensor it reverses
+   1500 ms.
+3. **Switch to AP2**: Wi-Fi `I AM PICO W 2` (the robot forgets AP1's BSSID),
+   BLE beacon ID 2, blue mat with arrival on ring 5. AP2 gets its own
+   15-minute limit and 60 s travel budget.
+4. **Find AP2's direction.** The robot is just off AP1's mat, facing AP1.
+   AP2 cannot be through AP1, so it probes straight back (+180), then +90,
+   then −90: drive 2000 ms, turn to face the same heading as before (the
+   robot's body changes the reading by up to 17 dB with heading), take two
+   Wi-Fi batches, drive back. It follows the strongest direction.
+5. **Approach AP2**, exactly as for AP1: line, side probe, colour steering to
+   ring 5, transfer. Three rising beeps, then
+   `RESULT: ROUTE COMPLETE, AP1 and AP2 payloads confirmed`.
+
+**Keeping off AP1.** While going to AP2, the pink mat's rings read as floor
+for steering, but the robot still recognises them. A stop with a pink ring
+under the sensor (`COLOUR: a ring of the PINK mat ... is under the sensor`)
+makes it reverse the block it just drove (`ROUTE: PINK mat ahead ...`) and
+treat that way as blocked: a line ends there as if it had declined, a side
+probe measures where it stopped. Pink white edges do not count, because
+every mat's white edge looks the same.
+
+Log lines to look for: `ROUTE: leg 1/2`, `ROUTE: leaving the PINK mat`,
+`ROUTE: off the mat after ... ms reversing`, `ROUTE: leg 2/2: AP2`,
+`ROUTE: looking for AP2`, then
+`ROUTE: AP2 +180: ... dBm, +90: ..., -90: ...; follow ...`.
+
+**Testing leg 2 alone.** `getting_there_leg2.uf2` starts as if AP1 had just
+finished. Put the robot on AP1's ring 4, facing AP1, press GP20. It learns
+the gyro direction, backs off the pink mat and goes to AP2. This saves the
+4-5 minutes of the AP1 leg per try.
+
+**Limits.** AP2 must be audible from beside AP1's mat (two tiles worked for
+AP1 from three tiles). If AP2 is behind AP1 as seen from the robot, the
+probes cannot go through AP1. The best they can do is a side, and the normal
+search goes on from there.
+
+## Side probe before the direction search (branch feature/side-probe-direction-search)
+
+When a line's signal declines, the robot returns to the strongest point on
+that line, so AP1 is roughly to one side of it. Until now the next direction
+was fixed: −90 first, then +90, then straight back. On 17 November (start
+three tiles away, mat on the robot's left) that −90 turn went away from the
+mat, and the run ended with AP1 out of range.
+
+The robot's heading cannot pick the side. Its own body changes the reading by
+up to 17 dB: at one spot it read −61 dBm facing 0 and −78 dBm facing 270, the
+side AP1 was on. So the robot now **probes**:
+
+1. Turn to −90, drive 2000 ms (about 40-50 cm), **turn back to the line's
+   heading**, take two Wi-Fi batches, then drive back to the best point.
+2. The same on the +90 side.
+3. Compare the two readings, both taken facing the same way, with the usual
+   noise margin (at least 3 dB). The stronger side becomes the first trial;
+   the other side and straight back follow as before. A tie keeps the old
+   order.
+
+If a probe reaches the mat, colour steering takes over from there; if it
+reaches arrival, the transfer happens there. The log shows `SIDE PROBE:` and
+`SIDE_PROBE,side_heading=...,facing=...,dbm1=...,dbm2=...` lines, then
+`DIRECTION SEARCH: perpendicular +90 first, ...`. A probe pair costs about
+40-50 s. In the host model (which adds ±10 dB by heading), AP1 1.2 m to the
+left or right of the first line is now tried on the correct side first;
+without the probe the left-hand case tried −90 first. Not yet tested on the
+robot.
 
 ## One colour mat per beacon (branch feature/colour-ring-sensing)
 

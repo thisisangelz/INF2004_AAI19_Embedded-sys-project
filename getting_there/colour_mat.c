@@ -123,6 +123,21 @@ static colour_zone_t classify_any_mat(const colour_reading_t *reading, colour_ma
     return classify_purple(gr, br);
 }
 
+// A mat the robot must keep off: on a route, the beacon it has just left.
+static colour_mat_t avoid_mat = COLOUR_MAT_NONE;
+void colour_set_avoid_mat(colour_mat_t mat) { avoid_mat = mat; }
+colour_mat_t colour_avoid_mat(void) { return avoid_mat; }
+
+bool colour_reading_on_avoided_mat(const colour_reading_t *reading)
+{
+    if (avoid_mat == COLOUR_MAT_NONE) return false;
+    colour_mat_t mat;
+    colour_zone_t zone = classify_any_mat(reading, &mat);
+    // Rings only: every white edge looks alike, and the target's own white
+    // edge must still start colour steering.
+    return mat == avoid_mat && zone >= COLOUR_RING1;
+}
+
 colour_zone_t colour_classify_mat(const colour_reading_t *reading, colour_mat_t *mat)
 {
     colour_zone_t zone = classify_any_mat(reading, mat);

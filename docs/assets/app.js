@@ -147,7 +147,7 @@
     runs.forEach((r, i) => { (byDate[r.date || 'Undated'] = byDate[r.date || 'Undated'] || []).push(i); });
     const dates = Object.keys(byDate).sort().reverse();
     const fmtDate = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' }) : d);
-    $('#main').innerHTML = draftBanner() + '<section class="head"><h2>All runs</h2><p class="sub">' + runs.length + ' logs, newest first. Open a run to see its timeline, path and colour scans. Notes are the written analysis of each run.</p></section>' +
+    $('#main').innerHTML = draftBanner() + '<section class="head"><h2>All runs</h2><p class="sub">' + runs.length + ' logs, newest day first; within a day, in the order they were run. Open a run to see its timeline, path and colour scans. Notes are the written analysis of each run.</p></section>' +
       dates.map((d) => '<section><h3 class="day">' + esc(fmtDate(d)) + '</h3><div class="runs">' + byDate[d].map((i) => {
         const r = runs[i];
         const share = r.stats.driveShare;
