@@ -237,12 +237,7 @@ static payload_result_t return_along_line(uint32_t from, uint32_t to, float head
     return PAYLOAD_NOT_CLOSE;
 }
 
-typedef struct {
-    uint32_t wall_ms, powered_ms, scan_id;
-    float heading;
-    line_pair_t readings;
-} line_point_t;
-static line_point_t line_profile[LINE_PROFILE_CAPACITY];
+// Points go straight to the report; only the count is kept, to bound one line.
 static unsigned profile_count;
 static uint32_t profile_id;
 
@@ -253,12 +248,9 @@ static bool record_point(float heading, uint32_t powered, line_pair_t readings)
         report_printf("FAILED: line profile buffer full\n");
         return false;
     }
-    line_point_t *point = &line_profile[profile_count++];
-    *point = (line_point_t){.wall_ms = now_ms(), .powered_ms = powered,
-        .scan_id = wifi_sampler_scan_id(), .heading = heading, .readings = readings};
     report_printf("LINE_POINT,line=%lu,point=%u,t_ms=%lu,powered_ms=%lu,heading=%d,scan=%lu,dbm1=%d,dbm2=%d\n",
-                  (unsigned long)profile_id, profile_count - 1u, (unsigned long)point->wall_ms,
-                  (unsigned long)powered, (int)heading, (unsigned long)point->scan_id,
+                  (unsigned long)profile_id, profile_count++, (unsigned long)now_ms(),
+                  (unsigned long)powered, (int)heading, (unsigned long)wifi_sampler_scan_id(),
                   rssi_decode(readings.first.code), rssi_decode(readings.second.code));
     return save_checkpoint();
 }

@@ -10,12 +10,20 @@
 #define QUALIFICATION_WINDOWS 3u
 #define SCAN_START_LIMIT_MS 5u
 
+// powered_ms and scan_id have no bound this module can prove, so they stay 32
+// bits. heading holds the whole degrees the RSSI_RAW line prints.
 typedef struct {
     uint32_t wall_ms, powered_ms, scan_id;
-    float heading;
-    uint8_t code;
-    bool stopped;
+    int16_t heading;
+    uint8_t code : RSSI_BITS;
+    uint8_t stopped : 1;
 } wifi_record_t;
+_Static_assert(sizeof(wifi_record_t) == 16, "wifi_record_t is no longer 16 bytes");
+
+static int16_t whole_degrees(float heading)
+{
+    return heading >= INT16_MAX ? INT16_MAX : heading <= INT16_MIN ? INT16_MIN : (int16_t)heading;
+}
 
 static wifi_record_t records[WIFI_RECORD_CAPACITY];
 static unsigned record_count;
@@ -129,7 +137,7 @@ static bool sampler_begin(bool moving)
         return false;
     }
     pending_result = (wifi_record_t){.code = RSSI_MISSING_CODE,
-        .scan_id = ++scan_id, .heading = position_heading};
+        .scan_id = ++scan_id, .heading = whole_degrees(position_heading)};
     scan_started_ms = sampler_now_ms();
     scan_open = true;
     moving_scan = moving;

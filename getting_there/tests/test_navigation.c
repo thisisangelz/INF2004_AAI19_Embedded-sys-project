@@ -82,6 +82,17 @@ void report_printf(const char *format, ...)
     if (count > 0 && (size_t)count < sizeof(log_text) - log_length) log_length += (size_t)count;
     if (ui_test && strstr(format, "Run ended.")) ui_finished = true;
 }
+// Reads the last LINE_POINT line logged for this point, as the dashboard does.
+static bool logged_line_point(unsigned point, unsigned long *t_ms, unsigned long *powered_ms)
+{
+    bool found = false;
+    for (const char *line = strstr(log_text, "LINE_POINT,"); line; line = strstr(line + 1, "LINE_POINT,")) {
+        unsigned long id, t, powered; unsigned index;
+        if (sscanf(line, "LINE_POINT,line=%lu,point=%u,t_ms=%lu,powered_ms=%lu,", &id, &index, &t, &powered) == 4 &&
+            index == point) { *t_ms = t; *powered_ms = powered; found = true; }
+    }
+    return found;
+}
 void report_flush_usb(void) { assert(!motors_on); }
 void report_init(void) { }
 void report_replay(void)
@@ -551,8 +562,11 @@ static void check_profiles(void)
     assert(followed.progress && followed.consistent && followed.end==FOLLOW_DECLINE);
     assert(forwards_count==8 && backwards_count==2 && moves[8].ms==750 && moves[9].ms==450);
     assert(moves[6].ms==100 && moves[7].ms==100);
-    assert(translation_ms==2900 && profile_count==7 && line_profile[2].powered_ms==500);
-    assert(wifi_calls==110 && line_profile[1].wall_ms>line_profile[1].powered_ms);
+    unsigned long point_t_ms, point_powered_ms;
+    assert(translation_ms==2900 && profile_count==7);
+    assert(logged_line_point(2,&point_t_ms,&point_powered_ms) && point_powered_ms==500);
+    assert(logged_line_point(1,&point_t_ms,&point_powered_ms));
+    assert(wifi_calls==110 && point_t_ms>point_powered_ms);
     assert(strstr(log_text,"return only 1200 powered ms to best point 500"));
     static const int spike[] = {-70,-70,-45,-70,-66,-66,-66,-66,-72,-72,-73,-73,-74,-74,
                                -75,-75,-75,-75,-76,-76,-66,-66};
