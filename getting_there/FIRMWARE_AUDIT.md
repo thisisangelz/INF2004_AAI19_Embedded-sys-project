@@ -155,6 +155,7 @@ the wire, before ATT overhead.
 | `MSG_FILE_DATA` | robot to beacon | type, sequence, chunk length, up to 17 data | 4..20 |
 | `MSG_FILE_END`, `MSG_REPLY_REQUEST`, `MSG_REPLY_NEXT`, `MSG_COMPLETE` | robot to beacon | type | 1 |
 | `MSG_HELLO_ACK`, `MSG_FILE_READY`, `MSG_COMPLETE_ACK`, `MSG_ERROR` | beacon to robot | type, beacon ID or error code | 2 |
+| `MSG_FILE_RECEIVED` | beacon to robot | type, status, u32 CRC32 LE | 6 |
 | `MSG_REPLY_START` | beacon to robot | type, u16 length LE, u32 CRC32 LE | 7 |
 | `MSG_REPLY_DATA` | beacon to robot | type, sequence, chunk length, up to 17 data | 4..20 |
 
