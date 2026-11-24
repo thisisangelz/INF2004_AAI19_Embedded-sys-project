@@ -1,0 +1,40 @@
+name: Firmware checks
+
+on:
+  push:
+  pull_request:
+
+env:
+  PICO_SDK_VERSION: 2.3.1
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # The BLE client test compiles against the SDK's BTstack sources.
+      - name: Fetch Pico SDK with BTstack
+        run: |
+          git clone --depth 1 --branch "$PICO_SDK_VERSION" https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
+          git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1 lib/btstack
+      - name: Run host tests
+        run: python3 getting_there/tests/run_host_checks.py --sdk "$RUNNER_TEMP/pico-sdk"
+
+  firmware-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+      - name: Fetch Pico SDK
+        run: |
+          git clone --depth 1 --branch "$PICO_SDK_VERSION" https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
+          git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1
+      - name: Build every robot and beacon target
+        env:
+          PICO_SDK_PATH: ${{ runner.temp }}/pico-sdk
+        run: |
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Report RAM and flash use
+        run: arm-none-eabi-size build/getting_there/*.elf
