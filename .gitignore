@@ -7,3 +7,7 @@
 .local-archive/
 __pycache__/
 *.py[cod]
+
+# Local editor index and one-off cruise test builds.
+compile_commands.json
+**/build-cruise/
