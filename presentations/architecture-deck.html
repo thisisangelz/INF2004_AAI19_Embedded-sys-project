@@ -1,0 +1,951 @@
+<title>Getting There Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* reveal.js 5.1.0 core stylesheet (MIT), inlined */
+/*!
+* reveal.js 5.1.0
+* https://revealjs.com
+* MIT licensed
+*
+* Copyright (C) 2011-2024 Hakim El Hattab, https://hakim.se
+*/.reveal .r-stretch,.reveal .stretch{max-width:none;max-height:none}.reveal pre.r-stretch code,.reveal pre.stretch code{height:100%;max-height:100%;box-sizing:border-box}.reveal .r-fit-text{display:inline-block;white-space:nowrap}.reveal .r-stack{display:grid;grid-template-rows:100%}.reveal .r-stack>*{grid-area:1/1;margin:auto}.reveal .r-hstack,.reveal .r-vstack{display:flex}.reveal .r-hstack img,.reveal .r-hstack video,.reveal .r-vstack img,.reveal .r-vstack video{min-width:0;min-height:0;object-fit:contain}.reveal .r-vstack{flex-direction:column;align-items:center;justify-content:center}.reveal .r-hstack{flex-direction:row;align-items:center;justify-content:center}.reveal .items-stretch{align-items:stretch}.reveal .items-start{align-items:flex-start}.reveal .items-center{align-items:center}.reveal .items-end{align-items:flex-end}.reveal .justify-between{justify-content:space-between}.reveal .justify-around{justify-content:space-around}.reveal .justify-start{justify-content:flex-start}.reveal .justify-center{justify-content:center}.reveal .justify-end{justify-content:flex-end}html.reveal-full-page{width:100%;height:100%;height:100vh;height:calc(var(--vh,1vh) * 100);height:100svh;overflow:hidden}.reveal-viewport{height:100%;overflow:hidden;position:relative;line-height:1;margin:0;background-color:#fff;color:#000;--r-controls-spacing:12px}.reveal-viewport:fullscreen{top:0!important;left:0!important;width:100%!important;height:100%!important;transform:none!important}.reveal .fragment{transition:all .2s ease}.reveal .fragment:not(.custom){opacity:0;visibility:hidden;will-change:opacity}.reveal .fragment.visible{opacity:1;visibility:inherit}.reveal .fragment.disabled{transition:none}.reveal .fragment.grow{opacity:1;visibility:inherit}.reveal .fragment.grow.visible{transform:scale(1.3)}.reveal .fragment.shrink{opacity:1;visibility:inherit}.reveal .fragment.shrink.visible{transform:scale(.7)}.reveal .fragment.zoom-in{transform:scale(.1)}.reveal .fragment.zoom-in.visible{transform:none}.reveal .fragment.fade-out{opacity:1;visibility:inherit}.reveal .fragment.fade-out.visible{opacity:0;visibility:hidden}.reveal .fragment.semi-fade-out{opacity:1;visibility:inherit}.reveal .fragment.semi-fade-out.visible{opacity:.5;visibility:inherit}.reveal .fragment.strike{opacity:1;visibility:inherit}.reveal .fragment.strike.visible{text-decoration:line-through}.reveal .fragment.fade-up{transform:translate(0,40px)}.reveal .fragment.fade-up.visible{transform:translate(0,0)}.reveal .fragment.fade-down{transform:translate(0,-40px)}.reveal .fragment.fade-down.visible{transform:translate(0,0)}.reveal .fragment.fade-right{transform:translate(-40px,0)}.reveal .fragment.fade-right.visible{transform:translate(0,0)}.reveal .fragment.fade-left{transform:translate(40px,0)}.reveal .fragment.fade-left.visible{transform:translate(0,0)}.reveal .fragment.current-visible,.reveal .fragment.fade-in-then-out{opacity:0;visibility:hidden}.reveal .fragment.current-visible.current-fragment,.reveal .fragment.fade-in-then-out.current-fragment{opacity:1;visibility:inherit}.reveal .fragment.fade-in-then-semi-out{opacity:0;visibility:hidden}.reveal .fragment.fade-in-then-semi-out.visible{opacity:.5;visibility:inherit}.reveal .fragment.fade-in-then-semi-out.current-fragment{opacity:1;visibility:inherit}.reveal .fragment.highlight-blue,.reveal .fragment.highlight-current-blue,.reveal .fragment.highlight-current-green,.reveal .fragment.highlight-current-red,.reveal .fragment.highlight-green,.reveal .fragment.highlight-red{opacity:1;visibility:inherit}.reveal .fragment.highlight-red.visible{color:#ff2c2d}.reveal .fragment.highlight-green.visible{color:#17ff2e}.reveal .fragment.highlight-blue.visible{color:#1b91ff}.reveal .fragment.highlight-current-red.current-fragment{color:#ff2c2d}.reveal .fragment.highlight-current-green.current-fragment{color:#17ff2e}.reveal .fragment.highlight-current-blue.current-fragment{color:#1b91ff}.reveal:after{content:"";font-style:italic}.reveal iframe{z-index:1}.reveal a{position:relative}@keyframes bounce-right{0%,10%,25%,40%,50%{transform:translateX(0)}20%{transform:translateX(10px)}30%{transform:translateX(-5px)}}@keyframes bounce-left{0%,10%,25%,40%,50%{transform:translateX(0)}20%{transform:translateX(-10px)}30%{transform:translateX(5px)}}@keyframes bounce-down{0%,10%,25%,40%,50%{transform:translateY(0)}20%{transform:translateY(10px)}30%{transform:translateY(-5px)}}.reveal .controls{display:none;position:absolute;top:auto;bottom:var(--r-controls-spacing);right:var(--r-controls-spacing);left:auto;z-index:11;color:#000;pointer-events:none;font-size:10px}.reveal .controls button{position:absolute;padding:0;background-color:transparent;border:0;outline:0;cursor:pointer;color:currentColor;transform:scale(.9999);transition:color .2s ease,opacity .2s ease,transform .2s ease;z-index:2;pointer-events:auto;font-size:inherit;visibility:hidden;opacity:0;-webkit-appearance:none;-webkit-tap-highlight-color:transparent}.reveal .controls .controls-arrow:after,.reveal .controls .controls-arrow:before{content:"";position:absolute;top:0;left:0;width:2.6em;height:.5em;border-radius:.25em;background-color:currentColor;transition:all .15s ease,background-color .8s ease;transform-origin:.2em 50%;will-change:transform}.reveal .controls .controls-arrow{position:relative;width:3.6em;height:3.6em}.reveal .controls .controls-arrow:before{transform:translateX(.5em) translateY(1.55em) rotate(45deg)}.reveal .controls .controls-arrow:after{transform:translateX(.5em) translateY(1.55em) rotate(-45deg)}.reveal .controls .controls-arrow:hover:before{transform:translateX(.5em) translateY(1.55em) rotate(40deg)}.reveal .controls .controls-arrow:hover:after{transform:translateX(.5em) translateY(1.55em) rotate(-40deg)}.reveal .controls .controls-arrow:active:before{transform:translateX(.5em) translateY(1.55em) rotate(36deg)}.reveal .controls .controls-arrow:active:after{transform:translateX(.5em) translateY(1.55em) rotate(-36deg)}.reveal .controls .navigate-left{right:6.4em;bottom:3.2em;transform:translateX(-10px)}.reveal .controls .navigate-left.highlight{animation:bounce-left 2s 50 both ease-out}.reveal .controls .navigate-right{right:0;bottom:3.2em;transform:translateX(10px)}.reveal .controls .navigate-right .controls-arrow{transform:rotate(180deg)}.reveal .controls .navigate-right.highlight{animation:bounce-right 2s 50 both ease-out}.reveal .controls .navigate-up{right:3.2em;bottom:6.4em;transform:translateY(-10px)}.reveal .controls .navigate-up .controls-arrow{transform:rotate(90deg)}.reveal .controls .navigate-down{right:3.2em;bottom:-1.4em;padding-bottom:1.4em;transform:translateY(10px)}.reveal .controls .navigate-down .controls-arrow{transform:rotate(-90deg)}.reveal .controls .navigate-down.highlight{animation:bounce-down 2s 50 both ease-out}.reveal .controls[data-controls-back-arrows=faded] .navigate-up.enabled{opacity:.3}.reveal .controls[data-controls-back-arrows=faded] .navigate-up.enabled:hover{opacity:1}.reveal .controls[data-controls-back-arrows=hidden] .navigate-up.enabled{opacity:0;visibility:hidden}.reveal .controls .enabled{visibility:visible;opacity:.9;cursor:pointer;transform:none}.reveal .controls .enabled.fragmented{opacity:.5}.reveal .controls .enabled.fragmented:hover,.reveal .controls .enabled:hover{opacity:1}.reveal:not(.rtl) .controls[data-controls-back-arrows=faded] .navigate-left.enabled{opacity:.3}.reveal:not(.rtl) .controls[data-controls-back-arrows=faded] .navigate-left.enabled:hover{opacity:1}.reveal:not(.rtl) .controls[data-controls-back-arrows=hidden] .navigate-left.enabled{opacity:0;visibility:hidden}.reveal.rtl .controls[data-controls-back-arrows=faded] .navigate-right.enabled{opacity:.3}.reveal.rtl .controls[data-controls-back-arrows=faded] .navigate-right.enabled:hover{opacity:1}.reveal.rtl .controls[data-controls-back-arrows=hidden] .navigate-right.enabled{opacity:0;visibility:hidden}.reveal[data-navigation-mode=linear].has-horizontal-slides .navigate-down,.reveal[data-navigation-mode=linear].has-horizontal-slides .navigate-up{display:none}.reveal:not(.has-vertical-slides) .controls .navigate-left,.reveal[data-navigation-mode=linear].has-horizontal-slides .navigate-left{bottom:1.4em;right:5.5em}.reveal:not(.has-vertical-slides) .controls .navigate-right,.reveal[data-navigation-mode=linear].has-horizontal-slides .navigate-right{bottom:1.4em;right:.5em}.reveal:not(.has-horizontal-slides) .controls .navigate-up{right:1.4em;bottom:5em}.reveal:not(.has-horizontal-slides) .controls .navigate-down{right:1.4em;bottom:.5em}.reveal.has-dark-background .controls{color:#fff}.reveal.has-light-background .controls{color:#000}.reveal.no-hover .controls .controls-arrow:active:before,.reveal.no-hover .controls .controls-arrow:hover:before{transform:translateX(.5em) translateY(1.55em) rotate(45deg)}.reveal.no-hover .controls .controls-arrow:active:after,.reveal.no-hover .controls .controls-arrow:hover:after{transform:translateX(.5em) translateY(1.55em) rotate(-45deg)}@media screen and (min-width:500px){.reveal-viewport{--r-controls-spacing:0.8em}.reveal .controls[data-controls-layout=edges]{top:0;right:0;bottom:0;left:0}.reveal .controls[data-controls-layout=edges] .navigate-down,.reveal .controls[data-controls-layout=edges] .navigate-left,.reveal .controls[data-controls-layout=edges] .navigate-right,.reveal .controls[data-controls-layout=edges] .navigate-up{bottom:auto;right:auto}.reveal .controls[data-controls-layout=edges] .navigate-left{top:50%;left:var(--r-controls-spacing);margin-top:-1.8em}.reveal .controls[data-controls-layout=edges] .navigate-right{top:50%;right:var(--r-controls-spacing);margin-top:-1.8em}.reveal .controls[data-controls-layout=edges] .navigate-up{top:var(--r-controls-spacing);left:50%;margin-left:-1.8em}.reveal .controls[data-controls-layout=edges] .navigate-down{bottom:calc(var(--r-controls-spacing) - 1.4em + .3em);left:50%;margin-left:-1.8em}}.reveal .progress{position:absolute;display:none;height:3px;width:100%;bottom:0;left:0;z-index:10;background-color:rgba(0,0,0,.2);color:#fff}.reveal .progress:after{content:"";display:block;position:absolute;height:10px;width:100%;top:-10px}.reveal .progress span{display:block;height:100%;width:100%;background-color:currentColor;transition:transform .8s cubic-bezier(.26,.86,.44,.985);transform-origin:0 0;transform:scaleX(0)}.reveal .slide-number{position:absolute;display:block;right:8px;bottom:8px;z-index:31;font-family:Helvetica,sans-serif;font-size:12px;line-height:1;color:#fff;background-color:rgba(0,0,0,.4);padding:5px}.reveal .slide-number a{color:currentColor}.reveal .slide-number-delimiter{margin:0 3px}.reveal{position:relative;width:100%;height:100%;overflow:hidden;touch-action:pinch-zoom}.reveal.embedded{touch-action:pan-y}.reveal.embedded.is-vertical-slide{touch-action:none}.reveal .slides{position:absolute;width:100%;height:100%;top:0;right:0;bottom:0;left:0;margin:auto;pointer-events:none;overflow:visible;z-index:1;text-align:center;perspective:600px;perspective-origin:50% 40%}.reveal .slides>section{perspective:600px}.reveal .slides>section,.reveal .slides>section>section{display:none;position:absolute;width:100%;pointer-events:auto;z-index:10;transform-style:flat;transition:transform-origin .8s cubic-bezier(.26,.86,.44,.985),transform .8s cubic-bezier(.26,.86,.44,.985),visibility .8s cubic-bezier(.26,.86,.44,.985),opacity .8s cubic-bezier(.26,.86,.44,.985)}.reveal[data-transition-speed=fast] .slides section{transition-duration:.4s}.reveal[data-transition-speed=slow] .slides section{transition-duration:1.2s}.reveal .slides section[data-transition-speed=fast]{transition-duration:.4s}.reveal .slides section[data-transition-speed=slow]{transition-duration:1.2s}.reveal .slides>section.stack{padding-top:0;padding-bottom:0;pointer-events:none;height:100%}.reveal .slides>section.present,.reveal .slides>section>section.present{display:block;z-index:11;opacity:1}.reveal .slides>section:empty,.reveal .slides>section>section:empty,.reveal .slides>section>section[data-background-interactive],.reveal .slides>section[data-background-interactive]{pointer-events:none}.reveal.center,.reveal.center .slides,.reveal.center .slides section{min-height:0!important}.reveal .slides>section:not(.present),.reveal .slides>section>section:not(.present){pointer-events:none}.reveal.overview .slides>section,.reveal.overview .slides>section>section{pointer-events:auto}.reveal .slides>section.future,.reveal .slides>section.future>section,.reveal .slides>section.past,.reveal .slides>section.past>section,.reveal .slides>section>section.future,.reveal .slides>section>section.past{opacity:0}.reveal .slides>section[data-transition=slide].past,.reveal .slides>section[data-transition~=slide-out].past,.reveal.slide .slides>section:not([data-transition]).past{transform:translate(-150%,0)}.reveal .slides>section[data-transition=slide].future,.reveal .slides>section[data-transition~=slide-in].future,.reveal.slide .slides>section:not([data-transition]).future{transform:translate(150%,0)}.reveal .slides>section>section[data-transition=slide].past,.reveal .slides>section>section[data-transition~=slide-out].past,.reveal.slide .slides>section>section:not([data-transition]).past{transform:translate(0,-150%)}.reveal .slides>section>section[data-transition=slide].future,.reveal .slides>section>section[data-transition~=slide-in].future,.reveal.slide .slides>section>section:not([data-transition]).future{transform:translate(0,150%)}.reveal .slides>section[data-transition=linear].past,.reveal .slides>section[data-transition~=linear-out].past,.reveal.linear .slides>section:not([data-transition]).past{transform:translate(-150%,0)}.reveal .slides>section[data-transition=linear].future,.reveal .slides>section[data-transition~=linear-in].future,.reveal.linear .slides>section:not([data-transition]).future{transform:translate(150%,0)}.reveal .slides>section>section[data-transition=linear].past,.reveal .slides>section>section[data-transition~=linear-out].past,.reveal.linear .slides>section>section:not([data-transition]).past{transform:translate(0,-150%)}.reveal .slides>section>section[data-transition=linear].future,.reveal .slides>section>section[data-transition~=linear-in].future,.reveal.linear .slides>section>section:not([data-transition]).future{transform:translate(0,150%)}.reveal .slides section[data-transition=default].stack,.reveal.default .slides section.stack{transform-style:preserve-3d}.reveal .slides>section[data-transition=default].past,.reveal .slides>section[data-transition~=default-out].past,.reveal.default .slides>section:not([data-transition]).past{transform:translate3d(-100%,0,0) rotateY(-90deg) translate3d(-100%,0,0)}.reveal .slides>section[data-transition=default].future,.reveal .slides>section[data-transition~=default-in].future,.reveal.default .slides>section:not([data-transition]).future{transform:translate3d(100%,0,0) rotateY(90deg) translate3d(100%,0,0)}.reveal .slides>section>section[data-transition=default].past,.reveal .slides>section>section[data-transition~=default-out].past,.reveal.default .slides>section>section:not([data-transition]).past{transform:translate3d(0,-300px,0) rotateX(70deg) translate3d(0,-300px,0)}.reveal .slides>section>section[data-transition=default].future,.reveal .slides>section>section[data-transition~=default-in].future,.reveal.default .slides>section>section:not([data-transition]).future{transform:translate3d(0,300px,0) rotateX(-70deg) translate3d(0,300px,0)}.reveal .slides section[data-transition=convex].stack,.reveal.convex .slides section.stack{transform-style:preserve-3d}.reveal .slides>section[data-transition=convex].past,.reveal .slides>section[data-transition~=convex-out].past,.reveal.convex .slides>section:not([data-transition]).past{transform:translate3d(-100%,0,0) rotateY(-90deg) translate3d(-100%,0,0)}.reveal .slides>section[data-transition=convex].future,.reveal .slides>section[data-transition~=convex-in].future,.reveal.convex .slides>section:not([data-transition]).future{transform:translate3d(100%,0,0) rotateY(90deg) translate3d(100%,0,0)}.reveal .slides>section>section[data-transition=convex].past,.reveal .slides>section>section[data-transition~=convex-out].past,.reveal.convex .slides>section>section:not([data-transition]).past{transform:translate3d(0,-300px,0) rotateX(70deg) translate3d(0,-300px,0)}.reveal .slides>section>section[data-transition=convex].future,.reveal .slides>section>section[data-transition~=convex-in].future,.reveal.convex .slides>section>section:not([data-transition]).future{transform:translate3d(0,300px,0) rotateX(-70deg) translate3d(0,300px,0)}.reveal .slides section[data-transition=concave].stack,.reveal.concave .slides section.stack{transform-style:preserve-3d}.reveal .slides>section[data-transition=concave].past,.reveal .slides>section[data-transition~=concave-out].past,.reveal.concave .slides>section:not([data-transition]).past{transform:translate3d(-100%,0,0) rotateY(90deg) translate3d(-100%,0,0)}.reveal .slides>section[data-transition=concave].future,.reveal .slides>section[data-transition~=concave-in].future,.reveal.concave .slides>section:not([data-transition]).future{transform:translate3d(100%,0,0) rotateY(-90deg) translate3d(100%,0,0)}.reveal .slides>section>section[data-transition=concave].past,.reveal .slides>section>section[data-transition~=concave-out].past,.reveal.concave .slides>section>section:not([data-transition]).past{transform:translate3d(0,-80%,0) rotateX(-70deg) translate3d(0,-80%,0)}.reveal .slides>section>section[data-transition=concave].future,.reveal .slides>section>section[data-transition~=concave-in].future,.reveal.concave .slides>section>section:not([data-transition]).future{transform:translate3d(0,80%,0) rotateX(70deg) translate3d(0,80%,0)}.reveal .slides section[data-transition=zoom],.reveal.zoom .slides section:not([data-transition]){transition-timing-function:ease}.reveal .slides>section[data-transition=zoom].past,.reveal .slides>section[data-transition~=zoom-out].past,.reveal.zoom .slides>section:not([data-transition]).past{visibility:hidden;transform:scale(16)}.reveal .slides>section[data-transition=zoom].future,.reveal .slides>section[data-transition~=zoom-in].future,.reveal.zoom .slides>section:not([data-transition]).future{visibility:hidden;transform:scale(.2)}.reveal .slides>section>section[data-transition=zoom].past,.reveal .slides>section>section[data-transition~=zoom-out].past,.reveal.zoom .slides>section>section:not([data-transition]).past{transform:scale(16)}.reveal .slides>section>section[data-transition=zoom].future,.reveal .slides>section>section[data-transition~=zoom-in].future,.reveal.zoom .slides>section>section:not([data-transition]).future{transform:scale(.2)}.reveal.cube .slides{perspective:1300px}.reveal.cube .slides section{padding:30px;min-height:700px;backface-visibility:hidden;box-sizing:border-box;transform-style:preserve-3d}.reveal.center.cube .slides section{min-height:0}.reveal.cube .slides section:not(.stack):before{content:"";position:absolute;display:block;width:100%;height:100%;left:0;top:0;background:rgba(0,0,0,.1);border-radius:4px;transform:translateZ(-20px)}.reveal.cube .slides section:not(.stack):after{content:"";position:absolute;display:block;width:90%;height:30px;left:5%;bottom:0;background:0 0;z-index:1;border-radius:4px;box-shadow:0 95px 25px rgba(0,0,0,.2);transform:translateZ(-90px) rotateX(65deg)}.reveal.cube .slides>section.stack{padding:0;background:0 0}.reveal.cube .slides>section.past{transform-origin:100% 0;transform:translate3d(-100%,0,0) rotateY(-90deg)}.reveal.cube .slides>section.future{transform-origin:0 0;transform:translate3d(100%,0,0) rotateY(90deg)}.reveal.cube .slides>section>section.past{transform-origin:0 100%;transform:translate3d(0,-100%,0) rotateX(90deg)}.reveal.cube .slides>section>section.future{transform-origin:0 0;transform:translate3d(0,100%,0) rotateX(-90deg)}.reveal.page .slides{perspective-origin:0 50%;perspective:3000px}.reveal.page .slides section{padding:30px;min-height:700px;box-sizing:border-box;transform-style:preserve-3d}.reveal.page .slides section.past{z-index:12}.reveal.page .slides section:not(.stack):before{content:"";position:absolute;display:block;width:100%;height:100%;left:0;top:0;background:rgba(0,0,0,.1);transform:translateZ(-20px)}.reveal.page .slides section:not(.stack):after{content:"";position:absolute;display:block;width:90%;height:30px;left:5%;bottom:0;background:0 0;z-index:1;border-radius:4px;box-shadow:0 95px 25px rgba(0,0,0,.2);-webkit-transform:translateZ(-90px) rotateX(65deg)}.reveal.page .slides>section.stack{padding:0;background:0 0}.reveal.page .slides>section.past{transform-origin:0 0;transform:translate3d(-40%,0,0) rotateY(-80deg)}.reveal.page .slides>section.future{transform-origin:100% 0;transform:translate3d(0,0,0)}.reveal.page .slides>section>section.past{transform-origin:0 0;transform:translate3d(0,-40%,0) rotateX(80deg)}.reveal.page .slides>section>section.future{transform-origin:0 100%;transform:translate3d(0,0,0)}.reveal .slides section[data-transition=fade],.reveal.fade .slides section:not([data-transition]),.reveal.fade .slides>section>section:not([data-transition]){transform:none;transition:opacity .5s}.reveal.fade.overview .slides section,.reveal.fade.overview .slides>section>section{transition:none}.reveal .slides section[data-transition=none],.reveal.none .slides section:not([data-transition]){transform:none;transition:none}.reveal .pause-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:#000;visibility:hidden;opacity:0;z-index:100;transition:all 1s ease}.reveal .pause-overlay .resume-button{position:absolute;bottom:20px;right:20px;color:#ccc;border-radius:2px;padding:6px 14px;border:2px solid #ccc;font-size:16px;background:0 0;cursor:pointer}.reveal .pause-overlay .resume-button:hover{color:#fff;border-color:#fff}.reveal.paused .pause-overlay{visibility:visible;opacity:1}.reveal .no-transition,.reveal .no-transition *,.reveal .slides.disable-slide-transitions section{transition:none!important}.reveal .slides.disable-slide-transitions section{transform:none!important}.reveal .backgrounds{position:absolute;width:100%;height:100%;top:0;left:0;perspective:600px}.reveal .slide-background{display:none;position:absolute;width:100%;height:100%;opacity:0;visibility:hidden;overflow:hidden;background-color:rgba(0,0,0,0);transition:all .8s cubic-bezier(.26,.86,.44,.985)}.reveal .slide-background-content{position:absolute;width:100%;height:100%;background-position:50% 50%;background-repeat:no-repeat;background-size:cover}.reveal .slide-background.stack{display:block}.reveal .slide-background.present{opacity:1;visibility:visible;z-index:2}.print-pdf .reveal .slide-background{opacity:1!important;visibility:visible!important}.reveal .slide-background video{position:absolute;width:100%;height:100%;max-width:none;max-height:none;top:0;left:0;object-fit:cover}.reveal .slide-background[data-background-size=contain] video{object-fit:contain}.reveal>.backgrounds .slide-background[data-background-transition=none],.reveal[data-background-transition=none]>.backgrounds .slide-background:not([data-background-transition]){transition:none}.reveal>.backgrounds .slide-background[data-background-transition=slide],.reveal[data-background-transition=slide]>.backgrounds .slide-background:not([data-background-transition]){opacity:1}.reveal>.backgrounds .slide-background.past[data-background-transition=slide],.reveal[data-background-transition=slide]>.backgrounds .slide-background.past:not([data-background-transition]){transform:translate(-100%,0)}.reveal>.backgrounds .slide-background.future[data-background-transition=slide],.reveal[data-background-transition=slide]>.backgrounds .slide-background.future:not([data-background-transition]){transform:translate(100%,0)}.reveal>.backgrounds .slide-background>.slide-background.past[data-background-transition=slide],.reveal[data-background-transition=slide]>.backgrounds .slide-background>.slide-background.past:not([data-background-transition]){transform:translate(0,-100%)}.reveal>.backgrounds .slide-background>.slide-background.future[data-background-transition=slide],.reveal[data-background-transition=slide]>.backgrounds .slide-background>.slide-background.future:not([data-background-transition]){transform:translate(0,100%)}.reveal>.backgrounds .slide-background.past[data-background-transition=convex],.reveal[data-background-transition=convex]>.backgrounds .slide-background.past:not([data-background-transition]){opacity:0;transform:translate3d(-100%,0,0) rotateY(-90deg) translate3d(-100%,0,0)}.reveal>.backgrounds .slide-background.future[data-background-transition=convex],.reveal[data-background-transition=convex]>.backgrounds .slide-background.future:not([data-background-transition]){opacity:0;transform:translate3d(100%,0,0) rotateY(90deg) translate3d(100%,0,0)}.reveal>.backgrounds .slide-background>.slide-background.past[data-background-transition=convex],.reveal[data-background-transition=convex]>.backgrounds .slide-background>.slide-background.past:not([data-background-transition]){opacity:0;transform:translate3d(0,-100%,0) rotateX(90deg) translate3d(0,-100%,0)}.reveal>.backgrounds .slide-background>.slide-background.future[data-background-transition=convex],.reveal[data-background-transition=convex]>.backgrounds .slide-background>.slide-background.future:not([data-background-transition]){opacity:0;transform:translate3d(0,100%,0) rotateX(-90deg) translate3d(0,100%,0)}.reveal>.backgrounds .slide-background.past[data-background-transition=concave],.reveal[data-background-transition=concave]>.backgrounds .slide-background.past:not([data-background-transition]){opacity:0;transform:translate3d(-100%,0,0) rotateY(90deg) translate3d(-100%,0,0)}.reveal>.backgrounds .slide-background.future[data-background-transition=concave],.reveal[data-background-transition=concave]>.backgrounds .slide-background.future:not([data-background-transition]){opacity:0;transform:translate3d(100%,0,0) rotateY(-90deg) translate3d(100%,0,0)}.reveal>.backgrounds .slide-background>.slide-background.past[data-background-transition=concave],.reveal[data-background-transition=concave]>.backgrounds .slide-background>.slide-background.past:not([data-background-transition]){opacity:0;transform:translate3d(0,-100%,0) rotateX(-90deg) translate3d(0,-100%,0)}.reveal>.backgrounds .slide-background>.slide-background.future[data-background-transition=concave],.reveal[data-background-transition=concave]>.backgrounds .slide-background>.slide-background.future:not([data-background-transition]){opacity:0;transform:translate3d(0,100%,0) rotateX(90deg) translate3d(0,100%,0)}.reveal>.backgrounds .slide-background[data-background-transition=zoom],.reveal[data-background-transition=zoom]>.backgrounds .slide-background:not([data-background-transition]){transition-timing-function:ease}.reveal>.backgrounds .slide-background.past[data-background-transition=zoom],.reveal[data-background-transition=zoom]>.backgrounds .slide-background.past:not([data-background-transition]){opacity:0;visibility:hidden;transform:scale(16)}.reveal>.backgrounds .slide-background.future[data-background-transition=zoom],.reveal[data-background-transition=zoom]>.backgrounds .slide-background.future:not([data-background-transition]){opacity:0;visibility:hidden;transform:scale(.2)}.reveal>.backgrounds .slide-background>.slide-background.past[data-background-transition=zoom],.reveal[data-background-transition=zoom]>.backgrounds .slide-background>.slide-background.past:not([data-background-transition]){opacity:0;visibility:hidden;transform:scale(16)}.reveal>.backgrounds .slide-background>.slide-background.future[data-background-transition=zoom],.reveal[data-background-transition=zoom]>.backgrounds .slide-background>.slide-background.future:not([data-background-transition]){opacity:0;visibility:hidden;transform:scale(.2)}.reveal[data-transition-speed=fast]>.backgrounds .slide-background{transition-duration:.4s}.reveal[data-transition-speed=slow]>.backgrounds .slide-background{transition-duration:1.2s}.reveal [data-auto-animate-target^=unmatched]{will-change:opacity}.reveal section[data-auto-animate]:not(.stack):not([data-auto-animate=running]) [data-auto-animate-target^=unmatched]{opacity:0}.reveal.overview{perspective-origin:50% 50%;perspective:700px}.reveal.overview .slides{-moz-transform-style:preserve-3d}.reveal.overview .slides section{height:100%;top:0!important;opacity:1!important;overflow:hidden;visibility:visible!important;cursor:pointer;box-sizing:border-box}.reveal.overview .slides section.present,.reveal.overview .slides section:hover{outline:10px solid rgba(150,150,150,.4);outline-offset:10px}.reveal.overview .slides section .fragment{opacity:1;transition:none}.reveal.overview .slides section:after,.reveal.overview .slides section:before{display:none!important}.reveal.overview .slides>section.stack{padding:0;top:0!important;background:0 0;outline:0;overflow:visible}.reveal.overview .backgrounds{perspective:inherit;-moz-transform-style:preserve-3d}.reveal.overview .backgrounds .slide-background{opacity:1;visibility:visible;outline:10px solid rgba(150,150,150,.1);outline-offset:10px}.reveal.overview .backgrounds .slide-background.stack{overflow:visible}.reveal.overview .slides section,.reveal.overview-deactivating .slides section{transition:none}.reveal.overview .backgrounds .slide-background,.reveal.overview-deactivating .backgrounds .slide-background{transition:none}.reveal.rtl .slides,.reveal.rtl .slides h1,.reveal.rtl .slides h2,.reveal.rtl .slides h3,.reveal.rtl .slides h4,.reveal.rtl .slides h5,.reveal.rtl .slides h6{direction:rtl;font-family:sans-serif}.reveal.rtl code,.reveal.rtl pre{direction:ltr}.reveal.rtl ol,.reveal.rtl ul{text-align:right}.reveal.rtl .progress span{transform-origin:100% 0}.reveal.has-parallax-background .backgrounds{transition:all .8s ease}.reveal.has-parallax-background[data-transition-speed=fast] .backgrounds{transition-duration:.4s}.reveal.has-parallax-background[data-transition-speed=slow] .backgrounds{transition-duration:1.2s}.reveal>.overlay{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1000;background:rgba(0,0,0,.95);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:all .3s ease}.reveal>.overlay .spinner{position:absolute;display:block;top:50%;left:50%;width:32px;height:32px;margin:-16px 0 0 -16px;z-index:10;background-image:url(data:image/gif;base64,R0lGODlhIAAgAPMAAJmZmf%2F%2F%2F6%2Bvr8nJybW1tcDAwOjo6Nvb26ioqKOjo7Ozs%2FLy8vz8%2FAAAAAAAAAAAACH%2FC05FVFNDQVBFMi4wAwEAAAAh%2FhpDcmVhdGVkIHdpdGggYWpheGxvYWQuaW5mbwAh%2BQQJCgAAACwAAAAAIAAgAAAE5xDISWlhperN52JLhSSdRgwVo1ICQZRUsiwHpTJT4iowNS8vyW2icCF6k8HMMBkCEDskxTBDAZwuAkkqIfxIQyhBQBFvAQSDITM5VDW6XNE4KagNh6Bgwe60smQUB3d4Rz1ZBApnFASDd0hihh12BkE9kjAJVlycXIg7CQIFA6SlnJ87paqbSKiKoqusnbMdmDC2tXQlkUhziYtyWTxIfy6BE8WJt5YJvpJivxNaGmLHT0VnOgSYf0dZXS7APdpB309RnHOG5gDqXGLDaC457D1zZ%2FV%2FnmOM82XiHRLYKhKP1oZmADdEAAAh%2BQQJCgAAACwAAAAAIAAgAAAE6hDISWlZpOrNp1lGNRSdRpDUolIGw5RUYhhHukqFu8DsrEyqnWThGvAmhVlteBvojpTDDBUEIFwMFBRAmBkSgOrBFZogCASwBDEY%2FCZSg7GSE0gSCjQBMVG023xWBhklAnoEdhQEfyNqMIcKjhRsjEdnezB%2BA4k8gTwJhFuiW4dokXiloUepBAp5qaKpp6%2BHo7aWW54wl7obvEe0kRuoplCGepwSx2jJvqHEmGt6whJpGpfJCHmOoNHKaHx61WiSR92E4lbFoq%2BB6QDtuetcaBPnW6%2BO7wDHpIiK9SaVK5GgV543tzjgGcghAgAh%2BQQJCgAAACwAAAAAIAAgAAAE7hDISSkxpOrN5zFHNWRdhSiVoVLHspRUMoyUakyEe8PTPCATW9A14E0UvuAKMNAZKYUZCiBMuBakSQKG8G2FzUWox2AUtAQFcBKlVQoLgQReZhQlCIJesQXI5B0CBnUMOxMCenoCfTCEWBsJColTMANldx15BGs8B5wlCZ9Po6OJkwmRpnqkqnuSrayqfKmqpLajoiW5HJq7FL1Gr2mMMcKUMIiJgIemy7xZtJsTmsM4xHiKv5KMCXqfyUCJEonXPN2rAOIAmsfB3uPoAK%2B%2BG%2Bw48edZPK%2BM6hLJpQg484enXIdQFSS1u6UhksENEQAAIfkECQoAAAAsAAAAACAAIAAABOcQyEmpGKLqzWcZRVUQnZYg1aBSh2GUVEIQ2aQOE%2BG%2BcD4ntpWkZQj1JIiZIogDFFyHI0UxQwFugMSOFIPJftfVAEoZLBbcLEFhlQiqGp1Vd140AUklUN3eCA51C1EWMzMCezCBBmkxVIVHBWd3HHl9JQOIJSdSnJ0TDKChCwUJjoWMPaGqDKannasMo6WnM562R5YluZRwur0wpgqZE7NKUm%2BFNRPIhjBJxKZteWuIBMN4zRMIVIhffcgojwCF117i4nlLnY5ztRLsnOk%2BaV%2BoJY7V7m76PdkS4trKcdg0Zc0tTcKkRAAAIfkECQoAAAAsAAAAACAAIAAABO4QyEkpKqjqzScpRaVkXZWQEximw1BSCUEIlDohrft6cpKCk5xid5MNJTaAIkekKGQkWyKHkvhKsR7ARmitkAYDYRIbUQRQjWBwJRzChi9CRlBcY1UN4g0%2FVNB0AlcvcAYHRyZPdEQFYV8ccwR5HWxEJ02YmRMLnJ1xCYp0Y5idpQuhopmmC2KgojKasUQDk5BNAwwMOh2RtRq5uQuPZKGIJQIGwAwGf6I0JXMpC8C7kXWDBINFMxS4DKMAWVWAGYsAdNqW5uaRxkSKJOZKaU3tPOBZ4DuK2LATgJhkPJMgTwKCdFjyPHEnKxFCDhEAACH5BAkKAAAALAAAAAAgACAAAATzEMhJaVKp6s2nIkolIJ2WkBShpkVRWqqQrhLSEu9MZJKK9y1ZrqYK9WiClmvoUaF8gIQSNeF1Er4MNFn4SRSDARWroAIETg1iVwuHjYB1kYc1mwruwXKC9gmsJXliGxc%2BXiUCby9ydh1sOSdMkpMTBpaXBzsfhoc5l58Gm5yToAaZhaOUqjkDgCWNHAULCwOLaTmzswadEqggQwgHuQsHIoZCHQMMQgQGubVEcxOPFAcMDAYUA85eWARmfSRQCdcMe0zeP1AAygwLlJtPNAAL19DARdPzBOWSm1brJBi45soRAWQAAkrQIykShQ9wVhHCwCQCACH5BAkKAAAALAAAAAAgACAAAATrEMhJaVKp6s2nIkqFZF2VIBWhUsJaTokqUCoBq%2BE71SRQeyqUToLA7VxF0JDyIQh%2FMVVPMt1ECZlfcjZJ9mIKoaTl1MRIl5o4CUKXOwmyrCInCKqcWtvadL2SYhyASyNDJ0uIiRMDjI0Fd30%2FiI2UA5GSS5UDj2l6NoqgOgN4gksEBgYFf0FDqKgHnyZ9OX8HrgYHdHpcHQULXAS2qKpENRg7eAMLC7kTBaixUYFkKAzWAAnLC7FLVxLWDBLKCwaKTULgEwbLA4hJtOkSBNqITT3xEgfLpBtzE%2FjiuL04RGEBgwWhShRgQExHBAAh%2BQQJCgAAACwAAAAAIAAgAAAE7xDISWlSqerNpyJKhWRdlSAVoVLCWk6JKlAqAavhO9UkUHsqlE6CwO1cRdCQ8iEIfzFVTzLdRAmZX3I2SfZiCqGk5dTESJeaOAlClzsJsqwiJwiqnFrb2nS9kmIcgEsjQydLiIlHehhpejaIjzh9eomSjZR%2BipslWIRLAgMDOR2DOqKogTB9pCUJBagDBXR6XB0EBkIIsaRsGGMMAxoDBgYHTKJiUYEGDAzHC9EACcUGkIgFzgwZ0QsSBcXHiQvOwgDdEwfFs0sDzt4S6BK4xYjkDOzn0unFeBzOBijIm1Dgmg5YFQwsCMjp1oJ8LyIAACH5BAkKAAAALAAAAAAgACAAAATwEMhJaVKp6s2nIkqFZF2VIBWhUsJaTokqUCoBq%2BE71SRQeyqUToLA7VxF0JDyIQh%2FMVVPMt1ECZlfcjZJ9mIKoaTl1MRIl5o4CUKXOwmyrCInCKqcWtvadL2SYhyASyNDJ0uIiUd6GGl6NoiPOH16iZKNlH6KmyWFOggHhEEvAwwMA0N9GBsEC6amhnVcEwavDAazGwIDaH1ipaYLBUTCGgQDA8NdHz0FpqgTBwsLqAbWAAnIA4FWKdMLGdYGEgraigbT0OITBcg5QwPT4xLrROZL6AuQAPUS7bxLpoWidY0JtxLHKhwwMJBTHgPKdEQAACH5BAkKAAAALAAAAAAgACAAAATrEMhJaVKp6s2nIkqFZF2VIBWhUsJaTokqUCoBq%2BE71SRQeyqUToLA7VxF0JDyIQh%2FMVVPMt1ECZlfcjZJ9mIKoaTl1MRIl5o4CUKXOwmyrCInCKqcWtvadL2SYhyASyNDJ0uIiUd6GAULDJCRiXo1CpGXDJOUjY%2BYip9DhToJA4RBLwMLCwVDfRgbBAaqqoZ1XBMHswsHtxtFaH1iqaoGNgAIxRpbFAgfPQSqpbgGBqUD1wBXeCYp1AYZ19JJOYgH1KwA4UBvQwXUBxPqVD9L3sbp2BNk2xvvFPJd%2BMFCN6HAAIKgNggY0KtEBAAh%2BQQJCgAAACwAAAAAIAAgAAAE6BDISWlSqerNpyJKhWRdlSAVoVLCWk6JKlAqAavhO9UkUHsqlE6CwO1cRdCQ8iEIfzFVTzLdRAmZX3I2SfYIDMaAFdTESJeaEDAIMxYFqrOUaNW4E4ObYcCXaiBVEgULe0NJaxxtYksjh2NLkZISgDgJhHthkpU4mW6blRiYmZOlh4JWkDqILwUGBnE6TYEbCgevr0N1gH4At7gHiRpFaLNrrq8HNgAJA70AWxQIH1%2BvsYMDAzZQPC9VCNkDWUhGkuE5PxJNwiUK4UfLzOlD4WvzAHaoG9nxPi5d%2BjYUqfAhhykOFwJWiAAAIfkECQoAAAAsAAAAACAAIAAABPAQyElpUqnqzaciSoVkXVUMFaFSwlpOCcMYlErAavhOMnNLNo8KsZsMZItJEIDIFSkLGQoQTNhIsFehRww2CQLKF0tYGKYSg%2BygsZIuNqJksKgbfgIGepNo2cIUB3V1B3IvNiBYNQaDSTtfhhx0CwVPI0UJe0%2Bbm4g5VgcGoqOcnjmjqDSdnhgEoamcsZuXO1aWQy8KAwOAuTYYGwi7w5h%2BKr0SJ8MFihpNbx%2B4Erq7BYBuzsdiH1jCAzoSfl0rVirNbRXlBBlLX%2BBP0XJLAPGzTkAuAOqb0WT5AH7OcdCm5B8TgRwSRKIHQtaLCwg1RAAAOwAAAAAAAAAAAA%3D%3D);visibility:visible;opacity:.6;transition:all .3s ease}.reveal>.overlay header{position:absolute;left:0;top:0;width:100%;padding:5px;z-index:2;box-sizing:border-box}.reveal>.overlay header a{display:inline-block;width:40px;height:40px;line-height:36px;padding:0 10px;float:right;opacity:.6;box-sizing:border-box}.reveal>.overlay header a:hover{opacity:1}.reveal>.overlay header a .icon{display:inline-block;width:20px;height:20px;background-position:50% 50%;background-size:100%;background-repeat:no-repeat}.reveal>.overlay header a.close .icon{background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABkklEQVRYR8WX4VHDMAxG6wnoJrABZQPYBCaBTWAD2g1gE5gg6OOsXuxIlr40d81dfrSJ9V4c2VLK7spHuTJ/5wpM07QXuXc5X0opX2tEJcadjHuV80li/FgxTIEK/5QBCICBD6xEhSMGHgQPgBgLiYVAB1dpSqKDawxTohFw4JSEA3clzgIBPCURwE2JucBR7rhPJJv5OpJwDX+SfDjgx1wACQeJG1aChP9K/IMmdZ8DtESV1WyP3Bt4MwM6sj4NMxMYiqUWHQu4KYA/SYkIjOsm3BXYWMKFDwU2khjCQ4ELJUJ4SmClRArOCmSXGuKma0fYD5CbzHxFpCSGAhfAVSSUGDUk2BWZaff2g6GE15BsBQ9nwmpIGDiyHQddwNTMKkbZaf9fajXQca1EX44puJZUsnY0ObGmITE3GVLCbEhQUjGVt146j6oasWN+49Vph2w1pZ5EansNZqKBm1txbU57iRRcZ86RWMDdWtBJUHBHwoQPi1GV+JCbntmvok7iTX4/Up9mgyTc/FJYDTcndgH/AA5A/CHsyEkVAAAAAElFTkSuQmCC)}.reveal>.overlay header a.external .icon{background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAcElEQVRYR+2WSQoAIQwEzf8f7XiOMkUQxUPlGkM3hVmiQfQR9GYnH1SsAQlI4DiBqkCMoNb9y2e90IAEJPAcgdznU9+engMaeJ7Azh5Y1U67gAho4DqBqmB1buAf0MB1AlVBek83ZPkmJMGc1wAR+AAqod/B97TRpQAAAABJRU5ErkJggg==)}.reveal>.overlay .viewport{position:absolute;display:flex;top:50px;right:0;bottom:0;left:0}.reveal>.overlay.overlay-preview .viewport iframe{width:100%;height:100%;max-width:100%;max-height:100%;border:0;opacity:0;visibility:hidden;transition:all .3s ease}.reveal>.overlay.overlay-preview.loaded .viewport iframe{opacity:1;visibility:visible}.reveal>.overlay.overlay-preview.loaded .viewport-inner{position:absolute;z-index:-1;left:0;top:45%;width:100%;text-align:center;letter-spacing:normal}.reveal>.overlay.overlay-preview .x-frame-error{opacity:0;transition:opacity .3s ease .3s}.reveal>.overlay.overlay-preview.loaded .x-frame-error{opacity:1}.reveal>.overlay.overlay-preview.loaded .spinner{opacity:0;visibility:hidden;transform:scale(.2)}.reveal>.overlay.overlay-help .viewport{overflow:auto;color:#fff}.reveal>.overlay.overlay-help .viewport .viewport-inner{width:600px;margin:auto;padding:20px 20px 80px 20px;text-align:center;letter-spacing:normal}.reveal>.overlay.overlay-help .viewport .viewport-inner .title{font-size:20px}.reveal>.overlay.overlay-help .viewport .viewport-inner table{border:1px solid #fff;border-collapse:collapse;font-size:16px}.reveal>.overlay.overlay-help .viewport .viewport-inner table td,.reveal>.overlay.overlay-help .viewport .viewport-inner table th{width:200px;padding:14px;border:1px solid #fff;vertical-align:middle}.reveal>.overlay.overlay-help .viewport .viewport-inner table th{padding-top:20px;padding-bottom:20px}.reveal .playback{position:absolute;left:15px;bottom:20px;z-index:30;cursor:pointer;transition:all .4s ease;-webkit-tap-highlight-color:transparent}.reveal.overview .playback{opacity:0;visibility:hidden}.reveal .hljs{min-height:100%}.reveal .hljs table{margin:initial}.reveal .hljs-ln-code,.reveal .hljs-ln-numbers{padding:0;border:0}.reveal .hljs-ln-numbers{opacity:.6;padding-right:.75em;text-align:right;vertical-align:top}.reveal .hljs.has-highlights tr:not(.highlight-line){opacity:.4}.reveal .hljs.has-highlights.fragment{transition:all .2s ease}.reveal .hljs:not(:first-child).fragment{position:absolute;top:0;left:0;width:100%;box-sizing:border-box}.reveal pre[data-auto-animate-target]{overflow:hidden}.reveal pre[data-auto-animate-target] code{height:100%}.reveal .roll{display:inline-block;line-height:1.2;overflow:hidden;vertical-align:top;perspective:400px;perspective-origin:50% 50%}.reveal .roll:hover{background:0 0;text-shadow:none}.reveal .roll span{display:block;position:relative;padding:0 2px;pointer-events:none;transition:all .4s ease;transform-origin:50% 0;transform-style:preserve-3d;backface-visibility:hidden}.reveal .roll:hover span{background:rgba(0,0,0,.5);transform:translate3d(0,0,-45px) rotateX(90deg)}.reveal .roll span:after{content:attr(data-title);display:block;position:absolute;left:0;top:0;padding:0 2px;backface-visibility:hidden;transform-origin:50% 0;transform:translate3d(0,110%,0) rotateX(-90deg)}.reveal aside.notes{display:none}.reveal .speaker-notes{display:none;position:absolute;width:33.3333333333%;height:100%;top:0;left:100%;padding:14px 18px 14px 18px;z-index:1;font-size:18px;line-height:1.4;border:1px solid rgba(0,0,0,.05);color:#222;background-color:#f5f5f5;overflow:auto;box-sizing:border-box;text-align:left;font-family:Helvetica,sans-serif;-webkit-overflow-scrolling:touch}.reveal .speaker-notes .notes-placeholder{color:#ccc;font-style:italic}.reveal .speaker-notes:focus{outline:0}.reveal .speaker-notes:before{content:"Speaker notes";display:block;margin-bottom:10px;opacity:.5}.reveal.show-notes{max-width:75%;overflow:visible}.reveal.show-notes .speaker-notes{display:block}@media screen and (min-width:1600px){.reveal .speaker-notes{font-size:20px}}@media screen and (max-width:1024px){.reveal.show-notes{border-left:0;max-width:none;max-height:70%;max-height:70vh;overflow:visible}.reveal.show-notes .speaker-notes{top:100%;left:0;width:100%;height:30vh;border:0}}@media screen and (max-width:600px){.reveal.show-notes{max-height:60%;max-height:60vh}.reveal.show-notes .speaker-notes{top:100%;height:40vh}.reveal .speaker-notes{font-size:14px}}.reveal .jump-to-slide{position:absolute;top:15px;left:15px;z-index:30;font-size:32px;-webkit-tap-highlight-color:transparent}.reveal .jump-to-slide-input{background:0 0;padding:8px;font-size:inherit;color:currentColor;border:0}.reveal .jump-to-slide-input::placeholder{color:currentColor;opacity:.5}.reveal.has-dark-background .jump-to-slide-input{color:#fff}.reveal.has-light-background .jump-to-slide-input{color:#222}.reveal .jump-to-slide-input:focus{outline:0}.zoomed .reveal *,.zoomed .reveal :after,.zoomed .reveal :before{backface-visibility:visible!important}.zoomed .reveal .controls,.zoomed .reveal .progress{opacity:0}.zoomed .reveal .roll span{background:0 0}.zoomed .reveal .roll span:after{visibility:hidden}.reveal-viewport.loading-scroll-mode{visibility:hidden}.reveal-viewport.reveal-scroll{margin:0 auto;overflow:auto;overflow-x:hidden;overflow-y:auto;z-index:1;--r-scrollbar-width:7px;--r-scrollbar-trigger-size:5px;--r-controls-spacing:8px}@media screen and (max-width:500px){.reveal-viewport.reveal-scroll{--r-scrollbar-width:3px;--r-scrollbar-trigger-size:3px}}.reveal-viewport.reveal-scroll .backgrounds,.reveal-viewport.reveal-scroll .controls,.reveal-viewport.reveal-scroll .playback,.reveal-viewport.reveal-scroll .progress,.reveal-viewport.reveal-scroll .slide-number,.reveal-viewport.reveal-scroll .speaker-notes{display:none!important}.reveal-viewport.reveal-scroll .overlay,.reveal-viewport.reveal-scroll .pause-overlay{position:fixed}.reveal-viewport.reveal-scroll .reveal{overflow:visible;touch-action:manipulation}.reveal-viewport.reveal-scroll .slides{position:static;pointer-events:initial;left:auto;top:auto;width:100%!important;margin:0;padding:0;overflow:visible;display:block;perspective:none;perspective-origin:50% 50%}.reveal-viewport.reveal-scroll .scroll-page{position:relative;width:100%;height:calc(var(--page-height) + var(--page-scroll-padding));z-index:1;overflow:visible}.reveal-viewport.reveal-scroll .scroll-page-sticky{position:sticky;height:var(--page-height);top:0}.reveal-viewport.reveal-scroll .scroll-page-content{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden}.reveal-viewport.reveal-scroll .scroll-page section{visibility:visible!important;display:block!important;position:absolute!important;width:var(--slide-width)!important;height:var(--slide-height)!important;top:50%!important;left:50%!important;opacity:1!important;transform:scale(var(--slide-scale)) translate(-50%,-50%)!important;transform-style:flat!important;transform-origin:0 0!important}.reveal-viewport.reveal-scroll .slide-background{display:block!important;position:absolute;top:0;left:0;width:100%;height:100%;z-index:auto!important;visibility:visible;opacity:1;touch-action:manipulation}.reveal-viewport.reveal-scroll[data-scrollbar=auto]::-webkit-scrollbar,.reveal-viewport.reveal-scroll[data-scrollbar=true]::-webkit-scrollbar{display:none}.reveal-viewport.reveal-scroll[data-scrollbar=auto],.reveal-viewport.reveal-scroll[data-scrollbar=true]{scrollbar-width:none}.reveal-viewport.has-dark-background,.reveal.has-dark-background{--r-overlay-element-bg-color:240,240,240;--r-overlay-element-fg-color:0,0,0}.reveal-viewport.has-light-background,.reveal.has-light-background{--r-overlay-element-bg-color:0,0,0;--r-overlay-element-fg-color:240,240,240}.reveal-viewport.reveal-scroll .scrollbar{position:sticky;top:50%;z-index:20;opacity:0;transition:all .3s ease}.reveal-viewport.reveal-scroll .scrollbar.visible,.reveal-viewport.reveal-scroll .scrollbar:hover{opacity:1}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-inner{position:absolute;width:var(--r-scrollbar-width);height:calc(var(--viewport-height) - var(--r-controls-spacing) * 2);right:var(--r-controls-spacing);top:0;transform:translateY(-50%);border-radius:var(--r-scrollbar-width);z-index:10}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-playhead{position:absolute;width:var(--r-scrollbar-width);height:var(--r-scrollbar-width);top:0;left:0;border-radius:var(--r-scrollbar-width);background-color:rgba(var(--r-overlay-element-bg-color),1);z-index:11;transition:background-color .2s ease}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide{position:absolute;width:100%;background-color:rgba(var(--r-overlay-element-bg-color),.2);box-shadow:0 0 0 1px rgba(var(--r-overlay-element-fg-color),.1);border-radius:var(--r-scrollbar-width);transition:background-color .2s ease}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide:after{content:"";position:absolute;width:200%;height:100%;top:0;left:-50%;background:rgba(0,0,0,0);z-index:-1}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide.active,.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide:hover{background-color:rgba(var(--r-overlay-element-bg-color),.4)}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-trigger{position:absolute;width:100%;transition:background-color .2s ease}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide.active.has-triggers{background-color:rgba(var(--r-overlay-element-bg-color),.4);z-index:10}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide.active .scrollbar-trigger:after{content:"";position:absolute;width:var(--r-scrollbar-trigger-size);height:var(--r-scrollbar-trigger-size);border-radius:20px;top:50%;left:50%;transform:translate(-50%,-50%);background-color:rgba(var(--r-overlay-element-bg-color),1);transition:transform .2s ease,opacity .2s ease;opacity:.4}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide.active .scrollbar-trigger.active:after,.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide.active .scrollbar-trigger.active~.scrollbar-trigger:after{opacity:1}.reveal-viewport.reveal-scroll .scrollbar .scrollbar-slide.active .scrollbar-trigger~.scrollbar-trigger.active:after{transform:translate(calc(var(--r-scrollbar-width) * -2),0);background-color:rgba(var(--r-overlay-element-bg-color),1)}html.reveal-print *{-webkit-print-color-adjust:exact}html.reveal-print{width:100%;height:100%;overflow:visible}html.reveal-print body{margin:0 auto!important;border:0;padding:0;float:none!important;overflow:visible}html.reveal-print .nestedarrow,html.reveal-print .reveal .controls,html.reveal-print .reveal .playback,html.reveal-print .reveal .progress,html.reveal-print .reveal.overview,html.reveal-print .state-background{display:none!important}html.reveal-print .reveal pre code{overflow:hidden!important}html.reveal-print .reveal{width:auto!important;height:auto!important;overflow:hidden!important}html.reveal-print .reveal .slides{position:static;width:100%!important;height:auto!important;zoom:1!important;pointer-events:initial;left:auto;top:auto;margin:0!important;padding:0!important;overflow:visible;display:block;perspective:none;perspective-origin:50% 50%}html.reveal-print .reveal .slides .pdf-page{position:relative;overflow:hidden;z-index:1;page-break-after:always}html.reveal-print .reveal .slides .pdf-page:last-of-type{page-break-after:avoid}html.reveal-print .reveal .slides section{visibility:visible!important;display:block!important;position:absolute!important;margin:0!important;padding:0!important;box-sizing:border-box!important;min-height:1px;opacity:1!important;transform-style:flat!important;transform:none!important}html.reveal-print .reveal section.stack{position:relative!important;margin:0!important;padding:0!important;page-break-after:avoid!important;height:auto!important;min-height:auto!important}html.reveal-print .reveal img{box-shadow:none}html.reveal-print .reveal .backgrounds{display:none}html.reveal-print .reveal .slide-background{display:block!important;position:absolute;top:0;left:0;width:100%;height:100%;z-index:auto!important}html.reveal-print .reveal.show-notes{max-width:none;max-height:none}html.reveal-print .reveal .speaker-notes-pdf{display:block;width:100%;height:auto;max-height:none;top:auto;right:auto;bottom:auto;left:auto;z-index:100}html.reveal-print .reveal .speaker-notes-pdf[data-layout=separate-page]{position:relative;color:inherit;background-color:transparent;padding:20px;page-break-after:always;border:0}html.reveal-print .reveal .slide-number-pdf{display:block;position:absolute;font-size:14px;visibility:visible}html.reveal-print .aria-status{display:none}@media print{html:not(.print-pdf){overflow:visible;width:auto;height:auto}html:not(.print-pdf) body{margin:0;padding:0;overflow:visible}html:not(.print-pdf) .reveal{background:#fff;font-size:20pt}html:not(.print-pdf) .reveal .backgrounds,html:not(.print-pdf) .reveal .controls,html:not(.print-pdf) .reveal .progress,html:not(.print-pdf) .reveal .slide-number,html:not(.print-pdf) .reveal .state-background{display:none!important}html:not(.print-pdf) .reveal li,html:not(.print-pdf) .reveal p,html:not(.print-pdf) .reveal td{font-size:20pt!important;color:#000}html:not(.print-pdf) .reveal h1,html:not(.print-pdf) .reveal h2,html:not(.print-pdf) .reveal h3,html:not(.print-pdf) .reveal h4,html:not(.print-pdf) .reveal h5,html:not(.print-pdf) .reveal h6{color:#000!important;height:auto;line-height:normal;text-align:left;letter-spacing:normal}html:not(.print-pdf) .reveal h1{font-size:28pt!important}html:not(.print-pdf) .reveal h2{font-size:24pt!important}html:not(.print-pdf) .reveal h3{font-size:22pt!important}html:not(.print-pdf) .reveal h4{font-size:22pt!important;font-variant:small-caps}html:not(.print-pdf) .reveal h5{font-size:21pt!important}html:not(.print-pdf) .reveal h6{font-size:20pt!important;font-style:italic}html:not(.print-pdf) .reveal a:link,html:not(.print-pdf) .reveal a:visited{color:#000!important;font-weight:700;text-decoration:underline}html:not(.print-pdf) .reveal div,html:not(.print-pdf) .reveal ol,html:not(.print-pdf) .reveal p,html:not(.print-pdf) .reveal ul{visibility:visible;position:static;width:auto;height:auto;display:block;overflow:visible;margin:0;text-align:left!important}html:not(.print-pdf) .reveal pre,html:not(.print-pdf) .reveal table{margin-left:0;margin-right:0}html:not(.print-pdf) .reveal pre code{padding:20px}html:not(.print-pdf) .reveal blockquote{margin:20px 0}html:not(.print-pdf) .reveal .slides{position:static!important;width:auto!important;height:auto!important;left:0!important;top:0!important;margin-left:0!important;margin-top:0!important;padding:0!important;zoom:1!important;transform:none!important;overflow:visible!important;display:block!important;text-align:left!important;perspective:none;perspective-origin:50% 50%}html:not(.print-pdf) .reveal .slides section{visibility:visible!important;position:static!important;width:auto!important;height:auto!important;display:block!important;overflow:visible!important;left:0!important;top:0!important;margin-left:0!important;margin-top:0!important;padding:60px 20px!important;z-index:auto!important;opacity:1!important;page-break-after:always!important;transform-style:flat!important;transform:none!important;transition:none!important}html:not(.print-pdf) .reveal .slides section.stack{padding:0!important}html:not(.print-pdf) .reveal .slides section:last-of-type{page-break-after:avoid!important}html:not(.print-pdf) .reveal .slides section .fragment{opacity:1!important;visibility:visible!important;transform:none!important}html:not(.print-pdf) .reveal .r-fit-text{white-space:normal!important}html:not(.print-pdf) .reveal section img{display:block;margin:15px 0;background:#fff;border:1px solid #666;box-shadow:none}html:not(.print-pdf) .reveal section small{font-size:.8em}html:not(.print-pdf) .reveal .hljs{max-height:100%;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font-size:15pt}html:not(.print-pdf) .reveal .hljs .hljs-ln-numbers{white-space:nowrap}html:not(.print-pdf) .reveal .hljs td{font-size:inherit!important;color:inherit!important}}
+
+/* Layout: one 1280x720 engineering sheet per slide; diagrams fill the sheet, each colour always means one execution context. */
+:root {
+  --bg: #EEF2F1;
+  --surface: #FFFFFF;
+  --fg: #14201D;
+  --muted: #566661;
+  --line: #C3CFCB;
+  --lane: #E3EAE8;
+  --accent: #0B7A63;
+  --accent-soft: #D4ECE5;
+  --c-wifi: #B86E0C;
+  --c-ble: #4650C2;
+  --c-timer: #B13F6A;
+  --mat-pink: #D9548A;
+  --mat-blue: #2F6FD0;
+  --mat-purple: #7E4FC0;
+  --mat-edge: #FFFFFF;
+  --bad: #B83A2E;
+  --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1614; --surface: #15201D; --fg: #E2EBE8; --muted: #93A49F; --line: #2D3C38;
+    --lane: #18241F; --accent: #3CC29F; --accent-soft: #173A31; --c-wifi: #E5A646;
+    --c-ble: #8E96F2; --c-timer: #E27FA4; --mat-pink: #E77AA5; --mat-blue: #5C93E6;
+    --mat-purple: #A27BE0; --mat-edge: #D9E0DE; --bad: #EE7A6C; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1614; --surface: #15201D; --fg: #E2EBE8; --muted: #93A49F; --line: #2D3C38;
+  --lane: #18241F; --accent: #3CC29F; --accent-soft: #173A31; --c-wifi: #E5A646;
+  --c-ble: #8E96F2; --c-timer: #E27FA4; --mat-pink: #E77AA5; --mat-blue: #5C93E6;
+  --mat-purple: #A27BE0; --mat-edge: #D9E0DE; --bad: #EE7A6C; color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); }
+.deck-wrap {
+  height: 100%; box-sizing: border-box;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+.reveal-viewport, .reveal { background: var(--bg); color: var(--fg); }
+.reveal { height: 100%; font-family: var(--font-body); font-size: 22px; line-height: 1.45; }
+.reveal .controls, .reveal .progress { color: var(--accent); }
+.reveal .slides { text-align: left; }
+.reveal .slides > section {
+  box-sizing: border-box; height: 100%; padding: 34px 52px 28px;
+  display: flex !important; flex-direction: column; gap: 14px;
+}
+.reveal .slides > section[hidden] { display: none !important; }
+.reveal .slides > section.past, .reveal .slides > section.future { pointer-events: none; }
+
+.kicker {
+  font-family: var(--font-mono); font-size: 14px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent); display: flex; gap: 14px; align-items: baseline;
+}
+.kicker .file { color: var(--muted); letter-spacing: .02em; text-transform: none; }
+.reveal h1, .reveal h2 {
+  font-family: var(--font-display); font-stretch: 82%; color: var(--fg); margin: 0;
+  text-wrap: balance; letter-spacing: -0.01em; text-transform: none;
+}
+.reveal h1 { font-size: 92px; font-weight: 800; line-height: .95; }
+.reveal h2 { font-size: 44px; font-weight: 700; line-height: 1.05; }
+.lede { font-size: 22px; color: var(--muted); max-width: 62ch; margin: 0; }
+.reveal p { margin: 0; }
+figure { margin: 0; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+figure svg { width: 100%; height: 100%; min-height: 0; flex: 1 1 auto; display: block; }
+figcaption { font-size: 17px; color: var(--muted); max-width: 90ch; }
+.mono { font-family: var(--font-mono); }
+
+/* SVG vocabulary */
+.b { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.b-acc { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.8; }
+.b-wifi { fill: var(--surface); stroke: var(--c-wifi); stroke-width: 1.8; }
+.b-ble { fill: var(--surface); stroke: var(--c-ble); stroke-width: 1.8; }
+.b-timer { fill: var(--surface); stroke: var(--c-timer); stroke-width: 1.8; }
+.b-main { fill: var(--surface); stroke: var(--accent); stroke-width: 1.8; }
+.b-bad { fill: var(--surface); stroke: var(--bad); stroke-width: 1.8; stroke-dasharray: 5 4; }
+.lane { fill: var(--lane); }
+.floor { fill: var(--lane); stroke: var(--line); stroke-width: 1.5; }
+.t { fill: var(--fg); font: 600 16px var(--font-body); }
+.t-lg { fill: var(--fg); font: 700 22px var(--font-display); font-stretch: 85%; }
+.ts { fill: var(--muted); font: 12.5px var(--font-mono); }
+.tl { fill: var(--muted); font: 12.5px var(--font-mono); }
+.t-acc { fill: var(--accent); } .t-wifi { fill: var(--c-wifi); } .t-ble { fill: var(--c-ble); }
+.t-timer { fill: var(--c-timer); } .t-bad { fill: var(--bad); }
+.e { stroke: var(--fg); stroke-width: 1.6; fill: none; }
+.e-acc { stroke: var(--accent); stroke-width: 2.2; fill: none; }
+.e-wifi { stroke: var(--c-wifi); stroke-width: 2; fill: none; }
+.e-ble { stroke: var(--c-ble); stroke-width: 2; fill: none; }
+.e-timer { stroke: var(--c-timer); stroke-width: 2; fill: none; }
+.e-muted { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.e-bad { stroke: var(--bad); stroke-width: 1.8; fill: none; }
+.dash { stroke-dasharray: 6 5; }
+.dot { stroke-dasharray: 2 4; }
+.mk { fill: var(--fg); } .mk-acc { fill: var(--accent); } .mk-wifi { fill: var(--c-wifi); }
+.mk-ble { fill: var(--c-ble); } .mk-timer { fill: var(--c-timer); } .mk-muted { fill: var(--muted); }
+.mk-bad { fill: var(--bad); }
+.num { fill: var(--accent); } .num-t { fill: var(--surface); font: 700 14px var(--font-body); }
+.grid-l { stroke: var(--line); stroke-width: 1; }
+.pink { fill: var(--mat-pink); } .blue { fill: var(--mat-blue); } .purple { fill: var(--mat-purple); }
+.edge { fill: var(--mat-edge); stroke: var(--line); stroke-width: 1.5; }
+
+/* Context legend chips */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 16px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 22px; height: 4px; border-radius: 2px; display: inline-block; }
+
+/* Title slide */
+.title-slide { justify-content: space-between; }
+.title-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: end; flex: 1; }
+.title-facts { display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; font-size: 18px; align-self: end; }
+.title-facts dt { font-family: var(--font-mono); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding-top: 4px; }
+.title-facts dd { margin: 0; }
+.byline { font-family: var(--font-mono); font-size: 14px; color: var(--muted); display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 12px; }
+
+/* Layer stack */
+.stack { display: grid; gap: 10px; flex: 1; align-content: start; }
+.layer { display: grid; grid-template-columns: 210px 1fr; gap: 18px; align-items: center; padding: 12px 16px; border-radius: 6px; background: var(--lane); }
+.layer.app { background: var(--accent-soft); }
+.layer h3 { margin: 0; font-family: var(--font-display); font-stretch: 85%; font-size: 22px; font-weight: 700; color: var(--fg); text-transform: none; }
+.layer h3 small { display: block; font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; color: var(--muted); letter-spacing: 0; margin-top: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; font-size: 15.5px; line-height: 1.25; }
+.chip b { font-family: var(--font-mono); font-weight: 600; font-size: 14px; display: block; }
+.chip span { color: var(--muted); font-size: 13.5px; }
+.chip.pure { border-color: var(--accent); border-style: dashed; }
+.chip.sdk b { font-family: var(--font-body); font-weight: 600; font-size: 15px; }
+
+/* Timeline */
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 26px 18px; counter-reset: step; flex: 1; align-content: start; }
+.timeline li { counter-increment: step; position: relative; padding-top: 44px; font-size: 17px; }
+.timeline li::before { content: counter(step); position: absolute; top: 0; left: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--surface); font: 700 15px/30px var(--font-body); text-align: center; }
+.timeline li::after { content: ""; position: absolute; top: 15px; left: 38px; right: -12px; height: 2px; background: var(--line); }
+.timeline li:nth-child(5n)::after, .timeline li:last-child::after { display: none; }
+.timeline b { display: block; font-family: var(--font-display); font-stretch: 85%; font-size: 21px; margin-bottom: 4px; }
+.timeline .ctx { display: inline-block; margin-top: 6px; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+.timeline li.warn::before { background: var(--c-timer); }
+
+/* Two-column text + figure */
+.split { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 34px; flex: 1; min-height: 0; }
+.rules { display: flex; flex-direction: column; gap: 14px; font-size: 18.5px; }
+.rules h3 { margin: 0; font-family: var(--font-mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.rules ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.rules .big { font-family: var(--font-display); font-stretch: 85%; font-size: 34px; font-weight: 700; line-height: 1; }
+
+/* Fault register */
+.register { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.bit { border: 1.5px solid var(--line); background: var(--surface); border-radius: 4px; padding: 8px 8px 10px; min-height: 74px; display: flex; flex-direction: column; gap: 4px; }
+.bit .n { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.bit .name { font-family: var(--font-mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; line-height: 1.2; }
+.bit .why { font-size: 12.5px; color: var(--muted); line-height: 1.25; }
+.bit.unused { border-style: dashed; background: transparent; }
+.bit.g-nav { border-color: var(--accent); } .bit.g-radio { border-color: var(--c-ble); }
+.bit.g-run { border-color: var(--c-timer); } .bit.g-sense { border-color: var(--c-wifi); }
+.guards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.guard { border-top: 3px solid var(--accent); padding-top: 8px; font-size: 16px; }
+.guard b { display: block; font-family: var(--font-display); font-stretch: 85%; font-size: 24px; }
+
+/* Tables */
+.tbl { width: 100%; border-collapse: collapse; font-size: 16.5px; }
+.tbl th { text-align: left; font-family: var(--font-mono); font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1.5px solid var(--fg); }
+.tbl td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl td.m { font-family: var(--font-mono); font-size: 14.5px; }
+.tbl tr.grp td { font-family: var(--font-mono); font-size: 12.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); border-bottom: none; padding-top: 14px; }
+
+/* Verdict */
+.verdict { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; flex: 1; align-content: start; }
+.verdict h3 { margin: 0 0 10px; font-family: var(--font-display); font-stretch: 85%; font-size: 26px; text-transform: none; color: var(--fg); padding-bottom: 8px; border-bottom: 3px solid var(--accent); }
+.verdict .weak h3 { border-color: var(--c-timer); }
+.verdict .next h3 { border-color: var(--c-ble); }
+.verdict ul { margin: 0; padding-left: 20px; display: grid; gap: 10px; font-size: 18px; }
+.verdict ol { margin: 0; padding-left: 22px; display: grid; gap: 10px; font-size: 18px; }
+
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .reveal .slides section, .reveal .fragment { transition: none !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="mk"/></marker>
+    <marker id="ah-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="mk-acc"/></marker>
+    <marker id="ah-wifi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="mk-wifi"/></marker>
+    <marker id="ah-ble" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="mk-ble"/></marker>
+    <marker id="ah-timer" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="mk-timer"/></marker>
+    <marker id="ah-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="mk-muted"/></marker>
+    <marker id="ah-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="mk-bad"/></marker>
+  </defs>
+</svg>
+
+<div class="deck-wrap">
+<div class="reveal">
+<div class="slides">
+
+<!-- 1 -->
+<section class="title-slide">
+  <div class="kicker">INF2004 · Team AAI19 · Robot firmware</div>
+  <div class="title-grid">
+    <div style="display:grid;gap:22px">
+      <h1>Getting There</h1>
+      <p class="lede">A Raspberry Pi Pico W robot that finds a beacon by Wi-Fi signal strength, steers onto its coloured mat, and swaps a file with it over Bluetooth. This deck walks through every component and which ones work together.</p>
+    </div>
+    <dl class="title-facts">
+      <dt>Board</dt><dd>Pico W (RP2040 + CYW43439) on a Robo Pico carrier</dd>
+      <dt>Sensing</dt><dd>MPU9250 gyro, TCS34725 colour sensor, Wi-Fi RSSI, BLE RSSI</dd>
+      <dt>Scheduling</dt><dd>Bare-metal main loop plus three interrupt contexts</dd>
+      <dt>Size</dt><dd>15 robot modules, 1 beacon program, 6 robot builds</dd>
+    </dl>
+  </div>
+  <div class="byline"><span>getting_there/ · ble_transfer_powerbank/ · picow_access_point*_powerbank/</span><span>Use arrow keys or the controls to move</span></div>
+</section>
+
+<!-- 2 -->
+<section>
+  <div class="kicker">The job</div>
+  <h2>Find the beacon, land on its mat, swap a file</h2>
+  <figure>
+    <svg viewBox="0 0 1180 470" role="img" aria-label="Arena: the robot follows Wi-Fi lines toward AP1, probes sideways, steers by colour on the pink mat, transfers a file over Bluetooth, then backs off and heads for AP2 on the blue mat. AP3's purple mat reads as floor.">
+      <rect class="floor" x="1" y="1" width="1178" height="468" rx="12"/>
+      <!-- AP1 pink, 5 rings -->
+      <g>
+        <circle class="edge" cx="860" cy="130" r="112"/>
+        <circle class="pink" cx="860" cy="130" r="94" fill-opacity=".18"/>
+        <circle class="pink" cx="860" cy="130" r="76" fill-opacity=".32"/>
+        <circle class="pink" cx="860" cy="130" r="58" fill-opacity=".48"/>
+        <circle class="pink" cx="860" cy="130" r="40" fill-opacity=".66"/>
+        <circle class="pink" cx="860" cy="130" r="22" fill-opacity=".9"/>
+        <rect class="b" x="845" y="115" width="30" height="30" rx="4"/>
+        <text class="t" x="860" y="136" text-anchor="middle" font-size="12">AP1</text>
+      </g>
+      <!-- AP2 blue, 6 rings -->
+      <g>
+        <circle class="edge" cx="1040" cy="352" r="112"/>
+        <circle class="blue" cx="1040" cy="352" r="96" fill-opacity=".16"/>
+        <circle class="blue" cx="1040" cy="352" r="80" fill-opacity=".28"/>
+        <circle class="blue" cx="1040" cy="352" r="64" fill-opacity=".42"/>
+        <circle class="blue" cx="1040" cy="352" r="48" fill-opacity=".56"/>
+        <circle class="blue" cx="1040" cy="352" r="32" fill-opacity=".72"/>
+        <circle class="blue" cx="1040" cy="352" r="18" fill-opacity=".9"/>
+        <rect class="b" x="1025" y="337" width="30" height="30" rx="4"/>
+        <text class="t" x="1040" y="358" text-anchor="middle" font-size="12">AP2</text>
+      </g>
+      <!-- AP3 purple, ignored -->
+      <g opacity=".55">
+        <circle class="edge" cx="330" cy="352" r="104"/>
+        <circle class="purple" cx="330" cy="352" r="88" fill-opacity=".16"/>
+        <circle class="purple" cx="330" cy="352" r="72" fill-opacity=".28"/>
+        <circle class="purple" cx="330" cy="352" r="56" fill-opacity=".42"/>
+        <circle class="purple" cx="330" cy="352" r="40" fill-opacity=".56"/>
+        <circle class="purple" cx="330" cy="352" r="26" fill-opacity=".72"/>
+        <circle class="purple" cx="330" cy="352" r="13" fill-opacity=".9"/>
+        <rect class="b" x="315" y="337" width="30" height="30" rx="4"/>
+        <text class="t" x="330" y="358" text-anchor="middle" font-size="12">AP3</text>
+      </g>
+      <text class="ts" x="452" y="440">AP3 · other mats read as floor this run</text>
+      <!-- robot -->
+      <rect class="b-acc" x="70" y="88" width="64" height="44" rx="8"/>
+      <text class="t" x="102" y="115" text-anchor="middle" font-size="13">Robot</text>
+      <!-- line 1 -->
+      <path class="e-acc" d="M134,112 L470,150" marker-end="url(#ah-acc)"/>
+      <!-- side probes -->
+      <path class="e-wifi dash" d="M470,150 L470,92" marker-end="url(#ah-wifi)"/>
+      <path class="e-wifi dash" d="M470,150 L470,208" marker-end="url(#ah-wifi)"/>
+      <!-- line 2 -->
+      <path class="e-acc" d="M478,148 L744,128" marker-end="url(#ah-acc)"/>
+      <!-- colour steering -->
+      <path class="e-ble" d="M752,128 L782,142 L806,122 L828,136 L842,130" marker-end="url(#ah-ble)"/>
+      <!-- route to AP2 -->
+      <path class="e-muted dash" d="M880,236 C900,280 930,290 960,282" marker-end="url(#ah-muted)"/>
+      <!-- step markers -->
+      <g><circle class="num" cx="300" cy="104" r="14"/><text class="num-t" x="300" y="109" text-anchor="middle">1</text>
+        <text class="t" x="320" y="88">Follow a Wi-Fi line</text><text class="ts" x="320" y="106">drive, stop, measure RSSI</text></g>
+      <g><circle class="num" cx="500" cy="236" r="14"/><text class="num-t" x="500" y="241" text-anchor="middle">2</text>
+        <text class="t" x="520" y="232">Signal drops: back to best,</text><text class="t" x="520" y="252">probe both sides</text></g>
+      <g><circle class="num" cx="700" cy="60" r="14"/><text class="num-t" x="700" y="65" text-anchor="middle">3</text>
+        <text class="t" x="560" y="40">On the mat: steer by colour</text></g>
+      <g><circle class="num" cx="760" cy="238" r="14"/><text class="num-t" x="760" y="243" text-anchor="middle">4</text>
+        <text class="t" x="740" y="276" text-anchor="end">Arrival ring + BLE: send file,</text><text class="t" x="740" y="296" text-anchor="end">get the reply, verify CRC</text></g>
+      <g><circle class="num" cx="960" cy="230" r="14"/><text class="num-t" x="960" y="235" text-anchor="middle">5</text>
+        <text class="ts" x="980" y="226">route builds:</text><text class="ts" x="980" y="242">back off, go to AP2</text></g>
+    </svg>
+    <figcaption>Each beacon is a Pico W running a Wi-Fi access point and a Bluetooth file server on its own colour mat. The robot only knows how strong the signals are, so it searches.</figcaption>
+  </figure>
+</section>
+
+<!-- 3 -->
+<section>
+  <div class="kicker">Hardware <span class="file">motion.c · colour_sensor.c · robot_cues.c · report_flash.c</span></div>
+  <h2>One board, five peripherals, one radio</h2>
+  <figure>
+    <svg viewBox="0 0 1180 470" role="img" aria-label="Pico W in the centre. Motors on PWM GP8 to GP11, gyro on I2C1 GP6 and GP7, colour sensor on I2C0 GP0 and GP1, buttons GP20 and GP21, buzzer GP22, flash holds the log, USB carries the log, and the CYW43439 radio talks to the beacons.">
+      <rect class="b-acc" x="430" y="150" width="320" height="176" rx="10"/>
+      <text class="t-lg" x="590" y="190" text-anchor="middle">Raspberry Pi Pico W</text>
+      <text class="ts" x="590" y="213" text-anchor="middle">RP2040 · 264 KB RAM · 2 MiB flash</text>
+      <rect class="b" x="470" y="240" width="240" height="64" rx="6"/>
+      <text class="t" x="590" y="267" text-anchor="middle">CYW43439 radio</text>
+      <text class="ts" x="590" y="288" text-anchor="middle">Wi-Fi scan + BLE central</text>
+
+      <rect class="b" x="40" y="70" width="250" height="68" rx="6"/>
+      <text class="t" x="60" y="98">Left motor (M1)</text><text class="ts" x="60" y="120">GP8 · GP9 PWM</text>
+      <rect class="b" x="40" y="338" width="250" height="68" rx="6"/>
+      <text class="t" x="60" y="366">Right motor (M2)</text><text class="ts" x="60" y="388">GP10 · GP11 PWM</text>
+      <path class="e" d="M430,190 L290,104" marker-end="url(#ah)"/>
+      <path class="e" d="M430,290 L290,372" marker-end="url(#ah)"/>
+      <text class="tl" x="300" y="170">35% drive</text>
+      <text class="tl" x="300" y="318">25% / 20% turn</text>
+
+      <rect class="b" x="310" y="8" width="240" height="68" rx="6"/>
+      <text class="t" x="330" y="36">MPU9250 gyro</text><text class="ts" x="330" y="58">I2C1 · GP6/GP7 · 100 kHz</text>
+      <path class="e" d="M470,76 L500,150" marker-start="url(#ah)"/>
+      <text class="tl" x="352" y="118">heading every 5 ms</text>
+      <rect class="b" x="630" y="8" width="250" height="68" rx="6"/>
+      <text class="t" x="650" y="36">TCS34725 colour</text><text class="ts" x="650" y="58">I2C0 · GP0/GP1 · Grove 1</text>
+      <path class="e" d="M710,76 L680,150" marker-start="url(#ah)"/>
+      <text class="tl" x="722" y="118">3 reads per stop</text>
+
+      <rect class="b" x="900" y="96" width="250" height="68" rx="6"/>
+      <text class="t" x="920" y="124">Buttons</text><text class="ts" x="920" y="146">GP20 start · GP21 stop/replay</text>
+      <rect class="b" x="900" y="178" width="250" height="60" rx="6"/>
+      <text class="t" x="920" y="204">Buzzer</text><text class="ts" x="920" y="224">GP22 · PWM tones</text>
+      <rect class="b" x="900" y="252" width="250" height="60" rx="6"/>
+      <text class="t" x="920" y="278">QSPI flash</text><text class="ts" x="920" y="298">512 KiB saved run log</text>
+      <rect class="b" x="900" y="326" width="250" height="60" rx="6"/>
+      <text class="t" x="920" y="352">USB serial</text><text class="ts" x="920" y="372">live log + replay</text>
+      <path class="e" d="M900,130 L750,182" marker-start="url(#ah)"/>
+      <path class="e" d="M750,208 L900,208" marker-end="url(#ah)"/>
+      <path class="e" d="M750,300 L900,282" marker-end="url(#ah)"/>
+      <path class="e" d="M750,318 L900,356" marker-end="url(#ah)"/>
+
+      <rect class="b" x="430" y="396" width="320" height="64" rx="6"/>
+      <text class="t" x="590" y="422" text-anchor="middle">Beacons AP1 · AP2 · AP3</text>
+      <text class="ts" x="590" y="444" text-anchor="middle">Wi-Fi access point + BLE file server</text>
+      <path class="e-wifi" d="M560,304 L560,396" marker-end="url(#ah-wifi)"/>
+      <path class="e-ble" d="M620,396 L620,304" marker-end="url(#ah-ble)" marker-start="url(#ah-ble)"/>
+      <text class="tl t-wifi" x="550" y="356" text-anchor="end">RSSI scans</text>
+      <text class="tl t-ble" x="630" y="356">GATT transfer</text>
+    </svg>
+    <figcaption>The motor driver is built into the Robo Pico carrier. M1 is assumed to be the left wheel. The flash also reserves 8 KiB for Bluetooth bonding data, just before the log.</figcaption>
+  </figure>
+</section>
+
+<!-- 4 -->
+<section>
+  <div class="kicker">Software layers</div>
+  <h2>Mission on top, drivers below, SDK underneath</h2>
+  <div class="stack">
+    <div class="layer app">
+      <h3>Mission<small>getting_there.c</small></h3>
+      <div class="chips">
+        <div class="chip"><b>main()</b><span>start, calibrate, radios, result</span></div>
+        <div class="chip"><b>run_route</b><span>AP1, then AP2</span></div>
+        <div class="chip"><b>follow_direction</b><span>Wi-Fi line search</span></div>
+        <div class="chip"><b>side_probe</b><span>which side is stronger</span></div>
+        <div class="chip"><b>mat_approach</b><span>colour steering</span></div>
+        <div class="chip"><b>check_payload</b><span>arrival gate + transfer</span></div>
+      </div>
+    </div>
+    <div class="layer">
+      <h3>Services<small>decisions and state</small></h3>
+      <div class="chips">
+        <div class="chip pure"><b>line_search</b><span>compare readings</span></div>
+        <div class="chip"><b>wifi_sampler</b><span>5-scan RSSI batches</span></div>
+        <div class="chip"><b>payload_client</b><span>BLE file transfer</span></div>
+        <div class="chip"><b>run_report</b><span>log buffer</span></div>
+        <div class="chip"><b>faults</b><span>15-bit mask</span></div>
+        <div class="chip"><b>robot_cues</b><span>status sounds</span></div>
+        <div class="chip pure"><b>target_beacon</b><span>AP1 to AP3 table</span></div>
+      </div>
+    </div>
+    <div class="layer">
+      <h3>Drivers<small>talk to hardware</small></h3>
+      <div class="chips">
+        <div class="chip"><b>motion</b><span>PWM + gyro heading hold</span></div>
+        <div class="chip"><b>imu_mpu9250</b><span>gyro over I2C</span></div>
+        <div class="chip"><b>colour_sensor</b><span>TCS34725 reads</span></div>
+        <div class="chip pure"><b>colour_mat</b><span>ring classifier</span></div>
+        <div class="chip pure"><b>report_store</b><span>journal format, CRC</span></div>
+        <div class="chip"><b>report_flash</b><span>erase/program pages</span></div>
+        <div class="chip"><b>buzzer</b><span>common/, timer driven</span></div>
+      </div>
+    </div>
+    <div class="layer">
+      <h3>Pico SDK 2.3<small>vendor code</small></h3>
+      <div class="chips">
+        <div class="chip sdk"><b>pico_stdlib</b></div>
+        <div class="chip sdk"><b>hardware_pwm · i2c · flash</b></div>
+        <div class="chip sdk"><b>cyw43_arch (lwIP, background IRQ)</b></div>
+        <div class="chip sdk"><b>BTstack BLE</b></div>
+        <div class="chip sdk"><b>pico_flash</b></div>
+      </div>
+    </div>
+  </div>
+  <div class="legend"><span><i style="height:12px;width:18px;border:1.5px dashed var(--accent);background:transparent"></i>Pure logic, no hardware calls, tested on a PC with stubs</span></div>
+</section>
+
+<!-- 5 -->
+<section>
+  <div class="kicker">Who calls whom</div>
+  <h2>The mission file drives every module</h2>
+  <figure>
+    <svg viewBox="0 0 1180 470" role="img" aria-label="getting_there.c in the centre calls line_search, target_beacon, motion, wifi_sampler, payload_client, robot_cues, colour_sensor, run_report and faults. wifi_sampler also reads motion's drive time, and payload_client triggers robot_cues through the in-range callback.">
+      <rect class="b-acc" x="470" y="200" width="240" height="66" rx="8"/>
+      <text class="t-lg" x="590" y="230" text-anchor="middle">getting_there.c</text>
+      <text class="ts" x="590" y="252" text-anchor="middle">mission + strategy</text>
+
+      <rect class="b" x="100" y="58" width="180" height="56" rx="6"/><text class="t" x="190" y="83" text-anchor="middle">line_search</text><text class="ts" x="190" y="102" text-anchor="middle">pure decisions</text>
+      <rect class="b" x="100" y="205" width="180" height="56" rx="6"/><text class="t" x="190" y="230" text-anchor="middle">target_beacon</text><text class="ts" x="190" y="249" text-anchor="middle">SSID · mat · name</text>
+      <rect class="b" x="100" y="352" width="180" height="56" rx="6"/><text class="t" x="190" y="377" text-anchor="middle">motion</text><text class="ts" x="190" y="396" text-anchor="middle">+ imu_mpu9250</text>
+      <rect class="b" x="500" y="22" width="180" height="56" rx="6"/><text class="t" x="590" y="47" text-anchor="middle">wifi_sampler</text><text class="ts" x="590" y="66" text-anchor="middle">CYW43 scans</text>
+      <rect class="b" x="900" y="58" width="180" height="56" rx="6"/><text class="t" x="990" y="83" text-anchor="middle">payload_client</text><text class="ts" x="990" y="102" text-anchor="middle">BTstack central</text>
+      <rect class="b" x="900" y="205" width="180" height="56" rx="6"/><text class="t" x="990" y="230" text-anchor="middle">robot_cues</text><text class="ts" x="990" y="249" text-anchor="middle">+ buzzer</text>
+      <rect class="b" x="900" y="352" width="180" height="56" rx="6"/><text class="t" x="990" y="377" text-anchor="middle">colour_sensor</text><text class="ts" x="990" y="396" text-anchor="middle">+ colour_mat</text>
+      <rect class="b" x="500" y="392" width="180" height="56" rx="6"/><text class="t" x="590" y="417" text-anchor="middle">run_report</text><text class="ts" x="590" y="436" text-anchor="middle">+ store + flash</text>
+      <rect class="b" x="300" y="392" width="150" height="56" rx="6"/><text class="t" x="375" y="417" text-anchor="middle">faults</text><text class="ts" x="375" y="436" text-anchor="middle">raised by all</text>
+
+      <path class="e" d="M470,214 L280,100" marker-end="url(#ah)"/><text class="tl" x="300" y="140">compare pairs</text>
+      <path class="e" d="M470,233 L280,233" marker-end="url(#ah)"/><text class="tl" x="300" y="224">next beacon</text>
+      <path class="e" d="M470,252 L280,366" marker-end="url(#ah)"/><text class="tl" x="330" y="296">drive · turn · stop</text>
+      <path class="e" d="M590,200 L590,78" marker-end="url(#ah)"/><text class="tl" x="600" y="150">2 batches per stop</text>
+      <path class="e" d="M710,214 L900,100" marker-end="url(#ah)"/><text class="tl" x="760" y="140">attempt transfer</text>
+      <path class="e" d="M710,233 L900,233" marker-end="url(#ah)"/><text class="tl" x="740" y="224">start · pass · result</text>
+      <path class="e" d="M710,252 L900,366" marker-end="url(#ah)"/><text class="tl" x="770" y="300">arrival · scans</text>
+      <path class="e" d="M600,266 L600,392" marker-end="url(#ah)"/><text class="tl" x="610" y="345">log · checkpoint</text>
+      <path class="e" d="M520,266 L430,392" marker-end="url(#ah)"/><text class="tl" x="378" y="345">raise</text>
+
+      <path class="e-wifi dash" d="M500,40 C330,40 300,250 268,352" marker-end="url(#ah-wifi)"/>
+      <text class="tl t-wifi" x="300" y="34">reads drive time to tag each scan</text>
+      <path class="e-ble dash" d="M990,114 L990,205" marker-end="url(#ah-ble)"/>
+      <text class="tl t-ble" x="1000" y="164">in-range callback</text>
+    </svg>
+    <figcaption>Solid arrows are calls from the mission. Dashed arrows are the two places where modules work together without going through the mission.</figcaption>
+  </figure>
+</section>
+
+<!-- 6 -->
+<section>
+  <div class="kicker">Execution contexts</div>
+  <h2>Four contexts share five pieces of data</h2>
+  <figure>
+    <svg viewBox="0 0 1180 470" role="img" aria-label="Four lanes: main loop, Wi-Fi interrupt, Bluetooth stack and timer interrupt. Arrows show the shared data between them and how each is protected.">
+      <rect class="lane" x="0" y="8" width="1080" height="122" rx="6"/>
+      <rect class="lane" x="0" y="142" width="1080" height="100" rx="6"/>
+      <rect class="lane" x="0" y="254" width="1080" height="100" rx="6"/>
+      <rect class="lane" x="0" y="366" width="1080" height="96" rx="6"/>
+      <text class="t t-acc" x="18" y="40">Main loop</text><text class="ts" x="18" y="60">core 0 · foreground</text>
+      <text class="t t-wifi" x="18" y="174">Wi-Fi IRQ</text><text class="ts" x="18" y="194">CYW43 background</text>
+      <text class="t t-ble" x="18" y="286">Bluetooth</text><text class="ts" x="18" y="306">BTstack context</text>
+      <text class="t t-timer" x="18" y="398">Timer IRQ</text><text class="ts" x="18" y="418">alarm pool</text>
+
+      <rect class="b-main" x="236" y="34" width="200" height="54" rx="6"/><text class="t" x="336" y="66" text-anchor="middle">Approach strategy</text>
+      <rect class="b-main" x="466" y="34" width="200" height="54" rx="6"/><text class="t" x="566" y="58" text-anchor="middle">Drive loop</text><text class="ts" x="566" y="77" text-anchor="middle">gyro every 5 ms</text>
+      <rect class="b-main" x="696" y="34" width="180" height="54" rx="6"/><text class="t" x="786" y="66" text-anchor="middle">Sampler collect</text>
+      <rect class="b-main" x="896" y="34" width="170" height="54" rx="6"/><text class="t" x="981" y="58" text-anchor="middle">Log checkpoint</text><text class="ts" x="981" y="77" text-anchor="middle">motors off</text>
+      <rect class="b-wifi" x="696" y="164" width="180" height="54" rx="6"/><text class="t" x="786" y="196" text-anchor="middle">Scan result</text>
+      <rect class="b-ble" x="236" y="276" width="200" height="54" rx="6"/><text class="t" x="336" y="300" text-anchor="middle">Advert + GATT</text><text class="ts" x="336" y="319" text-anchor="middle">handlers</text>
+      <rect class="b-ble" x="896" y="276" width="170" height="54" rx="6"/><text class="t" x="981" y="300" text-anchor="middle">Deferred log</text><text class="ts" x="981" y="319" text-anchor="middle">no USB here</text>
+      <rect class="b-timer" x="236" y="386" width="200" height="54" rx="6"/><text class="t" x="336" y="418" text-anchor="middle">Buzzer next note</text>
+
+      <path class="e-wifi" d="M786,164 L786,88" marker-end="url(#ah-wifi)"/>
+      <text class="tl t-wifi" x="796" y="118">pending_result</text>
+      <text class="tl" x="796" y="134">read after scan ends</text>
+      <path class="e-acc" d="M620,88 L620,191 L696,191" marker-end="url(#ah-acc)"/>
+      <text class="tl t-acc" x="610" y="206" text-anchor="end">drive time</text>
+      <text class="tl" x="610" y="222" text-anchor="end">saved before active clears</text>
+      <path class="e-ble" d="M336,276 L336,88" marker-end="url(#ah-ble)" marker-start="url(#ah-ble)"/>
+      <text class="tl t-ble" x="346" y="186">BLE status word</text>
+      <text class="tl" x="346" y="202">IRQs masked per update</text>
+      <path class="e-ble" d="M981,276 L981,88" marker-end="url(#ah-ble)"/>
+      <text class="tl t-ble" x="971" y="248" text-anchor="end">log text</text>
+      <text class="tl" x="971" y="264" text-anchor="end">critical section</text>
+      <path class="e-timer" d="M236,413 L218,413 L218,72 L236,72" marker-end="url(#ah-timer)"/>
+      <text class="tl t-timer" x="452" y="408">playing flag</text>
+      <text class="tl" x="452" y="424">single writer: the timer</text>
+
+      <rect class="b-acc" x="1096" y="8" width="78" height="454" rx="6"/>
+      <text class="t" transform="translate(1128,235) rotate(-90)" text-anchor="middle">Fault mask</text>
+      <text class="ts" transform="translate(1150,235) rotate(-90)" text-anchor="middle">raised from any context · IRQs masked</text>
+      <path class="e-muted" d="M1080,69 L1094,69" marker-end="url(#ah-muted)"/>
+      <path class="e-muted" d="M1080,192 L1094,192" marker-end="url(#ah-muted)"/>
+      <path class="e-muted" d="M1080,304 L1094,304" marker-end="url(#ah-muted)"/>
+    </svg>
+    <div class="legend">
+      <span><i style="background:var(--accent)"></i>Main loop</span>
+      <span><i style="background:var(--c-wifi)"></i>Wi-Fi interrupt</span>
+      <span><i style="background:var(--c-ble)"></i>Bluetooth stack</span>
+      <span><i style="background:var(--c-timer)"></i>Timer interrupt</span>
+    </div>
+  </figure>
+</section>
+
+<!-- 7 -->
+<section>
+  <div class="kicker">Run lifecycle <span class="file">main()</span></div>
+  <h2>From power-on to result, in order</h2>
+  <ol class="timeline">
+    <li><b>Power on</b>Init log, motors, IMU, buzzer. Print the build banner.<span class="ctx">motion · run_report</span></li>
+    <li><b>Wait for GP20</b>GP21 here replays the previous run over USB.<span class="ctx">report_replay</span></li>
+    <li><b>Start beep</b>Open a fresh flash log. GP21 now means STOP, latched.<span class="ctx">report_begin · motion_arm_stop</span></li>
+    <li><b>Retry IMU</b>A failed power-up I2C read gets one more try, motors off.<span class="ctx">motion_init</span></li>
+    <li><b>Colour sensor</b>Optional. Without it, BLE alone decides arrival.<span class="ctx">colour_sensor_init</span></li>
+    <li class="warn"><b>Gyro calibration</b>Steady tone. Keep the robot still.<span class="ctx">motion_calibrate · CUE_CALIBRATING</span></li>
+    <li><b>Radio up</b>Wi-Fi station mode, then Bluetooth within 10 s.<span class="ctx">cyw43_arch_init · payload_client_init</span></li>
+    <li><b>Approach</b>Search, steer, transfer. One beacon, or two on a route.<span class="ctx">run_route</span></li>
+    <li><b>Result</b>Rising beeps for a payload, falling beeps for a fault.<span class="ctx">completion_sound · CUE_FAULT</span></li>
+    <li><b>Close the log</b>Fault list, final page. Never restarts by itself.<span class="ctx">report_faults · report_finish</span></li>
+  </ol>
+  <p class="lede" style="font-size:18px">Calibration runs before the radio starts, so the long Bluetooth start-up never looks as if GP20 did nothing.</p>
+</section>
+
+<!-- 8 -->
+<section>
+  <div class="kicker">Approach strategy <span class="file">approach_loop · follow_direction · side_probe · mat_approach</span></div>
+  <h2>How the robot decides where to go</h2>
+  <figure>
+    <svg viewBox="0 0 1180 470" role="img" aria-label="State diagram. Start, then follow a heading. When a line ends, by a confirmed decline or an early probe, the robot returns to the best point and probes both sides, then tries the stronger side, the other side, and straight back. After an early probe with no side 3 dB stronger than the best point, it carries straight on first. If nothing improves, a no-direction fault. Any stop that sees the mat switches to colour steering, then arrival, transfer and done.">
+      <rect class="b" x="30" y="40" width="200" height="62" rx="8"/><text class="t" x="130" y="67" text-anchor="middle">Start check</text><text class="ts" x="130" y="88" text-anchor="middle">colour + 2 Wi-Fi batches</text>
+      <rect class="b-main" x="320" y="40" width="200" height="62" rx="8"/><text class="t" x="420" y="67" text-anchor="middle">Follow heading</text><text class="ts" x="420" y="88" text-anchor="middle">500 ms steps on floor</text>
+      <rect class="b" x="610" y="40" width="210" height="62" rx="8"/><text class="t" x="715" y="67" text-anchor="middle">Line ends</text><text class="ts" x="715" y="88" text-anchor="middle">decline or early probe</text>
+      <rect class="b" x="910" y="40" width="230" height="62" rx="8"/><text class="t" x="1025" y="67" text-anchor="middle">Return to best point</text><text class="ts" x="1025" y="88" text-anchor="middle">drive back along the line</text>
+      <rect class="b-wifi" x="910" y="200" width="230" height="62" rx="8"/><text class="t" x="1025" y="227" text-anchor="middle">Side probe</text><text class="ts" x="1025" y="248" text-anchor="middle">2000 ms each way, measure</text>
+      <rect class="b" x="610" y="200" width="210" height="62" rx="8"/><text class="t" x="715" y="227" text-anchor="middle">Try directions</text><text class="ts" x="715" y="248" text-anchor="middle">stronger, other, back</text>
+      <rect class="b-bad" x="320" y="200" width="200" height="62" rx="8"/><text class="t t-bad" x="420" y="227" text-anchor="middle">Fault: no direction</text><text class="ts" x="420" y="248" text-anchor="middle">nothing improved</text>
+      <rect class="b-ble" x="30" y="370" width="200" height="62" rx="8"/><text class="t" x="130" y="397" text-anchor="middle">Mat approach</text><text class="ts" x="130" y="418" text-anchor="middle">12 × 30° colour scans</text>
+      <rect class="b" x="320" y="370" width="200" height="62" rx="8"/><text class="t" x="420" y="397" text-anchor="middle">Arrived</text><text class="ts" x="420" y="418" text-anchor="middle">arrival ring + BLE</text>
+      <rect class="b" x="610" y="370" width="210" height="62" rx="8"/><text class="t" x="715" y="397" text-anchor="middle">Transfer payload</text><text class="ts" x="715" y="418" text-anchor="middle">up to 3 stationary tries</text>
+      <rect class="b-acc" x="910" y="370" width="230" height="62" rx="8"/><text class="t" x="1025" y="397" text-anchor="middle">Payload verified</text><text class="ts" x="1025" y="418" text-anchor="middle">next beacon or finish</text>
+
+      <path class="e" d="M230,71 L320,71" marker-end="url(#ah)"/>
+      <path class="e" d="M520,71 L610,71" marker-end="url(#ah)"/><text class="tl" x="565" y="62" text-anchor="middle">drops</text>
+      <path class="e" d="M820,71 L910,71" marker-end="url(#ah)"/>
+      <path class="e" d="M1025,102 L1025,200" marker-end="url(#ah)"/>
+      <path class="e" d="M910,231 L820,231" marker-end="url(#ah)"/><text class="tl" x="865" y="222" text-anchor="middle">rank sides</text>
+      <path class="e-acc" d="M680,200 L500,102" marker-end="url(#ah-acc)"/><text class="tl t-acc" x="612" y="158">improves: new line</text>
+      <path class="e-wifi dash" d="M910,215 L524,99" marker-end="url(#ah-wifi)"/>
+      <text class="tl t-wifi" x="700" y="122">early probe, no side 3 dB</text>
+      <text class="tl t-wifi" x="700" y="138">above best: straight on first</text>
+      <path class="e-bad" d="M610,231 L520,231" marker-end="url(#ah-bad)"/>
+      <path class="e-ble dash" d="M360,102 L170,370" marker-end="url(#ah-ble)"/><text class="tl t-ble" x="276" y="190" text-anchor="end">a stop sees the mat</text>
+      <path class="e-muted dash" d="M90,370 L90,102" marker-end="url(#ah-muted)"/><text class="tl" x="100" y="160">6 scans,</text><text class="tl" x="100" y="176">no arrival:</text><text class="tl" x="100" y="192">back to Wi-Fi</text>
+      <path class="e-ble dash" d="M1025,262 C1025,330 330,300 190,370" marker-end="url(#ah-ble)"/><text class="tl t-ble" x="760" y="306">probe sees the mat</text>
+      <path class="e" d="M230,401 L320,401" marker-end="url(#ah)"/>
+      <path class="e" d="M520,401 L610,401" marker-end="url(#ah)"/>
+      <path class="e" d="M820,401 L910,401" marker-end="url(#ah)"/><text class="tl" x="865" y="392" text-anchor="middle">CRC ok</text>
+    </svg>
+    <figcaption>The amber path is the straight-on-first rule from feature/early-probe-straight-on-first. These stages exist only as call order and flags inside getting_there.c. There is no explicit state machine, which is one reason the file is hard to follow.</figcaption>
+  </figure>
+</section>
+
+<!-- 9 -->
+<section>
+  <div class="kicker">Working in tandem</div>
+  <h2>What happens at every stop</h2>
+  <figure>
+    <svg viewBox="0 0 1180 470" role="img" aria-label="Sequence diagram of one stop: motors stop and settle, the log is saved to flash, the colour sensor takes three readings, Bluetooth checks proximity if on the mat, Wi-Fi takes two batches of five scans, the strategy compares, and motion drives the next block.">
+      <g>
+        <rect class="b-acc" x="20" y="6" width="150" height="44" rx="6"/><text class="t" x="95" y="33" text-anchor="middle">Strategy</text>
+        <rect class="b" x="220" y="6" width="150" height="44" rx="6"/><text class="t" x="295" y="33" text-anchor="middle">motion</text>
+        <rect class="b" x="420" y="6" width="150" height="44" rx="6"/><text class="t" x="495" y="33" text-anchor="middle">run_report</text>
+        <rect class="b" x="620" y="6" width="150" height="44" rx="6"/><text class="t" x="695" y="33" text-anchor="middle">colour_sensor</text>
+        <rect class="b" x="820" y="6" width="150" height="44" rx="6"/><text class="t" x="895" y="33" text-anchor="middle">payload_client</text>
+        <rect class="b" x="1020" y="6" width="150" height="44" rx="6"/><text class="t" x="1095" y="33" text-anchor="middle">wifi_sampler</text>
+        <path class="e-muted dot" d="M95,50 V462 M295,50 V462 M495,50 V462 M695,50 V462 M895,50 V462 M1095,50 V462"/>
+      </g>
+      <g class="fragment"><path class="e" d="M95,96 L295,96" marker-end="url(#ah)"/><text class="tl" x="108" y="88">stop, settle 300 ms</text></g>
+      <g class="fragment"><path class="e" d="M95,150 L495,150" marker-end="url(#ah)"/><text class="tl" x="108" y="142">save checkpoint: log to flash</text></g>
+      <g class="fragment"><path class="e" d="M95,204 L695,204" marker-end="url(#ah)"/><text class="tl" x="108" y="196">arrival check: 3 reads, about 115 ms each</text></g>
+      <g class="fragment"><path class="e-ble" d="M95,258 L895,258" marker-end="url(#ah-ble)"/><text class="tl t-ble" x="108" y="250">on the mat: BLE gate at −85 dBm (no sensor: −58 dBm)</text>
+        <text class="ts" x="108" y="276">off the mat with a sensor: skip BLE</text></g>
+      <g class="fragment"><path class="e-wifi" d="M95,322 L1095,322" marker-end="url(#ah-wifi)"/><text class="tl t-wifi" x="108" y="314">two batches: 5 scans each, 3 valid needed, trimmed mean</text></g>
+      <g class="fragment"><path class="e" d="M95,372 C140,372 140,400 95,400" marker-end="url(#ah)"/><text class="tl" x="150" y="390">line_search compares the two readings with the last stop</text></g>
+      <g class="fragment"><path class="e-acc" d="M95,440 L295,440" marker-end="url(#ah-acc)"/><text class="tl t-acc" x="108" y="432">drive next block: 500 / 250 / 100 ms</text></g>
+    </svg>
+    <figcaption>Logs reach flash only while the motors are off, and the radios never run while the robot drives. Press the right arrow to step through the stop.</figcaption>
+  </figure>
+</section>
+
+<!-- 10 -->
+<section>
+  <div class="kicker">Wi-Fi line search <span class="file">line_search.c · wifi_sampler.c</span></div>
+  <h2>A line ends when the signal drops three times</h2>
+  <div class="split">
+    <figure>
+      <svg viewBox="0 0 740 430" role="img" aria-label="RSSI by stop from the navigation test profile: minus 70, minus 65, minus 60, minus 60, minus 66, minus 67, minus 68 dBm. Best point at stop 2; stops 4 to 6 are three weak positions; the robot returns to stop 2.">
+        <line class="grid-l" x1="80" y1="380" x2="720" y2="380"/>
+        <line class="grid-l" x1="80" y1="280" x2="720" y2="280"/>
+        <line class="grid-l" x1="80" y1="180" x2="720" y2="180"/>
+        <line class="grid-l" x1="80" y1="80" x2="720" y2="80"/>
+        <text class="ts" x="70" y="384" text-anchor="end">−72</text>
+        <text class="ts" x="70" y="284" text-anchor="end">−68</text>
+        <text class="ts" x="70" y="184" text-anchor="end">−64</text>
+        <text class="ts" x="70" y="84" text-anchor="end">−60</text>
+        <text class="ts" x="18" y="230" transform="rotate(-90 18 230)" text-anchor="middle">RSSI (dBm)</text>
+        <text class="ts" x="80" y="404" text-anchor="middle">0</text><text class="ts" x="183" y="404" text-anchor="middle">1</text>
+        <text class="ts" x="287" y="404" text-anchor="middle">2</text><text class="ts" x="390" y="404" text-anchor="middle">3</text>
+        <text class="ts" x="493" y="404" text-anchor="middle">4</text><text class="ts" x="597" y="404" text-anchor="middle">5</text>
+        <text class="ts" x="700" y="404" text-anchor="middle">6</text>
+        <text class="ts" x="390" y="426" text-anchor="middle">stop along the line</text>
+        <rect x="455" y="150" width="280" height="168" rx="6" class="lane"/>
+        <polyline class="e-acc" points="80,330 183,205 287,80 390,80 493,230 597,255 700,280"/>
+        <circle cx="80" cy="330" r="6" class="b"/><circle cx="183" cy="205" r="6" class="b"/>
+        <circle cx="287" cy="80" r="9" class="b-acc"/><circle cx="390" cy="80" r="6" class="b"/>
+        <circle cx="493" cy="230" r="7" class="b-wifi"/><circle cx="597" cy="255" r="7" class="b-wifi"/><circle cx="700" cy="280" r="7" class="b-wifi"/>
+        <text class="tl t-acc" x="287" y="62" text-anchor="middle">best point</text>
+        <text class="tl t-wifi" x="595" y="172" text-anchor="middle">3 weak positions</text>
+        <text class="tl" x="595" y="188" text-anchor="middle">= confirmed decline</text>
+        <path class="e-muted dash" d="M700,300 C640,350 360,350 295,98" marker-end="url(#ah-muted)"/>
+        <text class="tl" x="500" y="345" text-anchor="middle">return to best, then side probe</text>
+      </svg>
+      <figcaption>Readings from the "sustained peak" profile in tests/test_navigation.c, one point per stop.</figcaption>
+    </figure>
+    <div class="rules">
+      <h3>Step sizes</h3>
+      <div><span class="big">500 ms</span> on the floor</div>
+      <div><span class="big">250 ms</span> once the mat is seen</div>
+      <div><span class="big">100 ms</span> within two rings of arrival</div>
+      <h3>Measuring</h3>
+      <ul>
+        <li>Each reading is two batches of five scans, so one bad scan can't end a line.</li>
+        <li>Signal codes use 7 bits: −1 to −126 dBm, plus "missing".</li>
+        <li>A rise of 6 dB that then flattens for 2 stops triggers an early side probe.</li>
+        <li>After an early probe, a side goes first only if it beats the best point by 3 dB. Otherwise the robot carries straight on.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section>
+  <div class="kicker">Arrival <span class="file">colour_sensor.c · colour_mat.c</span></div>
+  <h2>The colour sensor decides when the robot has arrived</h2>
+  <div class="split">
+    <figure>
+      <svg viewBox="0 0 760 420" role="img" aria-label="Pink mat with five rings, arrival on ring 4. Blue mat with six rings, arrival on ring 5. Purple matches blue.">
+        <circle class="edge" cx="190" cy="190" r="165"/>
+        <circle class="pink" cx="190" cy="190" r="138" fill-opacity=".18"/>
+        <circle class="pink" cx="190" cy="190" r="111" fill-opacity=".32"/>
+        <circle class="pink" cx="190" cy="190" r="84" fill-opacity=".48"/>
+        <circle class="pink" cx="190" cy="190" r="57" fill-opacity=".66"/>
+        <circle class="pink" cx="190" cy="190" r="30" fill-opacity=".88"/>
+        <circle cx="190" cy="190" r="70" fill="none" stroke="var(--fg)" stroke-width="3" stroke-dasharray="7 5"/>
+        <text class="ts" x="190" y="38" text-anchor="middle">white edge</text>
+        <text class="ts" x="190" y="66" text-anchor="middle">ring 1</text>
+        <text class="ts" x="190" y="94" text-anchor="middle">ring 2</text>
+        <text class="ts" x="190" y="121" text-anchor="middle">ring 3</text>
+        <text class="t" x="190" y="196" text-anchor="middle" font-size="13">AP1</text>
+        <text class="t" x="190" y="384" text-anchor="middle">Pink · 5 rings</text>
+        <text class="ts" x="190" y="404" text-anchor="middle">arrive on ring 4 or darker</text>
+
+        <circle class="edge" cx="560" cy="190" r="165"/>
+        <circle class="blue" cx="560" cy="190" r="142" fill-opacity=".16"/>
+        <circle class="blue" cx="560" cy="190" r="119" fill-opacity=".28"/>
+        <circle class="blue" cx="560" cy="190" r="96" fill-opacity=".42"/>
+        <circle class="blue" cx="560" cy="190" r="73" fill-opacity=".56"/>
+        <circle class="blue" cx="560" cy="190" r="50" fill-opacity=".72"/>
+        <circle class="blue" cx="560" cy="190" r="27" fill-opacity=".9"/>
+        <circle cx="560" cy="190" r="61" fill="none" stroke="var(--fg)" stroke-width="3" stroke-dasharray="7 5"/>
+        <text class="t" x="560" y="196" text-anchor="middle" font-size="13">AP2</text>
+        <text class="t" x="560" y="384" text-anchor="middle">Blue (and purple) · 6 rings</text>
+        <text class="ts" x="560" y="404" text-anchor="middle">arrive on ring 5 or darker</text>
+      </svg>
+      <figcaption>The dashed circle marks the arrival boundary. Rings are narrower on the six-ring mats, which is why steps shrink to 100 ms near the centre.</figcaption>
+    </figure>
+    <div class="rules">
+      <h3>Arrival needs all of these</h3>
+      <ul>
+        <li>A lighter surface of the same mat seen earlier (white edge or an outer ring).</li>
+        <li>All 3 stationary readings on the arrival ring or darker.</li>
+        <li>BLE shows the beacon at −85 dBm or stronger.</li>
+      </ul>
+      <h3>Depth scale</h3>
+      <ul>
+        <li>0 floor, 1 white edge, 2 to 7 for rings 1 to 6.</li>
+        <li>Ratios G/R and B/R tell the mats apart, so other beacons' mats read as floor.</li>
+        <li>3 failed checks in a row turn the sensor off. BLE then needs −58 dBm.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section>
+  <div class="kicker">Bluetooth transfer <span class="file">payload_client.c ↔ beacon_server.c · transfer_protocol.h</span></div>
+  <h2>The file swap, message by message</h2>
+  <figure>
+    <svg viewBox="0 0 1180 470" role="img" aria-label="Sequence between robot and beacon: scan adverts, connect, discover, then HELLO, HELLO_ACK, FILE_START, FILE_READY, FILE_DATA, FILE_END, FILE_RECEIVED, REPLY_REQUEST, REPLY_START, REPLY_NEXT, REPLY_DATA, COMPLETE, COMPLETE_ACK with byte sizes.">
+      <rect class="b-acc" x="150" y="4" width="200" height="40" rx="6"/><text class="t" x="250" y="30" text-anchor="middle">Robot (central)</text>
+      <rect class="b-ble" x="830" y="4" width="200" height="40" rx="6"/><text class="t" x="930" y="30" text-anchor="middle">Beacon (server)</text>
+      <path class="e-muted dot" d="M250,44 V466 M930,44 V466"/>
+      <rect class="lane" x="270" y="54" width="640" height="46" rx="6"/>
+      <text class="tl" x="590" y="72" text-anchor="middle">scan adverts: 12 readings, 3 close averages, then connect</text>
+      <text class="tl" x="590" y="90" text-anchor="middle">find service 0xFF20 · characteristic 0xFF21 · enable notifications</text>
+
+      <g class="tl">
+        <path class="e-acc" d="M250,124 L930,124" marker-end="url(#ah-acc)"/><text x="590" y="118" text-anchor="middle">HELLO · version, target id · 3 B</text>
+        <path class="e-ble" d="M930,150 L250,150" marker-end="url(#ah-ble)"/><text x="590" y="144" text-anchor="middle">HELLO_ACK · 2 B</text>
+        <path class="e-acc" d="M250,176 L930,176" marker-end="url(#ah-acc)"/><text x="590" y="170" text-anchor="middle">FILE_START · length u16, CRC32 · 7 B</text>
+        <path class="e-ble" d="M930,202 L250,202" marker-end="url(#ah-ble)"/><text x="590" y="196" text-anchor="middle">FILE_READY · 2 B</text>
+        <path class="e-acc" d="M250,228 L930,228" marker-end="url(#ah-acc)"/><text x="590" y="222" text-anchor="middle">FILE_DATA × n · seq, len, ≤17 data · 4–20 B</text>
+        <path class="e-acc" d="M250,254 L930,254" marker-end="url(#ah-acc)"/><text x="590" y="248" text-anchor="middle">FILE_END · 1 B</text>
+        <path class="e-ble" d="M930,280 L250,280" marker-end="url(#ah-ble)"/><text x="590" y="274" text-anchor="middle">FILE_RECEIVED · status, CRC32 · 6 B</text>
+        <path class="e-acc" d="M250,306 L930,306" marker-end="url(#ah-acc)"/><text x="590" y="300" text-anchor="middle">REPLY_REQUEST · 1 B</text>
+        <path class="e-ble" d="M930,332 L250,332" marker-end="url(#ah-ble)"/><text x="590" y="326" text-anchor="middle">REPLY_START · length u16, CRC32 · 7 B</text>
+        <path class="e-acc" d="M250,358 L930,358" marker-end="url(#ah-acc)"/><text x="590" y="352" text-anchor="middle">REPLY_NEXT · 1 B</text>
+        <path class="e-ble" d="M930,384 L250,384" marker-end="url(#ah-ble)"/><text x="590" y="378" text-anchor="middle">REPLY_DATA · seq, len, ≤17 data · 4–20 B</text>
+        <path class="e-acc" d="M250,410 L930,410" marker-end="url(#ah-acc)"/><text x="590" y="404" text-anchor="middle">COMPLETE · 1 B</text>
+        <path class="e-ble" d="M930,436 L250,436" marker-end="url(#ah-ble)"/><text x="590" y="430" text-anchor="middle">COMPLETE_ACK · 2 B</text>
+      </g>
+      <path class="e-muted" d="M960,358 C1010,358 1010,384 960,384" marker-start="url(#ah-muted)"/>
+      <text class="tl" x="1016" y="375">repeat per chunk</text>
+      <text class="tl" x="40" y="250">robot file</text><text class="tl" x="40" y="266">checked by beacon</text>
+      <text class="tl" x="40" y="370">reply checked</text><text class="tl" x="40" y="386">by robot (CRC32)</text>
+      <path class="e-muted" d="M160,176 V280" /><path class="e-muted" d="M160,332 V384"/>
+    </svg>
+    <figcaption>All messages fit one 20-byte packet. Multi-byte fields are little-endian and written byte by byte. A failed transfer is tried again in place, up to 3 attempts in total, without moving.</figcaption>
+  </figure>
+</section>
+
+<!-- 13 -->
+<section>
+  <div class="kicker">The beacons <span class="file">ble_transfer_powerbank/ · picow_access_point*_powerbank/</span></div>
+  <h2>Three builds of one beacon program</h2>
+  <figure>
+    <svg viewBox="0 0 1180 440" role="img" aria-label="Beacon Pico W: core 0 runs the Wi-Fi access point, the Bluetooth file server and the buzzer. Core 1 runs a busy loop from scratch RAM to keep the power bank awake. Three builds differ by beacon id and SSID.">
+      <rect class="b" x="300" y="20" width="580" height="300" rx="12"/>
+      <text class="t-lg" x="590" y="56" text-anchor="middle">Beacon Pico W</text>
+      <rect class="b-acc" x="330" y="80" width="330" height="220" rx="8"/>
+      <text class="t" x="350" y="108">Core 0</text>
+      <rect class="b-wifi" x="350" y="124" width="290" height="46" rx="6"/><text class="t" x="366" y="152">Wi-Fi access point</text>
+      <rect class="b-ble" x="350" y="180" width="290" height="46" rx="6"/><text class="t" x="366" y="202">BLE GATT file server</text><text class="ts" x="366" y="218">0xFF20 / 0xFF21</text>
+      <rect class="b-timer" x="350" y="236" width="290" height="46" rx="6"/><text class="t" x="366" y="264">Buzzer cues on GP22</text>
+      <rect class="b" x="680" y="80" width="180" height="220" rx="8"/>
+      <text class="t" x="700" y="108">Core 1</text>
+      <text class="ts" x="700" y="134">busy loop in</text>
+      <text class="ts" x="700" y="152">scratch X RAM</text>
+      <text class="ts" x="700" y="186">draws current so a</text>
+      <text class="ts" x="700" y="204">USB power bank</text>
+      <text class="ts" x="700" y="222">stays switched on</text>
+      <text class="ts" x="700" y="256">pauses safely for</text>
+      <text class="ts" x="700" y="274">flash writes</text>
+
+      <path class="e-wifi" d="M350,147 L120,147" marker-end="url(#ah-wifi)"/><text class="tl t-wifi" x="130" y="138">beacon frames, robot reads RSSI</text>
+      <path class="e-ble" d="M120,203 L350,203" marker-end="url(#ah-ble)" marker-start="url(#ah-ble)"/><text class="tl t-ble" x="130" y="194">adverts, then file swap</text>
+      <rect class="b-acc" x="20" y="120" width="96" height="110" rx="8"/><text class="t" x="68" y="180" text-anchor="middle">Robot</text>
+
+      <g class="tl">
+        <rect class="b" x="300" y="350" width="180" height="76" rx="6"/><text class="t" x="318" y="378">AP1</text><text x="318" y="398">BEACON_ID=1</text><text x="318" y="414">pink mat</text>
+        <rect class="b" x="500" y="350" width="180" height="76" rx="6"/><text class="t" x="518" y="378">AP2</text><text x="518" y="398">BEACON_ID=2</text><text x="518" y="414">blue mat</text>
+        <rect class="b" x="700" y="350" width="180" height="76" rx="6"/><text class="t" x="718" y="378">AP3</text><text x="718" y="398">BEACON_ID=3</text><text x="718" y="414">purple mat</text>
+      </g>
+      <rect class="pink" x="300" y="350" width="6" height="76"/><rect class="blue" x="500" y="350" width="6" height="76"/><rect class="purple" x="700" y="350" width="6" height="76"/>
+      <text class="tl" x="910" y="380">Each folder sets its own SSID.</text>
+      <text class="tl" x="910" y="398">The host tests check the robot</text>
+      <text class="tl" x="910" y="416">builds look for the same names.</text>
+    </svg>
+    <figcaption>The beacon sends back a reply file that the robot verifies by CRC. Power saving on the Wi-Fi chip is switched off so the signal stays steady.</figcaption>
+  </figure>
+</section>
+
+<!-- 14 -->
+<section>
+  <div class="kicker">Safety and faults <span class="file">faults.c · motion.c</span></div>
+  <h2>Every failure sets one bit, and the robot stops</h2>
+  <div class="register" role="list" aria-label="Fault mask bits 0 to 15">
+    <div class="bit g-sense" role="listitem"><span class="n">bit 0</span><span class="name">IMU</span><span class="why">init or read failed</span></div>
+    <div class="bit g-sense" role="listitem"><span class="n">bit 1</span><span class="name">GYRO_SATURATED</span><span class="why">near ±1000 dps</span></div>
+    <div class="bit g-nav" role="listitem"><span class="n">bit 2</span><span class="name">HEADING</span><span class="why">drifted over 25°</span></div>
+    <div class="bit g-nav" role="listitem"><span class="n">bit 3</span><span class="name">TURN</span><span class="why">timed out or missed</span></div>
+    <div class="bit g-radio" role="listitem"><span class="n">bit 4</span><span class="name">WIFI_LOST</span><span class="why">beacon not heard</span></div>
+    <div class="bit g-radio" role="listitem"><span class="n">bit 5</span><span class="name">WIFI_SCAN</span><span class="why">scan failed to run</span></div>
+    <div class="bit g-radio" role="listitem"><span class="n">bit 6</span><span class="name">BLE_RADIO</span><span class="why">scan or cleanup failed</span></div>
+    <div class="bit g-radio" role="listitem"><span class="n">bit 7</span><span class="name">PAYLOAD</span><span class="why">3 transfers failed</span></div>
+    <div class="bit g-run" role="listitem"><span class="n">bit 8</span><span class="name">STOP_LATCHED</span><span class="why">GP21 pressed</span></div>
+    <div class="bit g-run" role="listitem"><span class="n">bit 9</span><span class="name">RUN_LIMIT</span><span class="why">15 minutes up</span></div>
+    <div class="bit g-nav" role="listitem"><span class="n">bit 10</span><span class="name">NO_DIRECTION</span><span class="why">nothing improved</span></div>
+    <div class="bit g-nav" role="listitem"><span class="n">bit 11</span><span class="name">TRANSLATION_LIMIT</span><span class="why">60 s of driving used</span></div>
+    <div class="bit g-run" role="listitem"><span class="n">bit 12</span><span class="name">REPORT</span><span class="why">log full or failed</span></div>
+    <div class="bit g-run" role="listitem"><span class="n">bit 13</span><span class="name">PROFILE</span><span class="why">point or scan buffer full</span></div>
+    <div class="bit g-run" role="listitem"><span class="n">bit 14</span><span class="name">START_BUTTON</span><span class="why">GP20 held too long</span></div>
+    <div class="bit unused" role="listitem"><span class="n">bit 15</span><span class="name">spare</span><span class="why">mask is a uint16_t</span></div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--c-wifi)"></i>Sensors</span>
+    <span><i style="background:var(--accent)"></i>Navigation</span>
+    <span><i style="background:var(--c-ble)"></i>Radio</span>
+    <span><i style="background:var(--c-timer)"></i>Run limits and logging</span>
+  </div>
+  <div class="guards">
+    <div class="guard"><b>GP21 stop</b>Checked before every motor write. Latched until reset.</div>
+    <div class="guard"><b>15 min</b>Per beacon. Checked before each block.</div>
+    <div class="guard"><b>60 s driving</b>Each block reserves its return trip first.</div>
+    <div class="guard"><b>Motors off</b>Before any flash write or radio work.</div>
+  </div>
+</section>
+
+<!-- 15 -->
+<section>
+  <div class="kicker">Run log <span class="file">run_report.c · report_store.c · report_flash.c → docs/assets/logparser.js</span></div>
+  <h2>How a log line reaches the dashboard</h2>
+  <figure>
+    <svg viewBox="0 0 1180 440" role="img" aria-label="Main loop and Bluetooth callbacks write log text into a 32 KiB RAM buffer and a 4 KiB USB queue. At each checkpoint, with motors off, the buffer goes to the flash journal of 256-byte CRC-checked pages. GP21 before GP20 replays the journal over USB; the text is pasted into the dashboard.">
+      <rect class="b-main" x="20" y="60" width="200" height="64" rx="6"/><text class="t" x="40" y="88">report_printf</text><text class="ts" x="40" y="108">main loop</text>
+      <rect class="b-ble" x="20" y="250" width="200" height="64" rx="6"/><text class="t" x="40" y="278">report_defer_printf</text><text class="ts" x="40" y="298">radio callbacks</text>
+      <rect class="b" x="300" y="60" width="210" height="80" rx="6"/><text class="t" x="320" y="90">Pending buffer</text><text class="ts" x="320" y="112">32 KiB RAM</text><text class="ts" x="320" y="128">never drops a line</text>
+      <rect class="b" x="300" y="236" width="210" height="80" rx="6"/><text class="t" x="320" y="266">USB display queue</text><text class="ts" x="320" y="288">4 KiB ring</text><text class="ts" x="320" y="304">may drop, copy only</text>
+      <path class="e" d="M220,92 L300,96" marker-end="url(#ah)"/>
+      <path class="e-ble" d="M220,272 L300,120" marker-end="url(#ah-ble)"/>
+      <path class="e" d="M220,108 L300,262" marker-end="url(#ah)"/>
+      <path class="e-ble" d="M220,288 L300,284" marker-end="url(#ah-ble)"/>
+      <rect class="b-acc" x="590" y="60" width="230" height="80" rx="6"/><text class="t" x="610" y="90">Checkpoint</text><text class="ts" x="610" y="112">motors off, radios idle</text><text class="ts" x="610" y="128">copy out under lock</text>
+      <path class="e-acc" d="M510,100 L590,100" marker-end="url(#ah-acc)"/>
+      <rect class="b" x="900" y="40" width="260" height="120" rx="6"/><text class="t" x="920" y="70">Flash journal</text><text class="ts" x="920" y="92">512 KiB · 2048 pages</text><text class="ts" x="920" y="110">256 B page: magic, index,</text><text class="ts" x="920" y="126">length, CRC32, 244 B text</text><text class="ts" x="920" y="146">survives power-off</text>
+      <path class="e-acc" d="M820,100 L900,100" marker-end="url(#ah-acc)"/>
+      <rect class="b" x="590" y="236" width="230" height="80" rx="6"/><text class="t" x="610" y="266">USB serial</text><text class="ts" x="610" y="288">live view while running</text>
+      <path class="e" d="M510,276 L590,276" marker-end="url(#ah)"/>
+      <path class="e-timer dash" d="M1030,160 L1030,250 L820,290" marker-end="url(#ah-timer)"/><text class="tl t-timer" x="1040" y="210">GP21 before GP20:</text><text class="tl t-timer" x="1040" y="226">replay saved run</text>
+      <rect class="b" x="590" y="356" width="570" height="64" rx="6"/><text class="t" x="610" y="384">Dashboard (docs/)</text><text class="ts" x="610" y="404">paste the text · logparser.js reads LINE_POINT, RSSI_SAMPLE, RSSI_RAW and more</text>
+      <path class="e" d="M705,316 L705,356" marker-end="url(#ah)"/>
+    </svg>
+    <figcaption>Log lines are CSV-style text on purpose. The flash is large enough, and the dashboard parses the text directly.</figcaption>
+  </figure>
+</section>
+
+<!-- 16 -->
+<section>
+  <div class="kicker">Memory</div>
+  <h2>Where the bytes go</h2>
+  <figure>
+    <svg viewBox="0 0 1180 420" role="img" aria-label="Flash, drawn to scale: 1528 KiB firmware, 8 KiB Bluetooth, 512 KiB log. RAM, drawn to scale: 64 KiB of log buffers and 63 KiB of other static data in 264 KiB, leaving the rest for stack and heap.">
+      <text class="t" x="20" y="34">Flash · 2 MiB</text>
+      <rect class="b-acc" x="20" y="48" width="1140" height="64" rx="4"/>
+      <rect class="b" x="871" y="48" width="4" height="64"/>
+      <rect class="lane" x="875" y="48" width="285" height="64" stroke="var(--line)"/>
+      <text class="t" x="40" y="86">Firmware · 1528 KiB</text>
+      <text class="t" x="895" y="86">Saved log · 512 KiB</text>
+      <path class="e-muted" d="M873,112 L873,140 L820,140"/><text class="tl" x="812" y="144" text-anchor="end">Bluetooth bonds · 8 KiB</text>
+
+      <text class="t" x="20" y="212">RAM · 264 KiB SRAM</text>
+      <rect class="lane" x="20" y="226" width="1140" height="64" rx="4" stroke="var(--line)"/>
+      <rect class="b-timer" x="20" y="226" width="276" height="64"/>
+      <rect class="b" x="296" y="226" width="273" height="64"/>
+      <text class="t" x="36" y="256">Log buffers</text><text class="ts" x="36" y="276">2 × 32 KiB</text>
+      <text class="t" x="312" y="256">Other static data</text><text class="ts" x="312" y="276">radio stacks, lwIP, USB, app</text>
+      <text class="t" x="585" y="256">Stack, heap and free</text><text class="ts" x="585" y="276">about 137 KiB</text>
+      <text class="tl" x="20" y="320">Static data: 130,272 bytes in the last local build (before this branch).</text>
+      <text class="tl" x="20" y="340">This branch packs the Wi-Fi scan records from 20 to 16 bytes: 260 bytes saved.</text>
+      <text class="tl" x="20" y="372">Fields are sized with BITS_NEEDED() and checked at compile time, e.g. BLE state 5 bits, journal page 12 bits, RSSI 7 bits.</text>
+    </svg>
+    <figcaption>Both bars are drawn to scale. The biggest RAM saving left is the 32 KiB snapshot copy in run_report.c, not more bit-fields.</figcaption>
+  </figure>
+</section>
+
+<!-- 17 -->
+<section>
+  <div class="kicker">Builds and checks <span class="file">getting_there/CMakeLists.txt · .github/workflows/firmware.yml</span></div>
+  <h2>One source, ten firmware images</h2>
+  <table class="tbl">
+    <thead><tr><th>Target</th><th>Settings</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr class="grp"><td colspan="3">Robot · getting_there/</td></tr>
+      <tr><td class="m">getting_there</td><td class="m">TARGET_BEACON_ID=1</td><td>Approach AP1 on the pink mat</td></tr>
+      <tr><td class="m">robot_ap2 · robot_ap3</td><td class="m">TARGET_BEACON_ID=2 / 3</td><td>Approach AP2 or AP3</td></tr>
+      <tr><td class="m">robot_route</td><td class="m">ROUTE_NEXT_BEACON=2</td><td>AP1, back off its mat, then AP2</td></tr>
+      <tr><td class="m">robot_leg2</td><td class="m">ROUTE_START_ON_MAT=1</td><td>Test of the second leg only</td></tr>
+      <tr><td class="m">colour_scan</td><td class="m">COLOUR_SCAN_TEST=1</td><td>Spin on the spot and log colours, no radio</td></tr>
+      <tr class="grp"><td colspan="3">Beacons and tools</td></tr>
+      <tr><td class="m">picow_access_point{,2,3}_powerbank</td><td class="m">BEACON_ID · WIFI_SSID</td><td>The three beacons</td></tr>
+      <tr><td class="m">tcs34725_calib</td><td class="m">none</td><td>Colour sensor calibration readout</td></tr>
+      <tr class="grp"><td colspan="3">Checked on every push</td></tr>
+      <tr><td class="m">host-tests</td><td class="m">gcc on Linux</td><td>Navigation, BLE client, report, motion, flash, colour, target checks</td></tr>
+      <tr><td class="m">firmware-build</td><td class="m">Pico SDK 2.3.1</td><td>Builds every target above and prints its size</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 18 -->
+<section>
+  <div class="kicker">Assessment</div>
+  <h2>Solid foundations, one overloaded file</h2>
+  <div class="verdict">
+    <div>
+      <h3>Sound</h3>
+      <ul>
+        <li>Each piece of hardware has its own module.</li>
+        <li>Pure logic is split out and tested on a PC.</li>
+        <li>Shared data has one writer or a lock. No races found.</li>
+        <li>Fixed memory, no malloc, limits raise faults.</li>
+        <li>Logs survive power-off and are CRC-checked.</li>
+      </ul>
+    </div>
+    <div class="weak">
+      <h3>Weak</h3>
+      <ul>
+        <li>getting_there.c is 1,444 lines with about 16 shared flags.</li>
+        <li>Navigation stages are implicit, with no state machine.</li>
+        <li>Tests include the .c file and read its private variables.</li>
+        <li>Six build variants multiply untested paths.</li>
+      </ul>
+    </div>
+    <div class="next">
+      <h3>Next</h3>
+      <ol>
+        <li>Do a short run on the robot and check the dashboard still reads the log.</li>
+        <li>Split route, mat approach and search out of getting_there.c.</li>
+        <li>Make the approach stages an explicit state machine.</li>
+        <li>Test stages through their interfaces, not private variables.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.1.0/reveal.min.js"></script>
+<script>
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  Reveal.initialize({
+    embedded: true,
+    hash: false,
+    history: false,
+    width: 1280,
+    height: 720,
+    margin: 0.03,
+    center: false,
+    controls: true,
+    progress: true,
+    slideNumber: 'c/t',
+    transition: reduce ? 'none' : 'fade',
+    backgroundTransition: 'none'
+  });
+</script>

@@ -3,7 +3,9 @@
 Audit of the `getting_there` robot firmware, 24 November 2026, branch
 `refactor/firmware-audit`. It covers how each piece of application data is
 sized, which data is shared between the main loop and interrupt context, and
-what this pass changed.
+what this pass changed. It was re-run after merging
+`feature/early-probe-straight-on-first` (commit `159191b`); see
+"Re-audit after the early-probe merge".
 
 ## What the firmware is
 
@@ -36,11 +38,9 @@ matching items in the brief do not apply.
 
 Considered and not done:
 
-- **Splitting `getting_there.c`** (1,426 lines) into route, mat-approach and
-  search modules. This is the main structural improvement left. It is
-  deferred until the host navigation test can run again (see
-  "Verification"), because that test is what proves a move this large keeps
-  behaviour.
+- **Splitting `getting_there.c`** (1,444 lines after the merge) into route,
+  mat-approach and search modules. This is the main structural improvement
+  left. The host tests now run in CI, so it can be done as its own change.
 - **Merging the three `picow_access_point*_powerbank` folders.** Each one
   builds on its own, `.gitignore` keeps their `.uf2` files on purpose, and
   `run_host_checks.py` reads each folder's SSID and beacon ID. Their
@@ -51,6 +51,22 @@ Considered and not done:
 - **Bit-fields for main-loop-only scalars** (the flags in `getting_there.c`,
   the colour state, the drive struct). Only one context writes them, so
   packing saves a few bytes and adds shifts to the 5 ms control loop.
+
+## Re-audit after the early-probe merge
+
+`159191b` changes what happens after an early side probe. The robot now tries
+the stronger side first only if that side reads at least 3 dB stronger than
+the best point itself. Otherwise it carries straight on from the best point.
+The merge with this branch had no conflicts.
+
+| Check | Result |
+|---|---|
+| New file-scope or shared variables | None. The only new state is `follow_result_t.at_best`, a main-loop stack value. |
+| New code in interrupt or callback paths | None. All changes are in `approach_loop`, `side_probe` and `end_line_at_best`, which run in the main loop. |
+| This branch's changes still in place | Yes. `line_profile` is gone, `wifi_record_t` is 16 bytes, and the test still reads `LINE_POINT` lines. |
+| Static RAM (`.bss`) | Unchanged by the merge (table below). |
+| Code size | +443 bytes for the new comparison and log line. |
+| Committed `.uf2` files | Built on the early-probe branch, so they do not include this branch's record packing. Rebuild before flashing from this branch. |
 
 ## Data representation table
 
@@ -84,6 +100,7 @@ Considered and not done:
 | Report state | `run_report.c` `report_state` | 3 booleans | 3 | `uint8_t : 1` x3, every write under `report_lock` | main, BTstack (deferred log) |
 | Journal next page | `report_store.c` `store.next` | 0..2048 | 12 | `uint16_t : 12`, asserted `PAGE_COUNT == 2048` | main only |
 | Journal active | `store.active` | boolean | 1 | `uint16_t : 1` | main only |
+| Reading at the best point | `getting_there.c` `follow_result_t.at_best` | two 7-bit RSSI codes plus spreads | 28 | `line_pair_t` (two `wifi_sample_t`, 4 bytes), stack only (new in `159191b`) | main only |
 | Target beacon | `target_beacon.c` `current` | 1..3 | 2 | `uint8_t` (main only, not packed) | main only |
 | Colour depth | `colour_sensor.c` `last_depth` | -1..7 | 4 | `int` (main only, not packed) | main only |
 | Lighter mats seen | `colour_sensor.c` `lighter_mats` | 3 mat bits | 3 | `unsigned` bitmask | main only |
@@ -124,15 +141,18 @@ symbol sizes with `arm-none-eabi-size -A` and `arm-none-eabi-nm -S`. These are
 exact RP2040 object sizes. A fully linked map file was not available (see
 "Verification").
 
-| Symbol or section | Before (bytes) | After (bytes) | Change |
-|---|---:|---:|---:|
-| `wifi_sampler.o` `records[64]` | 1,280 | 1,024 | -256 |
-| `wifi_sampler.o` `pending_result` | 20 | 16 | -4 |
-| `wifi_sampler.o` `.bss` total | 1,376 | 1,116 | -260 |
-| `getting_there.o` `.bss` total | 34 | 34 | 0 |
-| `line_profile[32]` | 0 (removed by the compiler) | 0 | 0 |
-| Code (`.text` plus `.rodata`, both objects) | 15,968 | 16,056 | +88 |
-| `sizeof(wifi_record_t)` | 20 | 16 (asserted) | -4 |
+| Symbol or section | Before (bytes) | After this branch | After the merge | Change overall |
+|---|---:|---:|---:|---:|
+| `wifi_sampler.o` `records[64]` | 1,280 | 1,024 | 1,024 | -256 |
+| `wifi_sampler.o` `pending_result` | 20 | 16 | 16 | -4 |
+| `wifi_sampler.o` `.bss` total | 1,376 | 1,116 | 1,116 | -260 |
+| `getting_there.o` `.bss` total | 34 | 34 | 34 | 0 |
+| `line_profile[32]` | 0 (removed by the compiler) | 0 | 0 | 0 |
+| Code (`.text` plus `.rodata`, both objects) | 15,968 | 16,056 | 16,499 | +531 |
+| `sizeof(wifi_record_t)` | 20 | 16 (asserted) | 16 | -4 |
+
+Of the +531 bytes of code, 88 come from this branch's packing and 443 from
+the early-probe feature.
 
 For scale, the most recent linked image (`getting_there/build`, built before
 this branch) has 130,272 bytes of `.bss`. The two 32 KiB report buffers in
@@ -170,11 +190,10 @@ unchanged, field for field, so the dashboard parser needs no change.
 - **ARM compile.** Both changed files compile cleanly for Cortex-M0+.
 - **Compile-time checks.** `_Static_assert(sizeof(wifi_record_t) == 16)` and
   the existing width asserts all pass.
-- **Not run.** The host test executables and the firmware link could not run.
-  Windows Application Control (Device Guard) on this machine now blocks newly
-  built executables and the Pico SDK's `pioasm.exe`, although the earlier QA
-  run on this machine passed. Run
-  `python getting_there/tests/run_host_checks.py --sdk <pico-sdk>` and a
-  firmware build on a machine without that policy before merging.
+- **CI.** Smart App Control on the development laptop blocks newly built
+  executables and `pioasm.exe`, so `.github/workflows/firmware.yml` runs the
+  checks on Linux. Run 45342777587 (this branch, before the merge) passed the
+  full host suite and built every target. On merge commit `066ffbb` the host
+  suite passed again, including the new straight-on-first tests.
 - **Timing.** No hardware measurement was taken. The control loop and IRQ
   paths gained no work. The callback's record copy is 4 bytes shorter.
