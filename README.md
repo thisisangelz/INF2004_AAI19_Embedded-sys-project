@@ -40,6 +40,7 @@ second leg alone from AP1's ring 4. See
 On 17 November it completed the full route three times (7.23-10.49 minutes,
 both payloads verified, no faults); see
 [route run 1](docs/runs/2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.md).
+All five [final test recordings](#final-tests-recorded) completed the route.
 
 Each robot build ignores the other two mats (they read as floor). Confirm the
 banner `line-search v18 steps500-mat250 back-search side-probe early-probe straight-first mat-steer colour-gate own-mat`
@@ -58,6 +59,30 @@ explicit enablement and timing qualification.
 The [v16 hardware run](docs/runs/2026-11-03-v16-backtrack.md) records successful
 backtracking, a perpendicular approach and verified payload completion with no
 reported faults. Its full saved log and firmware checksum are retained there.
+
+## Final tests (recorded)
+
+Five recorded runs of the full route (`getting_there_route.uf2`: AP1 on the pink
+mat, then AP2 on the blue mat), each from a different start position. All five
+reached both mats and confirmed both payloads. In the drawings, red is AP1
+(pink mat), blue is AP2 (blue mat), and the small box on the robot marks its
+front.
+
+The videos (150-270 MB each) are attached to the
+[final-tests release](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/releases/tag/final-tests)
+because they are too large for the repository.
+
+| Scenario | Start layout | Time | Video | Run log |
+|---|---|---|---|---|
+| **1. Demo:** facing AP1, AP2 to the right of AP1 | <img src="docs/final-tests/scenario-1.png" width="220" alt="Robot below AP1 facing it; AP2 to the right of AP1"> | about 6.5 min (video) | [Scenario 1](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/releases/download/final-tests/Scenario.1.mp4) | not saved |
+| **2. Driving past the beacons:** the robot faces along the gap between the mats, not at either mat | <img src="docs/final-tests/scenario-2.png" width="220" alt="Robot between and below the two mats, facing along the gap between them"> | 10.49 min | [Scenario 2](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/releases/download/final-tests/Scenario.2.mp4) | [17 Nov, route run 1](docs/runs/2026-11-17-07-route-complete-ap1-1oclock-ap2-10oclock.md) |
+| **3. At an angle:** the beacons are neither straight ahead nor directly to the side | <img src="docs/final-tests/scenario-3.png" width="220" alt="Robot below AP1, turned at an angle to both mats"> | 7.23 min | [Scenario 3](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/releases/download/final-tests/Scenario.3.mp4) | [17 Nov, route run 2](docs/runs/2026-11-17-08-route-complete-ap1-12oclock-ap2-4oclock.md) |
+| **4. Between the beacons:** facing AP1, with AP2 directly behind | <img src="docs/final-tests/scenario-4.png" width="220" alt="Robot between the two mats, facing AP1"> | 7.23 min | [Scenario 4](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/releases/download/final-tests/Scenario.4.mp4) | [17 Nov, route run 3](docs/runs/2026-11-17-09-route-complete-ap1-12oclock-ap2-6oclock.md) |
+| **5. AP2 beyond AP1:** both beacons straight ahead in a line, AP1 nearer | <img src="docs/final-tests/scenario-5.png" width="160" alt="Robot below AP1, with AP2 directly beyond AP1"> | 9.46 min | [Scenario 5](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/releases/download/final-tests/Scenario.5.mp4) | [24 Nov, AP2 directly behind AP1](docs/runs/2026-11-24-demo-ap2-directly-behind-ap1.md) |
+
+Scenarios 2-4 ran the 17 November firmware (`early-probe`); scenario 5 ran
+the current firmware (`early-probe straight-first`), which went straight on
+from its best point twice instead of trying a side.
 
 ## Project structure
 
