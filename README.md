@@ -65,8 +65,8 @@ reported faults. Its full saved log and firmware checksum are retained there.
 Five recorded runs of the full route (`getting_there_route.uf2`: AP1 on the pink
 mat, then AP2 on the blue mat), each from a different start position. All five
 reached both mats and confirmed both payloads. In the drawings, red is AP1
-(pink mat), blue is AP2 (blue mat), and the small box on the robot marks its
-front.
+(pink mat), blue is AP2 (blue mat), the black box in each mat is the beacon,
+and the small box on the robot marks its front.
 
 The videos (150-270 MB each) are attached to the
 [final-tests release](https://github.com/thisisangelz/INF2004_AAI19_Embedded-sys-project/releases/tag/final-tests)
